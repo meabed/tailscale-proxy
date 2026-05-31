@@ -15,7 +15,7 @@ on:
         type: boolean
         default: false
   push:
-    branches: [main]
+    branches: [master]
     paths:
       - "**/*.go"
       - "go.mod"
