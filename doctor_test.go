@@ -53,6 +53,43 @@ func TestDoctor_serveModeSkipsFunnelCheck(t *testing.T) {
 	}
 }
 
+func TestDoctor_magicDNSAdvisoryWhenAcceptDNSOn(t *testing.T) {
+	r := scriptRunner{responses: map[string][3]string{
+		"tailscale version":                 {"1.98.2", "", ""},
+		"tailscale status":                  {"100.1.1.1 node user macOS -", "", ""},
+		"tailscale funnel status":           {"Funnel on", "", ""},
+		"tailscale debug prefs":             {`{"CorpDNS":true}`, "", ""},
+		"lsof -nP -iTCP -sTCP:LISTEN -Fpcn": {"", "", ""},
+	}}
+	disc := newDiscoverer(r)
+	cfg := discoverConfig{rng: PortRange{3000, 5000}}
+	checks := runDoctor(r, disc, cfg, ModeFunnel)
+	c := findCheck(t, checks, "magicdns")
+	if !c.OK {
+		t.Fatal("magicdns advisory must not fail doctor")
+	}
+	if !strings.Contains(c.Note, "accept-dns=false") {
+		t.Fatalf("note should suggest disabling accept-dns, got %q", c.Note)
+	}
+}
+
+func TestDoctor_noMagicDNSAdvisoryWhenAcceptDNSOff(t *testing.T) {
+	r := scriptRunner{responses: map[string][3]string{
+		"tailscale version":                 {"1.98.2", "", ""},
+		"tailscale status":                  {"100.1.1.1 node user macOS -", "", ""},
+		"tailscale funnel status":           {"Funnel on", "", ""},
+		"tailscale debug prefs":             {`{"CorpDNS":false}`, "", ""},
+		"lsof -nP -iTCP -sTCP:LISTEN -Fpcn": {"", "", ""},
+	}}
+	disc := newDiscoverer(r)
+	cfg := discoverConfig{rng: PortRange{3000, 5000}}
+	for _, c := range runDoctor(r, disc, cfg, ModeFunnel) {
+		if c.Name == "magicdns" {
+			t.Fatal("no advisory expected when accept-dns is off")
+		}
+	}
+}
+
 func findCheck(t *testing.T, checks []Check, name string) Check {
 	t.Helper()
 	for _, c := range checks {

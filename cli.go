@@ -66,6 +66,9 @@ Flags (defaults come from ~/.tailscale-proxy/config.json if present):
   --proxy-only           Run the proxy only; print the tailscale command
   --forward-host         Forward the public host to apps (X-Forwarded-Host/Proto);
                          default presents a local request (apps behave like localhost)
+  --accept-dns <bool>    Optionally set Tailscale MagicDNS (true|false) on start;
+                         default unset = leave it alone. accept-dns=false lets a
+                         tailnet host resolve the public funnel name (persists)
   --log-requests         Log each proxied request             (default on)
   --quiet                Disable per-request logging
   -h, --help             Show this help
@@ -89,6 +92,7 @@ type startOpts struct {
 	logRequests      bool
 	forwardHost      bool
 	quiet            bool
+	acceptDNS        string
 }
 
 // modeOf returns the exposure mode for the private flag.
@@ -119,6 +123,7 @@ func cmdStart(argv []string) int {
 	fs.IntVar(&o.deregisterCycles, "deregister-cycles", cfg.DeregisterCycles, "missing scans before removal")
 	fs.BoolVar(&o.logRequests, "log-requests", cfg.LogRequests, "log each proxied request")
 	fs.BoolVar(&o.forwardHost, "forward-host", cfg.ForwardHost, "forward the public host to apps (X-Forwarded-Host/Proto); default presents a local request")
+	fs.StringVar(&o.acceptDNS, "accept-dns", cfg.AcceptDNS, "optionally set Tailscale MagicDNS (true|false) on start; default unset = leave it alone")
 	fs.BoolVar(&o.quiet, "quiet", false, "disable per-request logging")
 	fs.BoolVar(&o.bg, "bg", false, "run detached in background")
 	var fg bool
@@ -147,6 +152,10 @@ func cmdStart(argv []string) int {
 	if o.bind == "" {
 		o.bind = "127.0.0.1"
 	}
+	if o.acceptDNS != "" && o.acceptDNS != "true" && o.acceptDNS != "false" {
+		fmt.Fprintf(os.Stderr, "invalid --accept-dns %q: use true or false\n", o.acceptDNS)
+		return 2
+	}
 
 	if o.bg {
 		pid, err := spawnDetached("tsp.log")
@@ -161,6 +170,22 @@ func cmdStart(argv []string) int {
 	printStartHeader(o, mode, rng, cfgPath, existed)
 
 	runner := execRunner{}
+
+	// Opt-in: set MagicDNS (accept-dns) before exposing. Off by default — this is a
+	// global, persistent Tailscale setting, so tsp only touches it when asked, and
+	// does not revert it on exit (the user chose it deliberately).
+	if o.acceptDNS != "" {
+		if err := setAcceptDNS(runner, o.acceptDNS); err != nil {
+			fmt.Fprintf(os.Stderr, "%v\n", err)
+			return 1
+		}
+		revert := "true"
+		if o.acceptDNS == "true" {
+			revert = "false"
+		}
+		fmt.Printf("set tailscale accept-dns=%s (persists after exit; revert with: tailscale set --accept-dns=%s)\n", o.acceptDNS, revert)
+	}
+
 	dcfg := discoverConfig{rng: rng, all: o.all, runtimes: parseRuntimes(o.runtimesRaw)}
 	disc := newDiscoverer(runner)
 

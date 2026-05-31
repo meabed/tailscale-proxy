@@ -104,6 +104,9 @@ nslookup your-node.ts.net 8.8.8.8           # NXDOMAIN (not cached yet)
 nslookup your-node.ts.net 100.100.100.100   # resolves via MagicDNS
 ```
 
+`tsp doctor` prints an advisory `magicdns` note whenever the node has `accept-dns`
+on, as a reminder of this gotcha.
+
 The Funnel name **is** in public DNS, so stop MagicDNS from shadowing it on the
 **consuming host** (the remote one — not the machine running `tsp`):
 
@@ -111,6 +114,9 @@ The Funnel name **is** in public DNS, so stop MagicDNS from shadowing it on the
 tailscale set --accept-dns=false      # use public DNS for *.ts.net; re-enable with =true
 dig +short your-node.ts.net @8.8.8.8  # now confirms → 209.177.145.192
 ```
+
+Prefer `tsp` to do it on start (opt-in, off by default)? Pass `tsp --accept-dns=false`.
+It persists after exit — revert with `tailscale set --accept-dns=true`.
 
 Don't want to change the host's DNS? Fix only the container — point it at MagicDNS,
 or pin the public IP:

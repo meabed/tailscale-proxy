@@ -148,6 +148,9 @@ nslookup bigfoot.quoll-adhara.ts.net 8.8.8.8           # NXDOMAIN (not cached ye
 nslookup bigfoot.quoll-adhara.ts.net 100.100.100.100   # → tailnet IP / funnel IP via MagicDNS
 ```
 
+`tsp doctor` prints an advisory `magicdns` note whenever this node has `accept-dns`
+on, as a reminder of this gotcha.
+
 The Funnel name **is** in public DNS, so the fix is to stop MagicDNS from shadowing
 it on the **consuming host** (the remote one — not the machine running `tsp`):
 
@@ -158,6 +161,10 @@ tailscale set --accept-dns=false      # use public DNS for *.ts.net; re-enable w
 ```bash
 dig +short bigfoot.quoll-adhara.ts.net @8.8.8.8         # now confirm: → 209.177.145.192
 ```
+
+If you'd rather have `tsp` flip it for you when it starts (opt-in, off by default),
+pass `tsp --accept-dns=false`. It persists after `tsp` exits — revert with
+`tailscale set --accept-dns=true`.
 
 Prefer not to touch the host's DNS? Fix just the container instead — point it at
 MagicDNS, or pin the public IP:

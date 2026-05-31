@@ -66,6 +66,33 @@ func TestNodeDNSName(t *testing.T) {
 	}
 }
 
+func TestSetAcceptDNS(t *testing.T) {
+	r := &fakeRunner{}
+	if err := setAcceptDNS(r, "false"); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(r.calls[0], " ") != "tailscale set --accept-dns=false" {
+		t.Fatalf("got %v", r.calls[0])
+	}
+	if err := setAcceptDNS(&fakeRunner{}, "maybe"); err == nil {
+		t.Fatal("expected error for invalid value")
+	}
+}
+
+func TestAcceptDNSEnabled(t *testing.T) {
+	on, known := acceptDNSEnabled(&fakeRunner{stdout: `{"CorpDNS":true}`})
+	if !known || !on {
+		t.Fatalf("want on/known, got on=%v known=%v", on, known)
+	}
+	off, known := acceptDNSEnabled(&fakeRunner{stdout: `{"CorpDNS":false}`})
+	if !known || off {
+		t.Fatalf("want off/known, got off=%v known=%v", off, known)
+	}
+	if _, known := acceptDNSEnabled(&fakeRunner{err: errString("boom")}); known {
+		t.Fatal("error should yield known=false")
+	}
+}
+
 func TestPublicBase(t *testing.T) {
 	if got := publicBase("n.ts.net", 443); got != "https://n.ts.net" {
 		t.Errorf("443: %q", got)

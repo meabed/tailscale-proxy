@@ -116,6 +116,7 @@ Run `tsp start --help` for all flags. Global: `-h/--help`, `-v/--version`.
 | `--https-port <n>` | `443` | Public/tailnet HTTPS port (Funnel: `443`/`8443`/`10000`) |
 | `--deregister-cycles <n>` | `5` | Missing scans before a gone service is removed |
 | `--forward-host` | off | Forward the public host to apps via `X-Forwarded-Host/Proto`. Default presents a **local** request so apps behave exactly like `localhost` |
+| `--accept-dns <bool>` | unset | Optionally `tailscale set --accept-dns=<true\|false>` on start. Unset = leave it alone. `false` lets a tailnet host resolve the **public** funnel name (persists after exit) |
 | `--bg` | off | Run detached (logs → `./tsp.log`) |
 | `--proxy-only` | off | Run the proxy only; print the `tailscale` command |
 | `--log-requests` | on | Log each proxied request |
@@ -146,7 +147,7 @@ use). Flags override config at runtime; the file is the source of defaults.
 {
   "ports": "3000-5000", "all": false, "runtimes": "", "private": false,
   "bind": "127.0.0.1", "port": 8443, "interval": 20, "httpsPort": 443,
-  "logRequests": true, "deregisterCycles": 5, "forwardHost": false
+  "logRequests": true, "deregisterCycles": 5, "forwardHost": false, "acceptDns": ""
 }
 ```
 

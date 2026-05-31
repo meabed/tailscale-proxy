@@ -104,6 +104,37 @@ func nodeDNSName(r Runner) (string, error) {
 	return name, nil
 }
 
+// acceptDNSEnabled reports whether this node accepts Tailscale DNS (MagicDNS).
+// `tailscale debug prefs` exposes the pref as "CorpDNS". The second return is
+// false when the state can't be determined (tailscale missing, parse failure).
+func acceptDNSEnabled(r Runner) (on, known bool) {
+	out, _, err := r.Run("tailscale", "debug", "prefs")
+	if err != nil {
+		return false, false
+	}
+	var p struct {
+		CorpDNS bool `json:"CorpDNS"`
+	}
+	if err := json.Unmarshal([]byte(out), &p); err != nil {
+		return false, false
+	}
+	return p.CorpDNS, true
+}
+
+// setAcceptDNS runs `tailscale set --accept-dns=<val>` (val must be "true" or
+// "false"). This is a global, persistent, machine-wide change — callers should
+// only invoke it when the user explicitly opted in.
+func setAcceptDNS(r Runner, val string) error {
+	if val != "true" && val != "false" {
+		return fmt.Errorf("accept-dns must be true or false, got %q", val)
+	}
+	_, stderr, err := r.Run("tailscale", "set", "--accept-dns="+val)
+	if err != nil {
+		return fmt.Errorf("tailscale set --accept-dns=%s failed: %v\n%s", val, err, stderr)
+	}
+	return nil
+}
+
 // publicBase returns the exposure base URL, e.g. https://node.ts.net[:port].
 func publicBase(node string, publicPort int) string {
 	if publicPort == 443 {

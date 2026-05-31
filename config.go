@@ -20,6 +20,7 @@ type Config struct {
 	LogRequests      bool   `json:"logRequests"`      // per-request logging
 	DeregisterCycles int    `json:"deregisterCycles"` // missing scans before removal
 	ForwardHost      bool   `json:"forwardHost"`      // forward the external host to the app
+	AcceptDNS        string `json:"acceptDns"`        // "" = leave Tailscale DNS alone; "true"/"false" = set on start
 }
 
 // defaultConfig returns the built-in defaults.
