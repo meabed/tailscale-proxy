@@ -89,6 +89,46 @@ spec:
 docker run --add-host "your-node.ts.net:209.177.145.192" ...
 ```
 
+#### When the remote host is itself on the tailnet (MagicDNS shadows the name)
+
+The subtle case. If the consuming host runs Tailscale with MagicDNS enabled (the
+default, `--accept-dns=true`), Tailscale's resolver `100.100.100.100` answers
+`*.ts.net` with the node's **tailnet `100.x` address** — not the public Funnel
+ingress. Traffic then crosses the tailnet to your node's `tailscaled`, which only
+serves that path if you set up **Serve**; a **Funnel-only** node won't answer.
+Containers on that host fall back to public DNS, which may still be negatively
+cached as `NXDOMAIN`:
+
+```bash
+nslookup your-node.ts.net 8.8.8.8           # NXDOMAIN (not cached yet)
+nslookup your-node.ts.net 100.100.100.100   # resolves via MagicDNS
+```
+
+The Funnel name **is** in public DNS, so stop MagicDNS from shadowing it on the
+**consuming host** (the remote one — not the machine running `tsp`):
+
+```bash
+tailscale set --accept-dns=false      # use public DNS for *.ts.net; re-enable with =true
+dig +short your-node.ts.net @8.8.8.8  # now confirms → 209.177.145.192
+```
+
+Don't want to change the host's DNS? Fix only the container — point it at MagicDNS,
+or pin the public IP:
+
+```bash
+docker run --dns 100.100.100.100 ...                          # resolve like the host
+docker run --add-host your-node.ts.net:209.177.145.192 ...    # or skip DNS entirely
+```
+
+<Callout type="info">
+  **Why `tsp` doesn't set `--accept-dns=false` for you:** it's a global, persistent,
+  machine-wide Tailscale setting that disables MagicDNS for *every* `*.ts.net` name
+  (breaking resolution for your other tailnet nodes), and it belongs on the
+  **consumer** host — usually a different machine from the one running `tsp`. A dev
+  proxy silently changing your system DNS would be surprising and out of scope, so
+  it's a deliberate, reversible step you run yourself.
+</Callout>
+
 **Serve (`--private`):** the name and its `100.x` address only work from inside the
 tailnet — there's no public IP to point at. The remote pod must **join the
 tailnet**: run a Tailscale sidecar (or the

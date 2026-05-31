@@ -132,6 +132,48 @@ spec:
 docker run --add-host "bigfoot.quoll-adhara.ts.net:209.177.145.192" ...
 ```
 
+#### When the remote host is **itself on the tailnet** (MagicDNS shadows the name)
+
+This is the subtle one. If the consuming host runs Tailscale with MagicDNS enabled
+(the default, `--accept-dns=true`), Tailscale's resolver `100.100.100.100` answers
+`*.ts.net` queries with the node's **tailnet `100.x` address** — *not* the public
+Funnel ingress. Traffic then goes over the tailnet to your node's `tailscaled`,
+which only serves that path if you set up **Serve**; a **Funnel-only** node won't
+answer it. Containers on that host make it worse — they usually don't inherit
+`100.100.100.100`, so they fall back to public DNS, which may still be negatively
+cached and return `NXDOMAIN`. That mismatch is exactly this:
+
+```bash
+nslookup bigfoot.quoll-adhara.ts.net 8.8.8.8           # NXDOMAIN (not cached yet)
+nslookup bigfoot.quoll-adhara.ts.net 100.100.100.100   # → tailnet IP / funnel IP via MagicDNS
+```
+
+The Funnel name **is** in public DNS, so the fix is to stop MagicDNS from shadowing
+it on the **consuming host** (the remote one — not the machine running `tsp`):
+
+```bash
+tailscale set --accept-dns=false      # use public DNS for *.ts.net; re-enable with =true
+```
+
+```bash
+dig +short bigfoot.quoll-adhara.ts.net @8.8.8.8         # now confirm: → 209.177.145.192
+```
+
+Prefer not to touch the host's DNS? Fix just the container instead — point it at
+MagicDNS, or pin the public IP:
+
+```bash
+docker run --dns 100.100.100.100 ...                                  # resolve like the host
+docker run --add-host bigfoot.quoll-adhara.ts.net:209.177.145.192 ... # or skip DNS entirely
+```
+
+> **Why `tsp` doesn't flip `--accept-dns` for you:** it's a **global, persistent,
+> machine-wide** Tailscale setting that disables MagicDNS for *every* `*.ts.net`
+> name (breaking name resolution for your other tailnet nodes), and it belongs on
+> the **consumer** host — usually a different machine from the one running `tsp`.
+> A dev proxy silently changing your system's DNS as a side effect would be
+> surprising and out of scope, so it's left as a deliberate, reversible step.
+
 **If you exposed privately (`--private` Serve):** the name and its `100.x` address
 only work **from inside the tailnet**, so a remote pod must *join* the tailnet —
 there's no public IP to point at. Either:
