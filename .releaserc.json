@@ -51,8 +51,8 @@
           { "path": "dist/*.zip", "label": "binary archive" },
           { "path": "dist/checksums.txt", "label": "checksums" }
         ],
-        "successCommentCondition": "<% return !!issue.pull_request; %>",
-        "failCommentCondition": "<% return !!issue.pull_request; %>"
+        "successComment": false,
+        "failComment": false
       }
     ]
   ],

@@ -45,40 +45,60 @@ jobs:
       pull-requests: write # release comments on released PRs
       id-token: write # npm provenance (sigstore attestations)
     steps:
+      - name: Check release secrets
+        id: gate
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -z "$NPM_TOKEN" ]; then
+            echo "NPM_TOKEN is not set — skipping release. Add the secret to enable publishing."
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: actions/checkout@v6
+        if: steps.gate.outputs.enabled == 'true'
         with:
           fetch-depth: 0
           persist-credentials: false
 
       - uses: actions/setup-go@v6
+        if: steps.gate.outputs.enabled == 'true'
         with:
           go-version: "stable"
 
       - uses: actions/setup-node@v6
+        if: steps.gate.outputs.enabled == 'true'
         with:
           node-version: "22"
           registry-url: "https://registry.npmjs.org"
 
       - uses: oven-sh/setup-bun@v2
+        if: steps.gate.outputs.enabled == 'true'
         with:
           bun-version: "1.3"
 
       - name: Install goreleaser
+        if: steps.gate.outputs.enabled == 'true'
         uses: goreleaser/goreleaser-action@v7
         with:
           version: "~> v2"
           install-only: true
 
       - name: Install dependencies
+        if: steps.gate.outputs.enabled == 'true'
         run: bun install
 
       - name: Verify
+        if: steps.gate.outputs.enabled == 'true'
         run: |
           test -z "$(gofmt -l .)" || { echo "gofmt needed:"; gofmt -l .; exit 1; }
           go vet ./...
           go test -race -count=1 ./...
 
       - name: Semantic release
+        if: steps.gate.outputs.enabled == 'true'
         run: |
           if [ "${{ inputs.dry-run }}" = "true" ]; then
             bunx semantic-release --dry-run
