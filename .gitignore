@@ -1,7 +1,9 @@
 /dist/
-/ptp
-/ptp.exe
+/tsp
+/tsp.exe
 *.log
 node_modules/
 npm/dist/
 npm/*/bin/
+.idea
+.remember
