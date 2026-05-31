@@ -6,6 +6,22 @@
 
 📖 **Docs:** https://tailscaleproxy.vercel.app · sources in [`website/`](website)
 
+## ⚡ Start in one command
+
+```bash
+npx tailscale-proxy
+```
+
+That's it — no install, no config. It discovers your running dev servers and shares
+them all through one Tailscale URL. (First time? Run `npx tailscale-proxy doctor` to
+check Tailscale is set up — see [Requirements](#requirements).)
+
+```bash
+brew install meabed/tap/tsp && tsp     # or install the binary, then run `tsp`
+```
+
+---
+
 An open-source, **self-hosted [ngrok](https://ngrok.com) alternative** built on
 [Tailscale](https://tailscale.com). Discover your local dev servers by **port**,
 and expose them through a **single Tailscale entry** — privately (Serve,
