@@ -11,7 +11,7 @@ export const metadata = {
   },
   description:
     "Discover local dev servers by port and expose them through one Tailscale Serve/Funnel entry, routed by project name. An open-source, self-hosted ngrok alternative.",
-  metadataBase: new URL("https://tailscale-proxy.vercel.app"),
+  metadataBase: new URL("https://tailscaleproxy.vercel.app"),
 };
 
 export default function RootLayout({

@@ -4,7 +4,7 @@
 [![release](https://github.com/meabed/tailscale-proxy/actions/workflows/release.yml/badge.svg)](https://github.com/meabed/tailscale-proxy/actions/workflows/release.yml)
 [![npm](https://img.shields.io/npm/v/tailscale-proxy)](https://www.npmjs.com/package/tailscale-proxy)
 
-📖 **Docs:** https://tailscale-proxy.vercel.app · sources in [`website/`](website)
+📖 **Docs:** https://tailscaleproxy.vercel.app · sources in [`website/`](website)
 
 An open-source, **self-hosted [ngrok](https://ngrok.com) alternative** built on
 [Tailscale](https://tailscale.com). Discover your local dev servers by **port**,
