@@ -34,18 +34,23 @@ func writeIndex(w http.ResponseWriter, store *RouteStore, status int) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(status)
 	snap := store.snapshot()
-	hosts := make([]string, 0, len(snap))
-	for h := range snap {
-		hosts = append(hosts, h)
+	slugs := make([]string, 0, len(snap))
+	for s := range snap {
+		slugs = append(slugs, s)
 	}
-	sort.Strings(hosts)
-	fmt.Fprintln(w, "portless-tailscale-proxy — registered services:")
-	if len(hosts) == 0 {
-		fmt.Fprintln(w, "  (none — is `portless` running? try `ptp doctor`)")
+	sort.Strings(slugs)
+	fmt.Fprintln(w, "tailscale-proxy — registered services:")
+	if len(slugs) == 0 {
+		fmt.Fprintln(w, "  (none discovered — start a dev server in range, or try --all / --ports, then `tsp doctor`)")
 		return
 	}
-	for _, h := range hosts {
-		fmt.Fprintf(w, "  /%s/  ->  127.0.0.1:%d\n", h, snap[h])
+	for _, s := range slugs {
+		svc := snap[s]
+		rt := svc.Runtime
+		if rt == "" {
+			rt = "?"
+		}
+		fmt.Fprintf(w, "  /%s/  →  127.0.0.1:%d  (%s)\n", s, svc.Port, rt)
 	}
 }
 
@@ -63,7 +68,20 @@ type target struct {
 // When logRequests is true, each request is logged with method, status,
 // target, and duration.
 func newHandler(store *RouteStore, logRequests bool) http.Handler {
+	// A dedicated, bounded transport so idle connections to dev servers that come
+	// and go don't accumulate (capped pool + short idle timeout = steady memory).
+	transport := &http.Transport{
+		Proxy:                 http.ProxyFromEnvironment,
+		DialContext:           (&net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
+		MaxIdleConns:          64,
+		MaxIdleConnsPerHost:   8,
+		IdleConnTimeout:       60 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: time.Second,
+		ForceAttemptHTTP2:     true,
+	}
 	proxy := &httputil.ReverseProxy{
+		Transport:     transport,
 		FlushInterval: -1, // flush immediately: SSE / streaming / chunked
 		Rewrite: func(pr *httputil.ProxyRequest) {
 			tgt := pr.In.Context().Value(targetKey).(target)
@@ -81,7 +99,7 @@ func newHandler(store *RouteStore, logRequests bool) http.Handler {
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
 			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 			w.WriteHeader(http.StatusBadGateway)
-			fmt.Fprintf(w, "portless-tailscale-proxy: upstream error: %v\n", err)
+			fmt.Fprintf(w, "tailscale-proxy: upstream error: %v\n", err)
 		},
 	}
 

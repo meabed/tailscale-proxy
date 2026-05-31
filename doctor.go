@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"os"
 	"strings"
 )
 
@@ -18,11 +17,10 @@ const (
 	linkTailscaleInstall = "https://tailscale.com/download"
 	linkFunnelKB         = "https://tailscale.com/kb/1223/funnel"
 	linkHTTPSKB          = "https://tailscale.com/kb/1153/enabling-https"
-	linkPortless         = "https://portless.sh"
 )
 
-// runDoctor probes tailscale, Funnel, and portless and returns ordered checks.
-func runDoctor(r Runner, statePath string) []Check {
+// runDoctor probes tailscale, exposure readiness, lsof, and discovery.
+func runDoctor(r Runner, disc *Discoverer, cfg discoverConfig, mode Mode) []Check {
 	var checks []Check
 
 	verOut, _, verErr := r.Run("tailscale", "version")
@@ -45,32 +43,39 @@ func runDoctor(r Runner, statePath string) []Check {
 			checks = append(checks, Check{"tailscale up", true, "", ""})
 		}
 
-		_, fStderr, fErr := r.Run("tailscale", "funnel", "status")
-		if fErr != nil {
-			checks = append(checks, Check{
-				Name: "funnel enabled", OK: false, Detail: strings.TrimSpace(fStderr),
-				Fix: "Enable Funnel for your tailnet:\n" +
-					"  - Overview: " + linkFunnelKB + "\n" +
-					"  - Enable HTTPS certs: " + linkHTTPSKB + "\n" +
-					"  - Grant the `funnel` node attribute in your tailnet policy file (admin console)",
-			})
-		} else {
-			checks = append(checks, Check{"funnel enabled", true, "", ""})
+		if mode == ModeFunnel {
+			_, fStderr, fErr := r.Run("tailscale", "funnel", "status")
+			if fErr != nil {
+				checks = append(checks, Check{
+					Name: "funnel enabled", OK: false, Detail: strings.TrimSpace(fStderr),
+					Fix: "Enable Funnel for your tailnet:\n" +
+						"  - Overview: " + linkFunnelKB + "\n" +
+						"  - Enable HTTPS certs: " + linkHTTPSKB + "\n" +
+						"  - Grant the `funnel` node attribute in your tailnet policy file (admin console)",
+				})
+			} else {
+				checks = append(checks, Check{"funnel enabled", true, "", ""})
+			}
 		}
 	}
 
-	if _, err := os.Stat(statePath); err != nil {
+	// Discovery readiness.
+	svcs, derr := disc.Discover(cfg)
+	if derr != nil {
 		checks = append(checks, Check{
-			Name: "portless routes", OK: false, Detail: statePath + " not found",
-			Fix: "Install & start portless:\n" +
-				"  - " + linkPortless + "\n" +
-				"  - npm install -g portless\n" +
-				"  - portless proxy start",
+			Name: "service discovery", OK: false, Detail: derr.Error(),
+			Fix: "Ensure `lsof` is installed (macOS has it; Linux: `apt install lsof` / `dnf install lsof`)",
 		})
-	} else if m, err := loadRoutes(statePath); err != nil {
-		checks = append(checks, Check{"portless routes", false, "parse error: " + err.Error(), "Inspect " + statePath})
 	} else {
-		checks = append(checks, Check{"portless routes", true, fmt.Sprintf("%d route(s)", len(m)), ""})
+		detail := fmt.Sprintf("%d service(s) in %d-%d", len(svcs), cfg.rng.Lo, cfg.rng.Hi)
+		fix := ""
+		ok := true
+		if len(svcs) == 0 {
+			ok = false
+			detail = fmt.Sprintf("no services found in %d-%d", cfg.rng.Lo, cfg.rng.Hi)
+			fix = "Start a dev server in range, widen --ports, or pass --all to include non-web processes"
+		}
+		checks = append(checks, Check{"service discovery", ok, detail, fix})
 	}
 
 	return checks

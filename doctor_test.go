@@ -5,16 +5,15 @@ import (
 	"testing"
 )
 
-// scriptRunner returns different output per (name,args) key.
 type scriptRunner struct {
-	responses map[string][3]string // key -> {stdout, stderr, errMsg}
+	responses map[string][3]string
 }
 
 func (s scriptRunner) Run(name string, args ...string) (string, string, error) {
 	key := name + " " + strings.Join(args, " ")
 	r, ok := s.responses[key]
 	if !ok {
-		return "", "not stubbed", errStub
+		return "", "not stubbed", errString("stub")
 	}
 	var err error
 	if r[2] != "" {
@@ -23,29 +22,33 @@ func (s scriptRunner) Run(name string, args ...string) (string, string, error) {
 	return r[0], r[1], err
 }
 
+type errString string
+
+func (e errString) Error() string { return string(e) }
+
 func TestDoctor_tailscaleMissing(t *testing.T) {
-	r := scriptRunner{responses: map[string][3]string{}} // nothing stubbed → all error
-	checks := runDoctor(r, "/nonexistent/routes.json")
+	r := scriptRunner{responses: map[string][3]string{}}
+	disc := newDiscoverer(r)
+	cfg := discoverConfig{rng: PortRange{3000, 5000}}
+	checks := runDoctor(r, disc, cfg, ModeFunnel)
 	c := findCheck(t, checks, "tailscale installed")
-	if c.OK {
-		t.Fatal("expected tailscale check to fail")
-	}
-	if !strings.Contains(c.Fix, "tailscale.com/download") {
-		t.Errorf("fix should link to install docs, got %q", c.Fix)
+	if c.OK || !strings.Contains(c.Fix, "tailscale.com/download") {
+		t.Fatalf("expected failing tailscale check with link, got %+v", c)
 	}
 }
 
-func TestDoctor_allGood(t *testing.T) {
-	statePath := writeTemp(t, `[{"hostname":"a.local","port":1}]`)
+func TestDoctor_serveModeSkipsFunnelCheck(t *testing.T) {
 	r := scriptRunner{responses: map[string][3]string{
-		"tailscale version":       {"1.80.0", "", ""},
-		"tailscale status":        {"100.1.1.1 node user macOS -", "", ""},
-		"tailscale funnel status": {"https://node.ts.net (Funnel on)", "", ""},
+		"tailscale version":                 {"1.98.2", "", ""},
+		"tailscale status":                  {"100.1.1.1 node user macOS -", "", ""},
+		"lsof -nP -iTCP -sTCP:LISTEN -Fpcn": {"", "", ""},
 	}}
-	checks := runDoctor(r, statePath)
+	disc := newDiscoverer(r)
+	cfg := discoverConfig{rng: PortRange{3000, 5000}}
+	checks := runDoctor(r, disc, cfg, ModeServe)
 	for _, c := range checks {
-		if !c.OK {
-			t.Errorf("check %q unexpectedly failed: %s", c.Name, c.Detail)
+		if c.Name == "funnel enabled" {
+			t.Fatal("serve mode should not check funnel")
 		}
 	}
 }
@@ -60,9 +63,3 @@ func findCheck(t *testing.T, checks []Check, name string) Check {
 	t.Fatalf("check %q not found", name)
 	return Check{}
 }
-
-type errString string
-
-func (e errString) Error() string { return string(e) }
-
-var errStub = errString("stub: not configured")

@@ -12,7 +12,7 @@ func detachSysProcAttr() *syscall.SysProcAttr {
 	return &syscall.SysProcAttr{Setsid: true}
 }
 
-// spawnDetached re-execs ptp without --bg, detached, with output to logPath.
+// spawnDetached re-execs tsp without --bg, detached, with output to logPath.
 func spawnDetached(logPath string) (int, error) {
 	exe, err := os.Executable()
 	if err != nil {
