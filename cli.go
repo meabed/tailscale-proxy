@@ -56,6 +56,8 @@ Flags (defaults come from ~/.tailscale-proxy/config.json if present):
   --all                  Include all listeners, not just web runtimes
   --runtimes <list>      Comma-separated runtimes to keep (default: all known)
   --private              Expose privately via Tailscale Serve (default: Funnel)
+  --bind <addr>          Proxy listen address (default 127.0.0.1; use 0.0.0.0 to
+                         reach the proxy from containers / the LAN — no MagicDNS)
   --port <n>             Local proxy HTTP port                (default 8443)
   --interval <sec>       Re-scan period in seconds            (default 20)
   --https-port <n>       Public/tailnet HTTPS port            (default 443)
@@ -77,6 +79,7 @@ type startOpts struct {
 	all              bool
 	runtimesRaw      string
 	private          bool
+	bind             string
 	port             int
 	interval         int
 	httpsPort        int
@@ -109,6 +112,7 @@ func cmdStart(argv []string) int {
 	fs.BoolVar(&o.all, "all", cfg.All, "include all listeners")
 	fs.StringVar(&o.runtimesRaw, "runtimes", cfg.Runtimes, "comma-separated runtimes")
 	fs.BoolVar(&o.private, "private", cfg.Private, "expose via Tailscale Serve (private)")
+	fs.StringVar(&o.bind, "bind", cfg.Bind, "proxy listen address (0.0.0.0 to reach it from containers/LAN)")
 	fs.IntVar(&o.port, "port", cfg.Port, "local proxy HTTP port")
 	fs.IntVar(&o.interval, "interval", cfg.Interval, "re-scan period (seconds)")
 	fs.IntVar(&o.httpsPort, "https-port", cfg.HTTPSPort, "public/tailnet HTTPS port")
@@ -139,6 +143,9 @@ func cmdStart(argv []string) int {
 	}
 	if o.quiet {
 		o.logRequests = false
+	}
+	if o.bind == "" {
+		o.bind = "127.0.0.1"
 	}
 
 	if o.bg {
@@ -173,7 +180,10 @@ func cmdStart(argv []string) int {
 	defer stop()
 	go poll(ctx, store, time.Duration(o.interval)*time.Second)
 
-	srv := &http.Server{Addr: fmt.Sprintf("127.0.0.1:%d", o.port), Handler: newHandler(store, o.logRequests, o.forwardHost)}
+	if o.bind != "127.0.0.1" && o.bind != "localhost" {
+		fmt.Printf("⚠ proxy bound to %s:%d — reachable beyond this host (containers/LAN). Anyone who can reach it can hit your dev servers.\n", o.bind, o.port)
+	}
+	srv := &http.Server{Addr: fmt.Sprintf("%s:%d", o.bind, o.port), Handler: newHandler(store, o.logRequests, o.forwardHost)}
 	ln, err := net.Listen("tcp", srv.Addr)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "cannot listen on %s: %v\n", srv.Addr, err)

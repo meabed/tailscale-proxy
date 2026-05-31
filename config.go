@@ -13,6 +13,7 @@ type Config struct {
 	All              bool   `json:"all"`              // include non-web runtimes
 	Runtimes         string `json:"runtimes"`         // CSV, "" = all known
 	Private          bool   `json:"private"`          // Serve (private) instead of Funnel
+	Bind             string `json:"bind"`             // proxy listen address (127.0.0.1 = host only)
 	Port             int    `json:"port"`             // local proxy HTTP port
 	Interval         int    `json:"interval"`         // re-scan seconds
 	HTTPSPort        int    `json:"httpsPort"`        // public/tailnet HTTPS port
@@ -25,8 +26,8 @@ type Config struct {
 func defaultConfig() Config {
 	return Config{
 		Ports: "3000-5000", All: false, Runtimes: "", Private: false,
-		Port: 8443, Interval: 20, HTTPSPort: 443, LogRequests: true,
-		DeregisterCycles: 5, ForwardHost: false,
+		Bind: "127.0.0.1", Port: 8443, Interval: 20, HTTPSPort: 443,
+		LogRequests: true, DeregisterCycles: 5, ForwardHost: false,
 	}
 }
 

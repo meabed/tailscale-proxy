@@ -27,6 +27,7 @@ Defaults come from your config file (see [Configuration](/configuration)).
 | `--all` | off | Include all listeners, not just web runtimes |
 | `--runtimes <list>` | all known | Restrict to specific runtimes, e.g. `node,bun,python` |
 | `--private` | off | Expose privately via Tailscale **Serve** (default: **Funnel**) |
+| `--bind <addr>` | `127.0.0.1` | Listen address; `0.0.0.0` to reach from containers/LAN |
 | `--port <n>` | `8443` | Local proxy HTTP port |
 | `--interval <sec>` | `20` | Re-scan period |
 | `--https-port <n>` | `443` | Public/tailnet HTTPS port (Funnel: `443`/`8443`/`10000`) |

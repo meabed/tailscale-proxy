@@ -21,6 +21,7 @@ tsp                       # uses the saved config
   "all": false,
   "runtimes": "",
   "private": false,
+  "bind": "127.0.0.1",
   "port": 8443,
   "interval": 20,
   "httpsPort": 443,
@@ -36,6 +37,7 @@ tsp                       # uses the saved config
 | `all` | Include every listener, not just known web runtimes |
 | `runtimes` | Comma-separated allow-list, e.g. `"node,bun,python"` (empty = all known) |
 | `private` | Expose via Tailscale Serve (tailnet-only) instead of Funnel |
+| `bind` | Proxy listen address (`0.0.0.0` to reach it from containers/LAN) |
 | `port` | Local proxy HTTP port |
 | `interval` | Re-scan period, seconds |
 | `httpsPort` | Public/tailnet HTTPS port (Funnel: 443 / 8443 / 10000) |

@@ -75,6 +75,37 @@ server restarts. Lower it (`--deregister-cycles 1`) for immediate removal, or ra
 it for longer grace. New services appear on the next scan (`--interval`, default 20s;
 lower it for faster pickup).
 
+## Reaching services from a Docker container ("Failed to resolve …ts.net")
+
+Containers don't use your host's MagicDNS, so a tailnet name like
+`bigfoot.quoll-adhara.ts.net` won't resolve inside them. Two ways to fix it:
+
+**A. Talk to the `tsp` proxy directly — no MagicDNS, no Tailscale (simplest).**
+Bind the proxy to a reachable address, then have the container hit it by path:
+
+```bash
+tsp --bind 0.0.0.0            # proxy now listens on all interfaces
+```
+```bash
+# from inside the container — routes by /<slug>/ to your local dev server:
+curl http://host.docker.internal:8443/<slug>/        # Docker Desktop (mac/win)
+# Linux: start the container with
+#   docker run --add-host=host.docker.internal:host-gateway ...
+# or use the docker bridge gateway IP (often 172.17.0.1).
+```
+
+This routes `container → host tsp → 127.0.0.1:<service>` with no DNS or tailnet
+involved. ⚠ `0.0.0.0` exposes the proxy to your LAN — bind a specific interface
+(e.g. `--bind 172.17.0.1`, the docker bridge) to narrow it.
+
+**B. Make the tailnet name resolve in the container.**
+If the container is on the tailnet (or can route `100.x`), map the name to your
+node's tailnet IP so HTTPS certs still match:
+
+```bash
+docker run --add-host "bigfoot.quoll-adhara.ts.net:$(tailscale ip -4)" ...
+```
+
 ## `502` upstream error
 
 The registered dev server isn't accepting connections (crashed or exited between

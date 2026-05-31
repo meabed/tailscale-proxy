@@ -14,6 +14,7 @@ func cmdConfigure(argv []string) int {
 	fs.BoolVar(&cfg.All, "all", cfg.All, "include all listeners")
 	fs.StringVar(&cfg.Runtimes, "runtimes", cfg.Runtimes, "comma-separated runtimes")
 	fs.BoolVar(&cfg.Private, "private", cfg.Private, "expose privately via Serve")
+	fs.StringVar(&cfg.Bind, "bind", cfg.Bind, "proxy listen address")
 	fs.IntVar(&cfg.Port, "port", cfg.Port, "local proxy HTTP port")
 	fs.IntVar(&cfg.Interval, "interval", cfg.Interval, "re-scan period (seconds)")
 	fs.IntVar(&cfg.HTTPSPort, "https-port", cfg.HTTPSPort, "public/tailnet HTTPS port")

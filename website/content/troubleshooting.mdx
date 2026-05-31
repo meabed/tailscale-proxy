@@ -31,6 +31,34 @@ backend.
 - Don't actively use two different apps in the **same browser** at once — affinity
   is per-browser. Use separate browser profiles, or re-visit the `/<slug>/` URL.
 
+## Reaching services from a Docker container ("Failed to resolve …ts.net")
+
+Containers don't use your host's MagicDNS, so a tailnet name won't resolve inside
+them. Two fixes:
+
+**A. Talk to the `tsp` proxy directly — no MagicDNS, no Tailscale (simplest).**
+Bind the proxy to a reachable address, then hit it by path from the container:
+
+```bash
+tsp --bind 0.0.0.0
+```
+
+```bash
+# inside the container — routes /<slug>/ to your local dev server:
+curl http://host.docker.internal:8443/<slug>/        # Docker Desktop
+# Linux: docker run --add-host=host.docker.internal:host-gateway ...
+```
+
+This routes `container → host tsp → 127.0.0.1:<service>` with no DNS or tailnet.
+⚠ `0.0.0.0` exposes the proxy to your LAN — bind a specific interface (e.g. the
+docker bridge `--bind 172.17.0.1`) to narrow it.
+
+**B. Make the tailnet name resolve in the container** (if it's on the tailnet):
+
+```bash
+docker run --add-host "your-node.ts.net:$(tailscale ip -4)" ...
+```
+
 ## No services found
 
 `tsp` only registers known web runtimes within the port range by default.

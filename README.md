@@ -110,6 +110,7 @@ Run `tsp start --help` for all flags. Global: `-h/--help`, `-v/--version`.
 | `--all` | off | Include all listeners, not just web runtimes |
 | `--runtimes <list>` | all known | Restrict to specific runtimes, e.g. `node,bun,python` |
 | `--private` | off | Expose privately via Tailscale **Serve** (default: **Funnel**) |
+| `--bind <addr>` | `127.0.0.1` | Proxy listen address. Use `0.0.0.0` to reach the proxy from **Docker containers / the LAN** without MagicDNS |
 | `--port <n>` | `8443` | Local proxy HTTP port |
 | `--interval <sec>` | `20` | Re-scan period |
 | `--https-port <n>` | `443` | Public/tailnet HTTPS port (Funnel: `443`/`8443`/`10000`) |
@@ -144,7 +145,7 @@ use). Flags override config at runtime; the file is the source of defaults.
 ```json
 {
   "ports": "3000-5000", "all": false, "runtimes": "", "private": false,
-  "port": 8443, "interval": 20, "httpsPort": 443,
+  "bind": "127.0.0.1", "port": 8443, "interval": 20, "httpsPort": 443,
   "logRequests": true, "deregisterCycles": 5, "forwardHost": false
 }
 ```

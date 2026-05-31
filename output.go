@@ -33,7 +33,11 @@ func printStartHeader(o startOpts, mode Mode, rng PortRange, cfgPath string, exi
 	if o.forwardHost {
 		hostMode = "forwarded (public host via X-Forwarded-*)"
 	}
-	fmt.Printf("  ports=%s  mode=%s  proxy=127.0.0.1:%d  https=%d\n", ports, kind, o.port, o.httpsPort)
+	bind := o.bind
+	if bind == "" {
+		bind = "127.0.0.1"
+	}
+	fmt.Printf("  ports=%s  mode=%s  proxy=%s:%d  https=%d\n", ports, kind, bind, o.port, o.httpsPort)
 	fmt.Printf("  interval=%ds  runtimes=%s  deregister-after=%d scans  log-requests=%t\n",
 		o.interval, runtimes, o.deregisterCycles, o.logRequests)
 	fmt.Printf("  host=%s\n\n", hostMode)
