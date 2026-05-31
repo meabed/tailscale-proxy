@@ -52,41 +52,37 @@ sharing several real dev servers through one URL.
 `tsp` discovers anything **listening on a port in range** (default `3000-5000`).
 The URL path is the **project folder name**, so run each from its own directory.
 
-### JS/TS runtimes (discovered by default: `node`, `bun`, `deno`)
+These runtimes are **discovered by default**: `node`, `bun`, `deno`, `python`,
+`ruby`, `php`, `go`, `java`, `dotnet`, `elixir`, `perl`, and `docker`-published
+ports. Anything else (or a non-standard binary) is included with `--all`.
 
 ```bash
-# Static folder server (runs under node → discovered)
-cd ~/sites/portfolio && npx serve -l 3000
+# JavaScript / TypeScript
+cd ~/sites/portfolio && npx serve -l 3000            # static (node)
+cd ~/sites/docs      && npx http-server -p 3001      # static (node)
+cd ~/apps/web        && npx next dev -p 4000         # Next.js (node)
+cd ~/apps/api        && bun run dev                  # bun (e.g. :4100)
 
-# Another static server
-cd ~/sites/docs && npx http-server -p 3001
+# Python (interpreter or app servers — uvicorn/gunicorn are detected too)
+cd ~/sites/blog      && python3 -m http.server 3003
+cd ~/apps/fastapi    && uvicorn main:app --port 3010
 
-# A Vite app
-cd ~/apps/dashboard && npm run dev          # vite on 5173? set it in range, e.g. --port 3002
+# PHP / Ruby / Go / Java
+cd ~/apps/legacy     && php -S 127.0.0.1:3004
+cd ~/apps/rb         && ruby -run -e httpd . -p 3005
+cd ~/apps/gosrv      && go run .                     # `go run` is detected
+cd ~/apps/spring     && ./gradlew bootRun            # java (e.g. :8080 — widen --ports)
 
-# A Next.js app
-cd ~/apps/web && npx next dev -p 4000
-
-# A bun server
-cd ~/apps/api && bun run dev                 # listening on, say, 4100
+# Docker-published ports show up as docker-<port>
+docker run -p 3030:80 nginx
 ```
 
-### Other runtimes (use `--all` or `--runtimes` to include them)
+Pick a subset with `--runtimes` (e.g. `--runtimes node,bun,python`), or cast the
+widest net with `--all` (every listener in range, including unrecognized binaries
+like compiled Go/Rust apps).
 
-```bash
-cd ~/sites/blog && python3 -m http.server 3003
-cd ~/apps/legacy && php -S 127.0.0.1:3004
-cd ~/apps/rb && ruby -run -e httpd . -p 3005
-```
-
-By default only `node`/`bun`/`deno` are exposed. To include the Python/PHP/Ruby
-ones above:
-
-```bash
-tsp --all                      # everything listening in range
-# or pick exactly what you want:
-tsp --runtimes node,bun,python,php
-```
+> Compiled binaries (a built Go or Rust server) have arbitrary process names, so
+> they show up only under `--all` — `go run`/`cargo` dev workflows are detected.
 
 ---
 
@@ -101,7 +97,7 @@ tsp                            # discover :3000-5000 and expose publicly
 ```
 Using config: /Users/me/.tailscale-proxy/config.json
   ports=3000-5000  mode=public (Funnel)  proxy=127.0.0.1:8443  https=443
-  interval=20s  runtimes=node,bun,deno (default)  deregister-after=5 scans  log-requests=true
+  interval=20s  runtimes=default (node,bun,deno,python,ruby,php,go,java,…)  deregister-after=5 scans  log-requests=true
   host=local (apps see localhost)
 
 ✓ tailscale installed  (1.98.2)

@@ -39,24 +39,80 @@ type listener struct {
 	Cwd  string
 }
 
-// Default known web runtimes (JS/TS). Others reachable via --runtimes or --all.
+// knownRuntimes maps a process's executable basename to a runtime label. These
+// are the runtimes discovered by default; --all includes everything, --runtimes
+// restricts to a subset. Server wrappers (uvicorn, puma, …) map to their language.
 var knownRuntimes = map[string]string{
+	// JavaScript / TypeScript
 	"node": "node", "bun": "bun", "deno": "deno",
+	// Python (interpreter + common app servers)
+	"python": "python", "python2": "python", "python3": "python",
+	"uvicorn": "python", "gunicorn": "python", "hypercorn": "python",
+	"flask": "python", "waitress-serve": "python",
+	// Ruby (interpreter + common app servers)
+	"ruby": "ruby", "puma": "ruby", "unicorn": "ruby", "rackup": "ruby",
+	"rails": "ruby", "thin": "ruby",
+	// PHP
+	"php": "php", "php-fpm": "php",
+	// Go (compiled binaries are undetectable; `go run` is caught by heuristic below)
+	"go": "go",
+	// JVM
+	"java": "java",
+	// .NET
+	"dotnet": "dotnet",
+	// Elixir / Erlang
+	"beam": "elixir", "beam.smp": "elixir",
+	// Perl
+	"perl": "perl",
+	// Docker-published ports (the userland forwarder serves the host port)
+	"docker-proxy": "docker", "com.docker.backend": "docker",
+	"vpnkit-forwarder": "docker", "vpnkit": "docker",
 }
 
+// projectMarkers identify a project root when walking up from a process's cwd.
 var projectMarkers = []string{
-	"package.json", ".git", "go.mod", "pyproject.toml",
-	"Cargo.toml", "deno.json", "composer.json", "Gemfile",
+	".git",
+	"package.json", "deno.json", "bun.lockb",
+	"go.mod",
+	"pyproject.toml", "requirements.txt", "Pipfile", "setup.py",
+	"Gemfile",
+	"composer.json",
+	"Cargo.toml",
+	"pom.xml", "build.gradle", "build.gradle.kts",
+	"mix.exs",
 }
 
-// classifyRuntime maps an executable path to a runtime label, or "".
+// classifyRuntime maps an executable path to a runtime label, or "" if unknown.
 func classifyRuntime(comm string) string {
 	base := strings.ToLower(filepath.Base(comm))
 	base = strings.TrimSuffix(base, ".exe")
 	if rt, ok := knownRuntimes[base]; ok {
 		return rt
 	}
+	switch {
+	case strings.HasPrefix(base, "python"): // python3.12, python3.13, …
+		return "python"
+	case strings.Contains(comm, "go-build"): // `go run` temp binary
+		return "go"
+	case strings.Contains(base, "docker"): // docker-proxy variants
+		return "docker"
+	}
 	return ""
+}
+
+// knownRuntimeLabels returns the distinct runtime labels, sorted — used in help
+// and the startup banner so the default set is self-documenting.
+func knownRuntimeLabels() []string {
+	set := map[string]bool{}
+	for _, label := range knownRuntimes {
+		set[label] = true
+	}
+	out := make([]string, 0, len(set))
+	for label := range set {
+		out = append(out, label)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // projectRootDir walks up from dir to the nearest directory containing a project

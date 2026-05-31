@@ -60,9 +60,17 @@ const targetKey ctxKey = 0
 
 // target is the resolved upstream for a single request.
 type target struct {
-	host string // "127.0.0.1:<port>"
+	port int    // upstream port on the loopback interface
 	path string // rewritten path with the matched segment stripped
 }
+
+// dialHost is the reliable IPv4 loopback address we connect to.
+func (t target) dialHost() string { return "127.0.0.1:" + strconv.Itoa(t.port) }
+
+// hostHeader is the Host the app sees. We use "localhost" (not the raw IP)
+// because dev servers, CORS origins, and cookies are keyed to how developers
+// actually reach them — `http://localhost:<port>`.
+func (t target) hostHeader() string { return "localhost:" + strconv.Itoa(t.port) }
 
 // newHandler returns an HTTP handler that routes by first path segment.
 // When logRequests is true, each request is logged with method, status,
@@ -88,12 +96,12 @@ func newHandler(store *RouteStore, logRequests, forwardHost bool) http.Handler {
 		Rewrite: func(pr *httputil.ProxyRequest) {
 			tgt := pr.In.Context().Value(targetKey).(target)
 			pr.Out.URL.Scheme = "http"
-			pr.Out.URL.Host = tgt.host
+			pr.Out.URL.Host = tgt.dialHost() // connect to 127.0.0.1
 			pr.Out.URL.Path = tgt.path
 			pr.Out.URL.RawQuery = pr.In.URL.RawQuery
-			// Host is always the local target so the dev server sees a localhost
-			// request (and Host-validating servers accept it).
-			pr.Out.Host = tgt.host
+			// Present the request as "localhost:<port>" so it's indistinguishable
+			// from how the developer normally reaches the server.
+			pr.Out.Host = tgt.hostHeader()
 			// Keeps X-Forwarded-For (real client IP); also sets X-Forwarded-Host to
 			// the inbound (external) host, which we override below.
 			pr.SetXForwarded()
@@ -104,7 +112,7 @@ func newHandler(store *RouteStore, logRequests, forwardHost bool) http.Handler {
 			} else {
 				// Present a purely local request — never leak the external host, so
 				// the app builds URLs/redirects exactly as it would on localhost.
-				pr.Out.Header.Set("X-Forwarded-Host", tgt.host)
+				pr.Out.Header.Set("X-Forwarded-Host", tgt.hostHeader())
 				pr.Out.Header.Set("X-Forwarded-Proto", "http")
 			}
 		},
@@ -121,7 +129,7 @@ func newHandler(store *RouteStore, logRequests, forwardHost bool) http.Handler {
 
 		port, path, ok := resolveRoute(store, r, w)
 		if ok {
-			tgt := target{host: "127.0.0.1:" + strconv.Itoa(port), path: path}
+			tgt := target{port: port, path: path}
 			ctx := context.WithValue(r.Context(), targetKey, tgt)
 			proxy.ServeHTTP(rec, r.WithContext(ctx))
 		} else {

@@ -1,3 +1,3 @@
 module github.com/meabed/tailscale-proxy
 
-go 1.26.3
+go 1.24

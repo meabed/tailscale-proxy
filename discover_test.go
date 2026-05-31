@@ -12,8 +12,22 @@ func TestClassifyRuntime(t *testing.T) {
 		"bun":                    "bun",
 		"/usr/bin/bun.exe":       "bun",
 		"deno":                   "deno",
-		"/usr/bin/python":        "", // not a default runtime anymore
-		"ruby":                   "", // not a default runtime anymore
+		"/usr/bin/python":        "python",
+		"python3.12":             "python",
+		"uvicorn":                "python",
+		"gunicorn":               "python",
+		"ruby":                   "ruby",
+		"puma":                   "ruby",
+		"/usr/bin/php":           "php",
+		"php-fpm":                "php",
+		"java":                   "java",
+		"dotnet":                 "dotnet",
+		"beam.smp":               "elixir",
+		"perl":                   "perl",
+		"docker-proxy":           "docker",
+		"com.docker.backend":     "docker",
+		"go":                     "go",
+		"/var/folders/x/go-build123/b001/exe/main":      "go", // `go run` temp binary
 		"/opt/homebrew/opt/nats-server/bin/nats-server": "",
 		"epmd": "",
 	}

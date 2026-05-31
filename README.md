@@ -7,8 +7,7 @@ Discover your local dev servers by **port**, and expose them through a **single
 Tailscale entry** — privately (Serve, tailnet-only) or publicly (Funnel) — routed
 by **project name**.
 
-No per-app wiring: just run your servers (`node`, `bun`,
-`deno`, …) and `tsp` finds the ones listening in a port range, derives a path slug
+No per-app wiring: just run your servers (`node`, `bun`, `deno`, `python`, `php`, `ruby`, `go`, `java`, …) and `tsp` finds the ones listening in a port range, derives a path slug
 from each project's folder, and routes to them under one hostname:
 
 ```
@@ -100,7 +99,7 @@ Run `tsp start --help` for all flags. Global: `-h/--help`, `-v/--version`.
 | --- | --- | --- |
 | `--ports <lo-hi\|port>` | `3000-5000` | Port range **or a single port** to scan |
 | `--all` | off | Include all listeners, not just web runtimes |
-| `--runtimes <list>` | `node,bun,deno` | Comma-separated runtimes to include |
+| `--runtimes <list>` | all known | Restrict to specific runtimes, e.g. `node,bun,python` |
 | `--private` | off | Expose privately via Tailscale **Serve** (default: **Funnel**) |
 | `--port <n>` | `8443` | Local proxy HTTP port |
 | `--interval <sec>` | `20` | Re-scan period |
@@ -118,7 +117,7 @@ then logs each discovered service and any de-registration:
 ```
 Using config: /Users/me/.tailscale-proxy/config.json
   ports=3000-5000  mode=public (Funnel)  proxy=127.0.0.1:8443  https=443
-  interval=20s  runtimes=node,bun,deno (default)  deregister-after=5 scans  log-requests=true
+  interval=20s  runtimes=default (node,bun,deno,python,ruby,php,go,java,…)  deregister-after=5 scans  log-requests=true
 
 2026/05/31 02:05:48 discovered help-ai-web   node   :4983   ~/work/help-ai/apps/web
 2026/05/31 02:05:49 200 GET    /help-ai-web/ → 127.0.0.1:4983 (6ms)

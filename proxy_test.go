@@ -216,7 +216,7 @@ func TestHandler_forwardHostModes(t *testing.T) {
 	}))
 	defer backend.Close()
 	port := mustPort(t, backend.URL)
-	local := "127.0.0.1:" + strconv.Itoa(port)
+	local := "localhost:" + strconv.Itoa(port) // app sees localhost, not the raw IP
 	store := storeWith(Service{Slug: "app", Port: port, Runtime: "node"})
 
 	call := func(forwardHost bool) http.Header {
@@ -227,13 +227,13 @@ func TestHandler_forwardHostModes(t *testing.T) {
 		return rec.Result().Header
 	}
 
-	// Default (local): Host is local, no external host leaks, proto http.
+	// Default (local): Host is localhost, no external host leaks, proto http.
 	h := call(false)
 	if h.Get("X-Echo-Host") != local {
 		t.Errorf("default: backend Host = %q, want %q", h.Get("X-Echo-Host"), local)
 	}
-	if h.Get("X-Echo-XFH") == "bigfoot.quoll-adhara.ts.net" {
-		t.Errorf("default: external host leaked via X-Forwarded-Host (%q)", h.Get("X-Echo-XFH"))
+	if h.Get("X-Echo-XFH") != local {
+		t.Errorf("default: X-Forwarded-Host = %q, want %q (no external host leak)", h.Get("X-Echo-XFH"), local)
 	}
 	if h.Get("X-Echo-XFP") != "http" {
 		t.Errorf("default: X-Forwarded-Proto = %q, want http", h.Get("X-Echo-XFP"))

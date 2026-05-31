@@ -56,7 +56,7 @@ Usage:
 Flags (defaults come from ~/.tailscale-proxy/config.json if present):
   --ports <lo-hi|port>   Port range or single port to scan   (default 3000-5000)
   --all                  Include all listeners, not just web runtimes
-  --runtimes <list>      Comma-separated runtimes (default node,bun,deno)
+  --runtimes <list>      Comma-separated runtimes to keep (default: all known)
   --private              Expose privately via Tailscale Serve (default: Funnel)
   --port <n>             Local proxy HTTP port                (default 8443)
   --interval <sec>       Re-scan period in seconds            (default 20)
@@ -241,7 +241,7 @@ func printStartHeader(o startOpts, mode Mode, rng PortRange, cfgPath string, exi
 	if rng.Lo == rng.Hi {
 		ports = fmt.Sprintf("%d", rng.Lo)
 	}
-	runtimes := "node,bun,deno (default)"
+	runtimes := "default (" + strings.Join(knownRuntimeLabels(), ", ") + ")"
 	if o.all {
 		runtimes = "all (--all)"
 	} else if strings.TrimSpace(o.runtimesRaw) != "" {
