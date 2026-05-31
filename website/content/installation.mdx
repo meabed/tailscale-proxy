@@ -1,0 +1,70 @@
+---
+title: Installation
+---
+
+import { Callout, Tabs } from "nextra/components";
+
+# Installation
+
+Supported on **macOS, Linux, Windows, and WSL** (amd64 + arm64).
+
+<Tabs items={["npx", "npm", "Homebrew", "Go"]}>
+  <Tabs.Tab>
+    No install — run it on demand:
+    ```bash
+    npx tailscale-proxy doctor
+    ```
+  </Tabs.Tab>
+  <Tabs.Tab>
+    ```bash
+    npm i -g tailscale-proxy
+    tsp doctor
+    ```
+  </Tabs.Tab>
+  <Tabs.Tab>
+    ```bash
+    brew install meabed/tap/tsp
+    tsp doctor
+    ```
+  </Tabs.Tab>
+  <Tabs.Tab>
+    ```bash
+    go install github.com/meabed/tailscale-proxy@latest
+    tsp doctor
+    ```
+  </Tabs.Tab>
+</Tabs>
+
+The npm package ships a tiny launcher plus per-platform binary packages, so `npx`
+downloads and runs the right native binary automatically.
+
+## Updating
+
+```bash
+tsp update
+```
+
+It self-updates a standalone binary, or prints `brew upgrade tsp` /
+`npm i -g tailscale-proxy@latest` for managed installs.
+
+## Requirements
+
+1. **[Tailscale](https://tailscale.com/download)**, logged in:
+   ```bash
+   tailscale up
+   ```
+2. For **public** exposure (Funnel) — not needed for `--private` Serve:
+   - Enable **HTTPS certificates**: admin console → DNS → MagicDNS + HTTPS
+     ([docs](https://tailscale.com/kb/1153/enabling-https)).
+   - Grant the **`funnel`** node attribute in your tailnet policy file:
+     ```jsonc
+     { "nodeAttrs": [ { "target": ["autogroup:member"], "attr": ["funnel"] } ] }
+     ```
+     ([Funnel docs](https://tailscale.com/kb/1223/funnel))
+3. **`lsof`** on macOS/Linux (macOS ships it; Linux: `apt/dnf install lsof`).
+   Windows uses `netstat`/`tasklist` (built in).
+
+<Callout type="info">
+  Not sure what's missing? `tsp doctor` checks all of the above and prints the
+  exact fix link.
+</Callout>

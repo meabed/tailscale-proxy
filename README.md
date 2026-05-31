@@ -2,10 +2,19 @@
 
 [![ci](https://github.com/meabed/tailscale-proxy/actions/workflows/ci.yml/badge.svg)](https://github.com/meabed/tailscale-proxy/actions/workflows/ci.yml)
 [![release](https://github.com/meabed/tailscale-proxy/actions/workflows/release.yml/badge.svg)](https://github.com/meabed/tailscale-proxy/actions/workflows/release.yml)
+[![npm](https://img.shields.io/npm/v/tailscale-proxy)](https://www.npmjs.com/package/tailscale-proxy)
 
-Discover your local dev servers by **port**, and expose them through a **single
-Tailscale entry** — privately (Serve, tailnet-only) or publicly (Funnel) — routed
-by **project name**.
+📖 **Docs:** https://tailscale-proxy.vercel.app · sources in [`website/`](website)
+
+An open-source, **self-hosted [ngrok](https://ngrok.com) alternative** built on
+[Tailscale](https://tailscale.com). Discover your local dev servers by **port**,
+and expose them through a **single Tailscale entry** — privately (Serve,
+tailnet-only) or publicly (Funnel) — routed by **project name**.
+
+> **vs. ngrok:** your own stable `*.ts.net` URL over your Tailscale tunnel — no
+> third-party relay, no random per-session URLs, no rate limits/paywalls. One
+> hostname for **many** dev servers, discovered automatically (no `ngrok http 3000`
+> per port).
 
 No per-app wiring: just run your servers (`node`, `bun`, `deno`, `python`, `php`, `ruby`, `go`, `java`, …) and `tsp` finds the ones listening in a port range, derives a path slug
 from each project's folder, and routes to them under one hostname:

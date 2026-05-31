@@ -1,0 +1,72 @@
+---
+title: Troubleshooting
+---
+
+import { Callout } from "nextra/components";
+
+# Troubleshooting
+
+Start with `tsp doctor` — it diagnoses the most common setup problems and prints
+the exact fix link for each.
+
+## Works from my phone but not my Mac (MagicDNS)
+
+From the host, MagicDNS resolves `<node>.ts.net` to your **tailnet IP**, so the
+request may be answered locally instead of traversing the public Funnel.
+
+- **Test from outside your tailnet** — a phone on cellular, or another network.
+- **Force the public ingress** from the host:
+  ```bash
+  PUBIP=$(dig +short <node>.ts.net @1.1.1.1 | head -1)
+  curl -s -i --resolve "<node>.ts.net:443:$PUBIP" "https://<node>.ts.net/<slug>/"
+  ```
+
+## A page loads without styles
+
+Fixed by cookie route-affinity: visiting `…/<slug>/` sets a `tsp_route` cookie so
+that tab's prefix-less requests (`/_next/...`, `/api/...`, HMR) reach the right
+backend.
+
+- Make sure you opened it via its **`/<slug>/`** URL (that's what sets the cookie).
+- Don't actively use two different apps in the **same browser** at once — affinity
+  is per-browser. Use separate browser profiles, or re-visit the `/<slug>/` URL.
+
+## No services found
+
+`tsp` only registers known web runtimes within the port range by default.
+
+```bash
+tsp --ports 3000-9000          # widen the range (single port: --ports 4000)
+tsp --runtimes node,bun,python # add runtimes
+tsp --all                      # every listener, incl. unrecognized binaries
+```
+
+## The same project shows on multiple ports
+
+`tsp` collapses every listener of the same project and serves the most recent
+(highest PID, then higher port). The chosen/dropped ports+pids show in `tsp list`
+and the logs. Stop the stale instance (its pid is printed) if the wrong one wins.
+
+## `lsof` not found (macOS/Linux)
+
+Install it: `apt install lsof` / `dnf install lsof`. macOS ships it.
+
+## Funnel still on after a hard kill
+
+`tsp` resets on `Ctrl-C`. After `kill -9`, clear it manually:
+
+```bash
+tsp reset                # or: tsp reset --private (for Serve)
+tailscale serve status   # should print "No serve config"
+```
+
+## `502` upstream error
+
+The registered dev server isn't accepting connections (crashed or exited between
+scans). The body names the failed `127.0.0.1:<port>`; it clears on the next scan
+once the server is back.
+
+<Callout type="info">
+  `tsp start --bg` runs detached and logs to `./tsp.log`. Stop it by `kill`-ing
+  the printed pid, then `tsp reset` to be sure the entry is down.
+</Callout>

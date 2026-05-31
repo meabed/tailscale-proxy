@@ -1,0 +1,95 @@
+---
+title: Getting started
+---
+
+import { Callout } from "nextra/components";
+
+# Getting started
+
+A practical walkthrough — from a fresh Tailscale account to sharing several real
+dev servers through one URL.
+
+## 1. Set up Tailscale (one-time)
+
+```bash
+tailscale up                      # sign up / log in
+```
+
+Enable [HTTPS certificates](https://tailscale.com/kb/1153/enabling-https) and,
+for public sharing, the [`funnel` node attribute](https://tailscale.com/kb/1223/funnel).
+Then verify:
+
+```bash
+npx tailscale-proxy doctor
+```
+
+## 2. Start some dev servers
+
+These runtimes are discovered by default: `node`, `bun`, `deno`, `python`,
+`ruby`, `php`, `go`, `java`, `dotnet`, `elixir`, `perl`, and `docker`-published
+ports. Run each from its **project folder** — that becomes the URL path.
+
+```bash
+# JavaScript / TypeScript
+cd ~/sites/portfolio && npx serve -l 3000
+cd ~/sites/docs      && npx http-server -p 3001
+cd ~/apps/web        && npx next dev -p 4000
+cd ~/apps/api        && bun run dev
+
+# Python (interpreter or uvicorn/gunicorn)
+cd ~/apps/fastapi    && uvicorn main:app --port 3010
+
+# PHP / Ruby / Go / Docker
+cd ~/apps/legacy     && php -S 127.0.0.1:3004
+cd ~/apps/rb         && ruby -run -e httpd . -p 3005
+cd ~/apps/gosrv      && go run .
+docker run -p 3030:80 nginx
+```
+
+## 3. Share them
+
+```bash
+tsp                  # public Funnel (default)
+tsp --private        # tailnet-only Serve
+```
+
+```
+Services:
+  https://bigfoot.tail-scale.ts.net/portfolio/  →  127.0.0.1:3000
+  https://bigfoot.tail-scale.ts.net/web/        →  127.0.0.1:4000
+  https://bigfoot.tail-scale.ts.net/api/        →  127.0.0.1:4100
+```
+
+## 4. Save your preferences
+
+```bash
+tsp configure --ports 3000-9000 --runtimes node,bun,python
+tsp                  # now a bare `tsp` uses the saved config
+```
+
+<Callout type="info">
+  Compiled binaries (a built Go or Rust server) have arbitrary process names, so
+  they show up only under `--all`. `go run` / `cargo` dev workflows are detected.
+</Callout>
+
+## A real multi-service setup
+
+Four services, each in its own folder under `~/work/help-ai`:
+
+```bash
+cd ~/work/help-ai/services/agent     && bun run dev    # :3087
+cd ~/work/help-ai/services/crawlee   && bun run dev    # :3120
+cd ~/work/help-ai/services/workspace && bun run dev    # :3122
+cd ~/work/help-ai/apps/web           && npm run dev    # :4501
+tsp
+```
+
+```
+  https://bigfoot.tail-scale.ts.net/agent/      →  127.0.0.1:3087
+  https://bigfoot.tail-scale.ts.net/crawlee/    →  127.0.0.1:3120
+  https://bigfoot.tail-scale.ts.net/workspace/  →  127.0.0.1:3122
+  https://bigfoot.tail-scale.ts.net/web/        →  127.0.0.1:4501
+```
+
+Restart a server and `tsp` picks up the new process automatically. If a project
+ends up on two ports, it serves the most recent one and tells you which.

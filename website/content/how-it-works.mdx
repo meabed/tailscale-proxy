@@ -1,0 +1,68 @@
+---
+title: How it works
+---
+
+# How it works
+
+`tsp` is a path-routing reverse proxy that sits between a single Tailscale entry
+and your many local dev servers.
+
+## Request flow
+
+```
+  caller (internet or tailnet)        your machine
+                                      ┌────────────────────────────────────┐
+  https://node.ts.net                 │ tailscale funnel|serve (TLS, :443)  │
+    /web/foo                          │        │  plain HTTP                 │
+                                      │        ▼                            │
+                                      │ tsp proxy (net/http, :8443)          │
+                                      │   lookup "web" → 4983                │
+                                      │   strip segment → /foo               │
+                                      │   Host → localhost:4983              │
+                                      │        ▼                            │
+                                      │ 127.0.0.1:4983 (your dev server)     │
+                                      └────────────────────────────────────┘
+                                               ▲ port scan every --interval s
+```
+
+## Discovery pipeline
+
+Every `--interval` seconds:
+
+1. **List listeners** — TCP sockets in `LISTEN` within the port range, with PID
+   (macOS/Linux via `lsof`+`ps`, Windows via `netstat`+`tasklist`).
+2. **Classify runtime** from the executable name (`node`, `bun`, `deno`,
+   `python`/`uvicorn`/`gunicorn`, `ruby`/`puma`, `php`, `go run`, `java`,
+   `dotnet`, `elixir`, `docker-proxy`, …).
+3. **Slug** = the nearest project-root folder name (markers: `package.json`,
+   `.git`, `go.mod`, `pyproject.toml`, `Cargo.toml`, `mix.exs`, …).
+4. **Collapse duplicates** — all listeners of the same project become one service,
+   serving the **most recent** instance (highest PID, then higher port) under a
+   clean, port-free slug. Distinct projects sharing a folder name get a `-<port>`
+   suffix to stay unique.
+
+## Routing
+
+For `/<segment>/<rest…>?<query>`:
+
+- **Hit** → forward to `http://127.0.0.1:<port>/<rest…>` (segment stripped, `Host`
+  rewritten to `localhost`). Streaming flushes immediately; WebSocket upgrades are
+  relayed.
+- **Miss / empty** → `404` listing the registered services.
+- **Dead backend** → `502`.
+
+### Cookie route-affinity
+
+Apps assume they live at the root, so their HTML references absolute paths
+(`/_next/...`, `/api/...`, HMR). When you open `…/<slug>/`, `tsp` sets a
+`tsp_route` cookie pinning that browser tab to the project, so prefix-less requests
+follow it to the right backend — and the page renders exactly like `localhost`.
+
+## Lifecycle
+
+- A `RouteStore` is refreshed on a ticker. A service missing from discovery is
+  kept for `deregisterCycles` scans before removal (no flapping on restarts).
+- On `Ctrl-C`, the server drains and `tailscale serve|funnel reset` runs before
+  exit — never leaving a Funnel pointing at a dead port.
+- A single bounded `http.Transport` keeps connections to dev servers from
+  accumulating.

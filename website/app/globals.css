@@ -1,0 +1,232 @@
+:root {
+  --bg: #ffffff;
+  --fg: #1b1f24;
+  --muted: #5b6570;
+  --border: #e6e8eb;
+  --accent: #2563eb;
+  --code-bg: #f5f7fa;
+  --card-bg: #f8fafc;
+  --header-h: 56px;
+  --sidebar-w: 248px;
+  --max-w: 760px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0d1117;
+    --fg: #e6edf3;
+    --muted: #9198a1;
+    --border: #232a31;
+    --accent: #4f93ff;
+    --code-bg: #161b22;
+    --card-bg: #11161d;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: calc(var(--header-h) + 12px);
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
+    Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
+}
+
+/* Header */
+.tsp-header {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  height: var(--header-h);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0 1.25rem;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: saturate(180%) blur(8px);
+  border-bottom: 1px solid var(--border);
+}
+.tsp-brand {
+  font-weight: 700;
+  color: var(--fg);
+  font-size: 1.05rem;
+}
+.tsp-topnav {
+  display: flex;
+  gap: 1.25rem;
+  font-size: 0.92rem;
+}
+.tsp-topnav a {
+  color: var(--muted);
+}
+.tsp-topnav a:hover {
+  color: var(--fg);
+  text-decoration: none;
+}
+
+/* Shell */
+.tsp-shell {
+  display: flex;
+  align-items: flex-start;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+.tsp-aside {
+  position: sticky;
+  top: var(--header-h);
+  flex: 0 0 var(--sidebar-w);
+  align-self: flex-start;
+  height: calc(100vh - var(--header-h));
+  overflow-y: auto;
+  padding: 1.5rem 0.75rem;
+  border-right: 1px solid var(--border);
+}
+.tsp-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.tsp-sidebar a {
+  display: block;
+  padding: 0.4rem 0.75rem;
+  border-radius: 7px;
+  color: var(--muted);
+  font-size: 0.93rem;
+}
+.tsp-sidebar a:hover {
+  background: var(--card-bg);
+  color: var(--fg);
+  text-decoration: none;
+}
+.tsp-sidebar a.active {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* Main */
+.tsp-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 2rem 2.5rem 4rem;
+}
+.tsp-content {
+  max-width: var(--max-w);
+}
+
+/* Prose */
+.tsp-content h1 {
+  font-size: 2rem;
+  line-height: 1.2;
+  margin: 0 0 1rem;
+  letter-spacing: -0.02em;
+}
+.tsp-content h2 {
+  font-size: 1.4rem;
+  margin: 2.4rem 0 0.9rem;
+  padding-top: 0.4rem;
+  border-top: 1px solid var(--border);
+  letter-spacing: -0.01em;
+}
+.tsp-content h3 {
+  font-size: 1.12rem;
+  margin: 1.8rem 0 0.6rem;
+}
+.tsp-content p {
+  margin: 0.9rem 0;
+}
+.tsp-content ul,
+.tsp-content ol {
+  margin: 0.9rem 0;
+  padding-left: 1.5rem;
+}
+.tsp-content li {
+  margin: 0.35rem 0;
+}
+.tsp-content code:not(pre code) {
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 0.1em 0.4em;
+  font-size: 0.86em;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+}
+.tsp-content pre {
+  background: var(--code-bg) !important;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.9rem 1rem;
+  overflow-x: auto;
+  font-size: 0.86rem;
+  line-height: 1.55;
+  margin: 1rem 0;
+}
+.tsp-content pre code {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+}
+.tsp-content table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.2rem 0;
+  font-size: 0.92rem;
+  display: block;
+  overflow-x: auto;
+}
+.tsp-content th,
+.tsp-content td {
+  border: 1px solid var(--border);
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+}
+.tsp-content th {
+  background: var(--card-bg);
+  font-weight: 600;
+}
+.tsp-content blockquote {
+  margin: 1rem 0;
+  padding: 0.2rem 1rem;
+  border-left: 3px solid var(--accent);
+  color: var(--muted);
+}
+.tsp-content hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 2rem 0;
+}
+
+.tsp-footer {
+  margin-top: 3rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 0.88rem;
+  max-width: var(--max-w);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .tsp-aside {
+    display: none;
+  }
+  .tsp-main {
+    padding: 1.5rem 1.25rem 3rem;
+  }
+}

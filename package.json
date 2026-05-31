@@ -13,7 +13,10 @@
     "dev",
     "discovery",
     "localhost",
-    "tunnel"
+    "tunnel",
+    "ngrok",
+    "ngrok-alternative",
+    "localtunnel"
   ],
   "homepage": "https://github.com/meabed/tailscale-proxy#readme",
   "bugs": {
