@@ -27,19 +27,39 @@ binary.
 ## Quick start
 
 ```bash
-# Check your environment (tells you exactly what's missing, with links)
+# 0. One-time: install Tailscale, sign in, enable Funnel (see Requirements below)
+tailscale up
+
+# 1. Start any dev servers (each in its own project folder → that's the URL path)
+cd ~/sites/portfolio && npx serve -l 3000          # static site  (node)
+cd ~/apps/web        && npx next dev -p 4000        # Next.js app  (node)
+cd ~/apps/api        && bun run dev                 # API          (bun, e.g. :4100)
+
+# 2. Check your environment, then share them all through one Tailscale URL
 npx tailscale-proxy doctor
-
-# Discover dev servers in :3000-5000 and expose them publicly (Funnel)
-npx tailscale-proxy            # "start" is the default command
-
-# ...or save your preferences once, then just run `tsp`
-npx tailscale-proxy configure --ports 3000-9000 --private
-npx tailscale-proxy            # uses the saved config
+npx tailscale-proxy                                 # "start" is the default command
 ```
 
-Open `https://<your-node>.ts.net/<project>/` from anywhere (for Funnel) or from
-your tailnet (for Serve). <kbd>Ctrl-C</kbd> resets the Serve/Funnel entry on exit.
+```
+Services:
+  https://bigfoot.tail-scale.ts.net/portfolio/  →  127.0.0.1:3000
+  https://bigfoot.tail-scale.ts.net/web/        →  127.0.0.1:4000
+  https://bigfoot.tail-scale.ts.net/api/        →  127.0.0.1:4100
+```
+
+Open any of those from anywhere (Funnel) or from your tailnet (`--private` Serve).
+<kbd>Ctrl-C</kbd> resets the Serve/Funnel entry on exit.
+
+```bash
+# Save preferences once, then a bare `tsp` uses them:
+npx tailscale-proxy configure --ports 3000-9000 --runtimes node,bun,python
+npx tailscale-proxy
+```
+
+> Non-JS servers (`python3 -m http.server`, `php -S`, `ruby -run -e httpd`) are
+> included with `--all` or `--runtimes node,python,…`.
+
+**👉 Full setup + lots of real examples: [docs/EXAMPLES.md](docs/EXAMPLES.md)**
 
 ---
 
@@ -125,15 +145,24 @@ use). Flags override config at runtime; the file is the source of defaults.
 
 ## Requirements
 
-1. **[Tailscale](https://tailscale.com/download)**, logged in (`tailscale up`).
-   For **public** exposure (Funnel), Funnel must be enabled for your tailnet:
-   [HTTPS certificates](https://tailscale.com/kb/1153/enabling-https) + the `funnel`
-   node attribute ([Funnel docs](https://tailscale.com/kb/1223/funnel)). Private
-   exposure (Serve) needs no extra setup.
-2. **`lsof`** on macOS/Linux (macOS ships it; Linux: `apt/dnf install lsof`).
+1. **[Tailscale](https://tailscale.com/download)**, logged in:
+   ```bash
+   tailscale up        # opens a browser to sign up / log in
+   ```
+2. For **public** exposure (Funnel) — *not* needed for `--private` Serve:
+   - Enable **HTTPS certificates**: admin console → DNS → MagicDNS + HTTPS
+     ([docs](https://tailscale.com/kb/1153/enabling-https)).
+   - Grant the **`funnel`** node attribute in your tailnet policy file
+     (admin console → Access controls):
+     ```jsonc
+     { "nodeAttrs": [ { "target": ["autogroup:member"], "attr": ["funnel"] } ] }
+     ```
+     ([Funnel docs](https://tailscale.com/kb/1223/funnel))
+3. **`lsof`** on macOS/Linux (macOS ships it; Linux: `apt/dnf install lsof`).
    Windows uses `netstat`/`tasklist` (built in).
 
 Run `tsp doctor` — it checks all of the above and prints the exact fix link.
+Step-by-step with screenshots-worth-of-detail: **[docs/EXAMPLES.md](docs/EXAMPLES.md)**.
 
 ---
 
