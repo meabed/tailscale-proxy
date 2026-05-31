@@ -39,7 +39,7 @@ func (d *Discoverer) listeners(rng PortRange) ([]listener, error) {
 		}
 	}
 
-	cwdArgs := append([]string{"-a", "-d", "cwd", "-Fpn", "-p", strings.Join(pids, ",")})
+	cwdArgs := []string{"-a", "-d", "cwd", "-Fpn", "-p", strings.Join(pids, ",")}
 	if cwdOut, _, err := d.run.Run("lsof", cwdArgs...); err == nil {
 		cwd := parseLsofCwd(cwdOut)
 		for i := range ls {
