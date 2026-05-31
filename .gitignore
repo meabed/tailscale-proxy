@@ -1,0 +1,7 @@
+/dist/
+/ptp
+/ptp.exe
+*.log
+node_modules/
+npm/dist/
+npm/*/bin/
