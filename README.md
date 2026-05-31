@@ -5,8 +5,6 @@
 [![npm](https://img.shields.io/npm/v/tailscale-proxy)](https://www.npmjs.com/package/tailscale-proxy)
 [![docs](https://img.shields.io/badge/docs-tailscaleproxy.vercel.app-blue)](https://tailscaleproxy.vercel.app)
 
-**Docs:** [tailscaleproxy.vercel.app](https://tailscaleproxy.vercel.app) · sources in [`website/`](website)
-
 ## ⚡ Start in one command
 
 ```bash
