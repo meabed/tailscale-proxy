@@ -3,8 +3,9 @@
 [![ci](https://github.com/meabed/tailscale-proxy/actions/workflows/ci.yml/badge.svg)](https://github.com/meabed/tailscale-proxy/actions/workflows/ci.yml)
 [![release](https://github.com/meabed/tailscale-proxy/actions/workflows/release.yml/badge.svg)](https://github.com/meabed/tailscale-proxy/actions/workflows/release.yml)
 [![npm](https://img.shields.io/npm/v/tailscale-proxy)](https://www.npmjs.com/package/tailscale-proxy)
+[![docs](https://img.shields.io/badge/docs-tailscaleproxy.vercel.app-blue)](https://tailscaleproxy.vercel.app)
 
-📖 **Docs:** https://tailscaleproxy.vercel.app · sources in [`website/`](website)
+**Docs:** [tailscaleproxy.vercel.app](https://tailscaleproxy.vercel.app) · sources in [`website/`](website)
 
 ## ⚡ Start in one command
 
