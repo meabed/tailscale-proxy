@@ -15,6 +15,17 @@ tsp configure       Save defaults to ~/.tailscale-proxy/config.json
 tsp update          Update to the latest release
 ```
 
+```mermaid
+flowchart LR
+    T["tsp"] --> S["start — discover, proxy & expose<br/>(the bare 'tsp' default)"]
+    T --> L["list — discovered services + URLs"]
+    T --> ST["status — Serve/Funnel status + map"]
+    T --> R["reset — remove the entry"]
+    T --> D["doctor — environment checks"]
+    T --> CF["configure — save defaults"]
+    T --> U["update — self-update"]
+```
+
 Run `tsp start --help` for all flags. Global: `-h/--help`, `-v/--version`.
 
 ## `start` flags

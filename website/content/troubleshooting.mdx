@@ -7,7 +7,21 @@ import { Callout } from "nextra/components";
 # Troubleshooting
 
 Start with `tsp doctor` — it diagnoses the most common setup problems and prints
-the exact fix link for each.
+the exact fix link for each. The map below points to the right section:
+
+```mermaid
+flowchart TD
+    A["Can't reach a service"] --> B{"tsp list shows it?"}
+    B -->|no| C["Widen --ports, add --runtimes, or --all<br/>see: No services found"]
+    B -->|yes| D{"Page loads but unstyled?"}
+    D -->|yes| E["Open it via its /slug/ URL<br/>cookie route-affinity"]
+    D -->|no| F{"DNS error — can't resolve the ts.net name?"}
+    F -->|from a container| G["see: Reaching services from a container"]
+    F -->|from a tailnet host| H["MagicDNS shadows the name<br/>tailscale set --accept-dns=false"]
+    F -->|no| I{"502 upstream error?"}
+    I -->|yes| J["Backend is down — clears on the next scan"]
+    I -->|no| K["Run tsp doctor for a full check"]
+```
 
 ## Works from my phone but not my Mac (MagicDNS)
 

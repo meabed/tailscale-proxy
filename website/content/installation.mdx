@@ -8,6 +8,17 @@ import { Callout, Tabs } from "nextra/components";
 
 Get from zero to a public URL in **four steps**. Total time: ~5 minutes.
 
+```mermaid
+flowchart TD
+    A["1 · Install Tailscale + sign in<br/>tailscale up"] --> B{"Public or private?"}
+    B -->|"Public (Funnel)"| C["2 · Enable MagicDNS + HTTPS certs<br/>grant the funnel node attribute"]
+    B -->|"Private (Serve)"| D["No extra setup<br/>run tsp --private"]
+    C --> E["3 · Install tsp<br/>npx / npm / brew / go"]
+    D --> E
+    E --> F["tsp doctor — verify the setup"]
+    F --> G["4 · Start dev servers, then run tsp"]
+```
+
 ## 1. Install Tailscale & sign in
 
 [Tailscale](https://tailscale.com) is the secure tunnel `tsp` runs on (the part

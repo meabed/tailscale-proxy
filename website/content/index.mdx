@@ -24,11 +24,28 @@ No per-app wiring: just run your servers (`node`, `bun`, `deno`, `python`, `php`
 derives a path slug from each project's folder, and routes to them under one
 hostname:
 
+```mermaid
+flowchart LR
+    C["Caller<br/>internet or tailnet"]
+    C -->|"https://node.ts.net/web/foo"| TS
+    subgraph machine["your machine"]
+        direction TB
+        TS["tailscale funnel | serve<br/>TLS · :443 / 8443 / 10000"]
+        P["tsp proxy<br/>net/http · :8443"]
+        SCAN["discovery loop<br/>lsof·ps / netstat·tasklist"]
+        D1["127.0.0.1:4983<br/>web · bun"]
+        D2["127.0.0.1:3000<br/>api · node"]
+        TS -->|plain HTTP| P
+        P -->|"/web/foo → strip → /foo<br/>Host → localhost:4983"| D1
+        P --> D2
+        SCAN -->|"slug → port map"| P
+        SCAN -.->|"scan every --interval"| D1
+        SCAN -.-> D2
+    end
 ```
-https://<node>.ts.net/<project>/foo
-                      └────┬────┘
-   tsp strips the segment, forwards → 127.0.0.1:<port>/foo
-```
+
+`tsp` strips the first path segment (the project name) and forwards the rest to
+that project's local port — so `…/web/foo` → `127.0.0.1:4983/foo`.
 
 <Callout type="info">
   It re-scans every few seconds (so servers that come and go are picked up),
