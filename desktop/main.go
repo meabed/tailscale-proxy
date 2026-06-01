@@ -1,29 +1,30 @@
 // Command tailscale-proxy-app is a tray-first desktop wrapper around the tsp
-// engine. It drives core.Controller in-process — no sidecar — so the menu bar
-// can start/stop the proxy, switch Funnel/Serve, open service URLs, toggle
-// start-at-login, and edit the shared config.
+// engine. It drives core.Controller in-process — no sidecar — and presents a
+// webview panel (served on loopback) from the menu bar: start/stop, switch
+// Funnel/Serve, open service URLs, toggle start-at-login, and edit the shared
+// config.
 package main
 
 import (
-	"fmt"
 	"log"
 	"os/exec"
 	"runtime"
 	"sync"
+	"time"
 
 	"github.com/meabed/tailscale-proxy/core"
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
-const docsURL = "https://tailscaleproxy.vercel.app"
-
 type ui struct {
 	app  *application.App
 	tray *application.SystemTray
+	win  *application.WebviewWindow
 	ctl  *core.Controller
 
-	mu  sync.Mutex
-	cfg core.Config
+	mu    sync.Mutex
+	cfg   core.Config
+	token string
 }
 
 func main() {
@@ -43,17 +44,34 @@ func main() {
 	u.tray = app.SystemTray.New()
 	u.tray.SetLabel("tsp")
 
-	// Controller events arrive on a background goroutine; marshal UI work onto
-	// the main thread.
-	u.ctl.OnChange(func() { application.InvokeAsync(u.rebuild) })
-	u.rebuild()
+	panelURL, err := u.startDashboard()
+	if err != nil {
+		log.Fatalf("dashboard: %v", err)
+	}
+	u.win = app.Window.NewWithOptions(application.WebviewWindowOptions{
+		Name:             "panel",
+		URL:              panelURL,
+		Width:            380,
+		Height:           560,
+		Frameless:        true,
+		DisableResize:    true,
+		AlwaysOnTop:      true,
+		Hidden:           true,
+		BackgroundColour: application.RGBA{Red: 21, Green: 23, Blue: 28, Alpha: 255},
+	})
+	// Click the menu-bar item to drop the panel down underneath it.
+	u.tray.AttachWindow(u.win).WindowDebounce(200 * time.Millisecond)
 
-	// Auto-start the proxy on launch (best effort; status reflects failures).
+	// Keep the menu-bar label in sync; the panel polls its own status.
+	u.ctl.OnChange(func() { application.InvokeAsync(u.updateLabel) })
+	u.updateLabel()
+
+	// Auto-start the proxy on launch (best effort; the panel reflects failures).
 	go func() {
 		if err := u.ctl.Start(u.opts()); err != nil {
 			log.Printf("auto-start: %v", err)
 		}
-		application.InvokeAsync(u.rebuild)
+		application.InvokeAsync(u.updateLabel)
 	}()
 
 	if err := app.Run(); err != nil {
@@ -67,69 +85,8 @@ func (u *ui) opts() core.Options {
 	return core.OptionsFromConfig(u.cfg)
 }
 
-// rebuild reconstructs the tray menu from the current status. Must run on the
-// main thread (call via application.InvokeAsync from background goroutines).
-func (u *ui) rebuild() {
-	st := u.ctl.Status()
-	u.mu.Lock()
-	private := u.cfg.Private
-	u.mu.Unlock()
-
-	m := u.app.NewMenu()
-
-	header := "○  Stopped"
-	if st.Running {
-		header = "●  Running — " + st.Mode
-	}
-	m.Add(header).SetEnabled(false)
-	if st.Running && st.PublicBase != "" {
-		m.Add("   " + st.PublicBase).SetEnabled(false)
-	}
-
-	m.AddSeparator()
-	toggle := "Start"
-	if st.Running {
-		toggle = "Stop"
-	}
-	m.Add(toggle).OnClick(func(*application.Context) { go u.toggle() })
-
-	m.AddSeparator()
-	m.AddRadio("Public  (Funnel)", !private).OnClick(func(*application.Context) { go u.setPrivate(false) })
-	m.AddRadio("Private (Serve)", private).OnClick(func(*application.Context) { go u.setPrivate(true) })
-
-	if len(st.Services) > 0 {
-		m.AddSeparator()
-		sub := m.AddSubmenu(fmt.Sprintf("Services (%d)", len(st.Services)))
-		for _, s := range st.Services {
-			label := fmt.Sprintf("%s  →  :%d", s.Slug, s.Port)
-			url := s.URL
-			item := sub.Add(label)
-			if url != "" {
-				item.OnClick(func(*application.Context) { openExternal(url) })
-			} else {
-				item.SetEnabled(false)
-			}
-		}
-	}
-
-	m.AddSeparator()
-	m.AddCheckbox("Start at login", autostartEnabled()).
-		OnClick(func(ctx *application.Context) { go u.setAutostart(ctx.IsChecked()) })
-	m.Add("Open config file…").OnClick(func(*application.Context) {
-		if p, err := core.ConfigPath(); err == nil {
-			openExternal(p)
-		}
-	})
-	m.Add("Open docs").OnClick(func(*application.Context) { openExternal(docsURL) })
-
-	m.AddSeparator()
-	m.Add("Quit").OnClick(func(*application.Context) {
-		_ = u.ctl.Stop()
-		u.app.Quit()
-	})
-
-	u.tray.SetMenu(m)
-	if st.Running {
+func (u *ui) updateLabel() {
+	if u.ctl.Running() {
 		u.tray.SetLabel("tsp ●")
 	} else {
 		u.tray.SetLabel("tsp")
@@ -140,7 +97,7 @@ func (u *ui) toggle() {
 	if err := u.ctl.Toggle(u.opts()); err != nil {
 		log.Printf("toggle: %v", err)
 	}
-	application.InvokeAsync(u.rebuild)
+	application.InvokeAsync(u.updateLabel)
 }
 
 func (u *ui) setPrivate(private bool) {
@@ -158,7 +115,7 @@ func (u *ui) setPrivate(private bool) {
 			log.Printf("restart after mode change: %v", err)
 		}
 	}
-	application.InvokeAsync(u.rebuild)
+	application.InvokeAsync(u.updateLabel)
 }
 
 func (u *ui) setAutostart(on bool) {
@@ -171,7 +128,11 @@ func (u *ui) setAutostart(on bool) {
 	if err != nil {
 		log.Printf("autostart: %v", err)
 	}
-	application.InvokeAsync(u.rebuild)
+}
+
+func (u *ui) quit() {
+	_ = u.ctl.Stop()
+	application.InvokeAsync(u.app.Quit)
 }
 
 // openExternal opens a URL or file path with the OS default handler.

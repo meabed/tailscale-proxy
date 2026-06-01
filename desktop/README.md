@@ -11,17 +11,28 @@ module so the CLI module stays dependency-free; it imports `core` via a local
 
 ## What it does
 
-- **Menu-bar icon** (no Dock icon on macOS by default — tray-first).
-- **Start / Stop** the proxy; status + public base URL shown at the top.
-- **Public (Funnel) ↔ Private (Serve)** radio — persists to the config and
-  re-exposes live.
-- **Services** submenu — every discovered service; click to open its URL.
-- **Start at login** — per-OS autostart (LaunchAgent / `.desktop` / HKCU Run key).
-- **Open config file** and **Open docs**.
-- Auto-starts the proxy on launch.
+Clicking the menu-bar item drops down a **webview panel** (a small dark UI served
+on loopback, not a native menu):
+
+- **Status** — a dot + your node name; **Start / Stop** button.
+- **Public (Funnel) ↔ Private (Serve)** segmented toggle — persists to the config
+  and re-exposes live.
+- **Services list** — every discovered service with its runtime badge, port, and an
+  open-in-browser button.
+- **Start at login** switch — per-OS autostart (LaunchAgent / `.desktop` / HKCU Run).
+- **Open config file**, **Documentation**, **Quit**.
+- Auto-starts the proxy on launch; macOS shows no Dock icon (tray-first).
 
 The app and the `tsp` CLI share the same config file, so changes in one show up in
 the other.
+
+### How the panel works
+
+`main.go` starts a tiny HTTP server on `127.0.0.1:<random>` that serves
+`assets/panel.html` and a token-gated JSON API (`/api/status`, `/api/toggle`,
+`/api/mode`, `/api/autostart`, `/api/open`, `/api/quit`). A frameless Wails webview
+window loads it and is attached to the tray. The per-session token (injected into
+the HTML) blocks other local processes/browsers from driving it.
 
 ## Run it (dev)
 
@@ -52,7 +63,9 @@ are the next step — see the repo's `AGENT.md` for status.
 
 | File | Responsibility |
 | --- | --- |
-| `main.go` | App setup, tray menu, wiring to `core.Controller` |
+| `main.go` | App setup, tray + webview window, wiring to `core.Controller` |
+| `dashboard.go` | Loopback HTTP server: serves the panel + token-gated control API |
+| `assets/panel.html` | The dropdown panel UI (HTML/CSS/JS, no build step) |
 | `autostart_darwin.go` | Start-at-login via `~/Library/LaunchAgents` plist |
 | `autostart_linux.go` | Start-at-login via `~/.config/autostart/*.desktop` |
 | `autostart_windows.go` | Start-at-login via the `HKCU…\Run` registry key |

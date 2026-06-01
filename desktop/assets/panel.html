@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Tailscale Proxy</title>
+<style>
+  :root {
+    --bg: oklch(15.5% 0.012 256);
+    --panel: oklch(20% 0.013 256);
+    --panel-2: oklch(24% 0.014 256);
+    --line: oklch(30% 0.012 256);
+    --fg: oklch(94% 0.01 256);
+    --muted: oklch(67% 0.012 256);
+    --accent: oklch(72% 0.15 256);
+    --accent-press: oklch(66% 0.15 256);
+    --green: oklch(74% 0.17 150);
+    --red: oklch(68% 0.2 22);
+    --radius: 12px;
+    --radius-sm: 8px;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: var(--bg); color: var(--fg); font-size: 13px; -webkit-font-smoothing: antialiased; user-select: none; }
+  body { padding: 12px; }
+  a { color: inherit; text-decoration: none; }
+
+  .head { display: flex; align-items: center; gap: 9px; padding: 2px 4px 12px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); flex: none; box-shadow: 0 0 0 3px transparent; transition: .2s; }
+  .dot.on { background: var(--green); box-shadow: 0 0 0 3px color-mix(in oklab, var(--green) 22%, transparent); }
+  .title { font-weight: 650; letter-spacing: -.01em; }
+  .node { margin-left: auto; color: var(--muted); font-size: 11.5px; font-variant-numeric: tabular-nums; max-width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .row { display: flex; align-items: center; gap: 8px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); }
+
+  .power { width: 100%; border: none; border-radius: var(--radius); padding: 12px; font: inherit; font-weight: 650; font-size: 14px; cursor: pointer; color: #fff; background: var(--green); transition: .15s; letter-spacing: -.01em; }
+  .power.stop { background: var(--red); }
+  .power:active { transform: translateY(1px); filter: brightness(.95); }
+  .power[disabled] { opacity: .55; cursor: default; }
+
+  .seg { display: flex; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 3px; margin-top: 10px; }
+  .seg button { flex: 1; border: none; background: transparent; color: var(--muted); font: inherit; font-weight: 550; padding: 7px 6px; border-radius: 6px; cursor: pointer; transition: .12s; }
+  .seg button.active { background: var(--accent); color: #fff; }
+
+  .sechead { display: flex; align-items: center; margin: 16px 4px 8px; color: var(--muted); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
+  .sechead .count { margin-left: auto; background: var(--panel-2); border-radius: 999px; padding: 1px 8px; font-size: 10.5px; }
+
+  .list { display: flex; flex-direction: column; gap: 6px; max-height: 280px; overflow-y: auto; }
+  .svc { display: flex; align-items: center; gap: 10px; padding: 9px 11px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-sm); transition: .12s; }
+  .svc:hover { border-color: color-mix(in oklab, var(--accent) 45%, var(--line)); }
+  .svc .meta { min-width: 0; }
+  .svc .slug { font-weight: 600; letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .svc .sub { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; margin-top: 1px; }
+  .badge { flex: none; font-size: 10px; font-weight: 600; color: var(--accent); background: color-mix(in oklab, var(--accent) 15%, transparent); border-radius: 5px; padding: 2px 6px; text-transform: lowercase; }
+  .open { margin-left: auto; flex: none; width: 28px; height: 28px; display: grid; place-items: center; border-radius: 6px; background: var(--panel-2); color: var(--muted); cursor: pointer; transition: .12s; }
+  .open:hover { background: var(--accent); color: #fff; }
+  .empty { color: var(--muted); text-align: center; padding: 22px 10px; line-height: 1.5; }
+
+  .foot { display: flex; flex-direction: column; gap: 2px; margin-top: 14px; border-top: 1px solid var(--line); padding-top: 8px; }
+  .item { display: flex; align-items: center; gap: 8px; padding: 8px 6px; border-radius: var(--radius-sm); color: var(--fg); cursor: pointer; font-weight: 500; }
+  .item:hover { background: var(--panel); }
+  .item .k { margin-left: auto; color: var(--muted); font-size: 11px; }
+  .switch { margin-left: auto; width: 34px; height: 20px; border-radius: 999px; background: var(--line); position: relative; transition: .15s; flex: none; }
+  .switch.on { background: var(--accent); }
+  .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: .15s; }
+  .switch.on::after { transform: translateX(14px); }
+  .quit { color: var(--red); }
+  .err { color: var(--red); font-size: 11.5px; padding: 6px 8px; margin-top: 8px; background: color-mix(in oklab, var(--red) 12%, transparent); border-radius: var(--radius-sm); display: none; }
+  .err.show { display: block; }
+</style>
+</head>
+<body>
+  <div class="head">
+    <span class="dot" id="dot"></span>
+    <span class="title">Tailscale Proxy</span>
+    <span class="node" id="node"></span>
+  </div>
+
+  <button class="power" id="power" onclick="toggle()">Start</button>
+  <div class="err" id="err"></div>
+
+  <div class="seg" id="seg">
+    <button data-private="false" onclick="setMode(false)">Public · Funnel</button>
+    <button data-private="true" onclick="setMode(true)">Private · Serve</button>
+  </div>
+
+  <div class="sechead">Services <span class="count" id="count">0</span></div>
+  <div class="list" id="list"></div>
+
+  <div class="foot">
+    <div class="item" onclick="toggleAutostart()">Start at login <span class="switch" id="autostart"></span></div>
+    <div class="item" onclick="api('/api/openconfig')">Open config file <span class="k">⌘,</span></div>
+    <div class="item" onclick="open_('https://tailscaleproxy.vercel.app')">Documentation ↗</div>
+    <div class="item quit" onclick="api('/api/quit')">Quit</div>
+  </div>
+
+<script>
+  const TOKEN = "__TOKEN__";
+  const H = { headers: { "X-TSP-Token": TOKEN } };
+  const $ = (id) => document.getElementById(id);
+
+  async function api(path, body) {
+    try {
+      await fetch(path, { method: "POST", headers: H.headers, body: body ? JSON.stringify(body) : null });
+    } catch (e) {}
+    refresh();
+  }
+  const toggle = () => { $("power").disabled = true; api("/api/toggle"); };
+  const setMode = (priv) => api("/api/mode", { private: priv });
+  const toggleAutostart = () => api("/api/autostart", { on: !$("autostart").classList.contains("on") });
+  const open_ = (url) => api("/api/open", { url });
+
+  // Build a service row with safe DOM APIs (slugs come from folder names —
+  // never interpolate them into HTML).
+  function svcRow(v) {
+    const row = document.createElement("div");
+    row.className = "svc";
+    const badge = document.createElement("span");
+    badge.className = "badge";
+    badge.textContent = v.runtime || "?";
+    const meta = document.createElement("div");
+    meta.className = "meta";
+    const slug = document.createElement("div");
+    slug.className = "slug";
+    slug.textContent = v.slug;
+    const sub = document.createElement("div");
+    sub.className = "sub";
+    sub.textContent = "127.0.0.1:" + v.port;
+    meta.append(slug, sub);
+    row.append(badge, meta);
+    if (v.url) {
+      const btn = document.createElement("div");
+      btn.className = "open";
+      btn.title = "Open " + v.url;
+      btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7M9 7h8v8"/></svg>';
+      btn.addEventListener("click", () => open_(v.url));
+      row.appendChild(btn);
+    }
+    return row;
+  }
+
+  function render(s) {
+    $("dot").className = "dot" + (s.running ? " on" : "");
+    $("node").textContent = s.node || "";
+    const power = $("power");
+    power.disabled = false;
+    power.textContent = s.running ? "Stop" : "Start";
+    power.className = "power" + (s.running ? " stop" : "");
+
+    for (const b of document.querySelectorAll("#seg button"))
+      b.classList.toggle("active", String(s.private) === b.dataset.private);
+
+    $("autostart").classList.toggle("on", !!s.autostart);
+    $("err").className = "err" + (s.err ? " show" : "");
+    $("err").textContent = s.err || "";
+
+    const svcs = s.services || [];
+    $("count").textContent = svcs.length;
+    const list = $("list");
+    list.textContent = "";
+    if (!svcs.length) {
+      const e = document.createElement("div");
+      e.className = "empty";
+      e.textContent = s.running
+        ? "No dev servers found in range yet."
+        : "Press Start to discover and expose your dev servers.";
+      list.appendChild(e);
+      return;
+    }
+    for (const v of svcs) list.appendChild(svcRow(v));
+  }
+
+  async function refresh() {
+    try {
+      const r = await fetch("/api/status", H);
+      render(await r.json());
+    } catch (e) {}
+  }
+  refresh();
+  setInterval(refresh, 1500);
+</script>
+</body>
+</html>
