@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 )
@@ -291,6 +292,26 @@ func DefaultConfig() Config { return defaultConfig() }
 
 // KnownRuntimes returns the labels of the web runtimes discovery recognizes.
 func KnownRuntimes() []string { return knownRuntimeLabels() }
+
+// TailscaleHealth reports whether the `tailscale` CLI is present and logged in.
+type TailscaleHealth struct {
+	Installed bool   `json:"installed"`
+	Up        bool   `json:"up"`
+	Detail    string `json:"detail"`
+}
+
+// CheckTailscale probes for the tailscale CLI and login state (best effort).
+func CheckTailscale() TailscaleHealth {
+	r := execRunner{}
+	if _, _, err := r.Run("tailscale", "version"); err != nil {
+		return TailscaleHealth{Detail: "the tailscale CLI was not found on your PATH"}
+	}
+	out, _, err := r.Run("tailscale", "status")
+	if err != nil || strings.Contains(out, "Logged out") {
+		return TailscaleHealth{Installed: true, Detail: "Tailscale is installed but not logged in — run `tailscale up`"}
+	}
+	return TailscaleHealth{Installed: true, Up: true}
+}
 
 // Doctor runs the preflight checks for the given options.
 func Doctor(o Options) []Check {

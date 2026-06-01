@@ -6,23 +6,24 @@
 <title>Tailscale Proxy</title>
 <style>
 /* Hallmark · component: menu-bar panel · genre: modern-minimal · theme: native-dark
- * pre-emit critique: P5 H5 E5 S5 R4 V4
- * single cool accent · translucent macOS hairlines · tabular/mono numerals
+ * pre-emit critique: P5 H5 E5 S5 R4 V5
+ * translucent rounded shell · single accent · mono numerals · tactile states
  */
   :root {
+    --shell: oklch(18% 0.008 264 / 0.85);
     --bg: oklch(17.5% 0.008 264);
-    --raise: oklch(21.5% 0.009 264);
-    --raise-2: oklch(25.5% 0.01 264);
+    --raise: oklch(22% 0.009 264 / 0.7);
+    --raise-2: oklch(27% 0.01 264 / 0.85);
     --hair: oklch(100% 0 0 / 0.07);
-    --hair-2: oklch(100% 0 0 / 0.12);
+    --hair-2: oklch(100% 0 0 / 0.13);
     --fg: oklch(97% 0.004 264);
-    --fg-2: oklch(73% 0.008 264);
-    --fg-3: oklch(56% 0.008 264);
-    --accent: oklch(65% 0.155 256);
+    --fg-2: oklch(74% 0.008 264);
+    --fg-3: oklch(57% 0.008 264);
+    --accent: oklch(66% 0.155 256);
     --accent-fg: oklch(98% 0.01 256);
-    --on: oklch(74% 0.16 152);
-    --off: oklch(66% 0.17 24);
-
+    --on: oklch(75% 0.16 152);
+    --off: oklch(67% 0.17 24);
+    --amber: oklch(80% 0.13 80);
     --r-xs: 6px; --r-sm: 8px; --r: 10px;
     --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px;
     --ease: cubic-bezier(0.32, 0.72, 0, 1);
@@ -31,14 +32,15 @@
     --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  html, body { background: var(--bg); color: var(--fg); font: 13px/1.45 var(--sans); -webkit-font-smoothing: antialiased; user-select: none; }
-  body { padding: var(--s3); }
+  html, body { background: transparent; color: var(--fg); font: 13px/1.45 var(--sans); -webkit-font-smoothing: antialiased; user-select: none; }
+  .shell { min-height: 100vh; background: var(--shell); border: 1px solid var(--hair-2); border-radius: 14px; padding: var(--s3); overflow: hidden; }
   button { font: inherit; cursor: default; color: inherit; }
   :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--r-xs); }
   .num { font-variant-numeric: tabular-nums; }
+  svg { display: block; }
 
-  /* Status header */
-  .head { display: flex; align-items: baseline; gap: var(--s2); padding: var(--s1) 2px var(--s3); }
+  /* Header */
+  .head { display: flex; align-items: baseline; gap: var(--s2); padding: 2px 2px var(--s3); }
   .state { display: flex; align-items: center; gap: 7px; font-weight: 600; letter-spacing: -.012em; }
   .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--fg-3); transition: background var(--dur) var(--ease), box-shadow var(--dur) var(--ease); }
   .on .dot { background: var(--on); box-shadow: 0 0 0 3px color-mix(in oklab, var(--on) 20%, transparent); }
@@ -46,107 +48,183 @@
   .node { margin-left: auto; color: var(--fg-3); font: 11px/1 var(--mono); letter-spacing: -.02em; max-width: 168px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   /* Primary action */
-  .power { width: 100%; display: flex; align-items: center; justify-content: center; gap: 7px; border: 1px solid transparent; border-radius: var(--r); padding: 8px; font-weight: 600; font-size: 13px; letter-spacing: -.01em; transition: filter var(--dur) var(--ease), transform var(--dur) var(--ease), background var(--dur) var(--ease); }
+  .power { width: 100%; display: flex; align-items: center; justify-content: center; gap: 7px; border: 1px solid transparent; border-radius: var(--r); padding: 9px; font-weight: 600; font-size: 13px; letter-spacing: -.01em; transition: filter var(--dur) var(--ease), transform var(--dur) var(--ease); }
   .power svg { width: 14px; height: 14px; }
   .power.start { background: var(--on); color: oklch(20% 0.03 152); }
-  .power.stop { background: var(--raise); border-color: var(--hair-2); color: var(--off); }
-  .power:hover { filter: brightness(1.06); }
-  .power:active { transform: scale(0.985); filter: brightness(0.96); }
-  .power[disabled] { opacity: .55; }
+  .power.stop { background: var(--raise-2); border-color: var(--hair-2); color: var(--off); }
+  .power:not([disabled]):hover { filter: brightness(1.06); }
+  .power:not([disabled]):active { transform: scale(0.985); }
+  .power[disabled] { opacity: .8; }
+  .spinner { width: 14px; height: 14px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin .6s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
 
-  /* Segmented mode toggle */
-  .seg { position: relative; display: grid; grid-template-columns: 1fr 1fr; background: var(--raise); border: 1px solid var(--hair); border-radius: var(--r-sm); padding: 3px; margin-top: var(--s2); }
+  /* Segmented mode */
+  .seg { position: relative; display: grid; grid-template-columns: 1fr 1fr; background: var(--raise); border: 1px solid var(--hair); border-radius: var(--r-sm); padding: 3px; margin-top: var(--s2); transition: opacity var(--dur) var(--ease); }
   .seg .ind { position: absolute; top: 3px; bottom: 3px; left: 3px; width: calc(50% - 3px); background: var(--accent); border-radius: 6px; transition: transform var(--dur) var(--ease); }
   .seg.priv .ind { transform: translateX(100%); }
   .seg button { position: relative; z-index: 1; border: 0; background: 0; color: var(--fg-2); font-weight: 550; font-size: 12px; padding: 6px 4px; transition: color var(--dur) var(--ease); }
   .seg button.sel { color: var(--accent-fg); }
+  .seg.locked { opacity: .5; }
+  .seg.locked button { cursor: not-allowed; }
+  .lockhint { color: var(--fg-3); font-size: 10.5px; text-align: center; margin-top: 5px; }
 
   /* Section header */
   .sec { display: flex; align-items: center; gap: var(--s2); margin: var(--s4) 2px var(--s2); }
   .sec .lbl { color: var(--fg-3); font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .07em; }
   .sec .count { color: var(--fg-2); font: 10px var(--mono); background: var(--raise); border: 1px solid var(--hair); border-radius: 999px; padding: 1px 7px; }
-  .icon-btn { margin-left: auto; width: 24px; height: 24px; display: grid; place-items: center; border: 0; background: 0; color: var(--fg-3); border-radius: var(--r-xs); transition: color var(--dur) var(--ease), background var(--dur) var(--ease); }
-  .icon-btn:hover { color: var(--fg); background: var(--raise); }
-  .icon-btn.spin svg { animation: spin .55s var(--ease); }
-  @keyframes spin { to { transform: rotate(360deg); } }
+  .txt-btn { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--hair); background: var(--raise); color: var(--fg-2); border-radius: var(--r-xs); padding: 4px 9px; font-size: 11px; font-weight: 550; transition: all var(--dur) var(--ease); }
+  .txt-btn:hover { color: var(--fg); background: var(--raise-2); border-color: var(--hair-2); }
+  .txt-btn:active { transform: scale(0.96); }
+  .txt-btn svg { width: 12px; height: 12px; }
+  .sec .txt-btn { margin-left: auto; }
+  .txt-btn.spin svg { animation: spin .55s var(--ease); }
 
   /* Service rows */
-  .list { display: flex; flex-direction: column; gap: 5px; max-height: 326px; overflow-y: auto; margin: 0 -2px; padding: 0 2px; }
-  .svc { display: grid; grid-template-columns: auto 1fr auto; align-items: center; column-gap: var(--s3); padding: 8px 10px; background: var(--raise); border: 1px solid var(--hair); border-radius: var(--r-sm); transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease); }
+  .list { display: flex; flex-direction: column; gap: 5px; max-height: 318px; overflow-y: auto; margin: 0 -2px; padding: 0 2px; }
+  .svc { display: grid; grid-template-columns: auto 1fr auto; align-items: start; column-gap: var(--s3); padding: 9px 10px; background: var(--raise); border: 1px solid var(--hair); border-radius: var(--r-sm); transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease); }
   .svc:hover { background: var(--raise-2); border-color: var(--hair-2); }
-  .badge { align-self: start; margin-top: 1px; font: 9px/1 var(--mono); font-weight: 600; letter-spacing: .02em; color: var(--accent); background: color-mix(in oklab, var(--accent) 16%, transparent); border-radius: 4px; padding: 4px 5px; text-transform: lowercase; }
+  .badge { margin-top: 2px; font: 9px/1 var(--mono); font-weight: 600; letter-spacing: .02em; color: var(--accent); background: color-mix(in oklab, var(--accent) 16%, transparent); border-radius: 4px; padding: 4px 5px; text-transform: lowercase; }
   .meta { min-width: 0; }
   .slug { font-weight: 600; letter-spacing: -.012em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .addr { color: var(--fg-2); font: 11px var(--mono); margin-top: 2px; }
-  .addr .pid { color: var(--fg-3); }
-  .dir { color: var(--fg-3); font-size: 10.5px; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .open { width: 28px; height: 28px; display: grid; place-items: center; border: 1px solid var(--hair); background: 0; color: var(--fg-2); border-radius: var(--r-xs); transition: all var(--dur) var(--ease); }
+  .addr .sep { color: var(--fg-3); }
+  .stats { display: flex; flex-wrap: wrap; gap: 4px 9px; color: var(--fg-3); font-size: 10.5px; margin-top: 3px; }
+  .stats .num { color: var(--fg-2); }
+  .dir { color: var(--fg-3); font-size: 10.5px; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .open { margin-top: 1px; width: 28px; height: 28px; display: grid; place-items: center; border: 1px solid var(--hair); background: 0; color: var(--fg-2); border-radius: var(--r-xs); transition: all var(--dur) var(--ease); }
   .open:hover { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
   .open:active { transform: scale(0.94); }
 
   .empty { color: var(--fg-3); text-align: center; padding: 26px 16px; line-height: 1.55; font-size: 12.5px; }
-  .err { color: var(--off); font-size: 11.5px; line-height: 1.4; padding: 8px 10px; margin-top: var(--s2); background: color-mix(in oklab, var(--off) 13%, transparent); border: 1px solid color-mix(in oklab, var(--off) 28%, transparent); border-radius: var(--r-sm); display: none; }
-  .err.show { display: block; }
+  .banner { display: flex; align-items: center; gap: 8px; font-size: 11.5px; line-height: 1.4; padding: 8px 10px; margin-top: var(--s2); border-radius: var(--r-sm); }
+  .banner.warn { color: var(--amber); background: color-mix(in oklab, var(--amber) 12%, transparent); border: 1px solid color-mix(in oklab, var(--amber) 26%, transparent); }
+  .banner.err { color: var(--off); background: color-mix(in oklab, var(--off) 13%, transparent); border: 1px solid color-mix(in oklab, var(--off) 28%, transparent); }
 
   /* Footer */
   .foot { display: flex; gap: 6px; margin-top: var(--s3); padding-top: var(--s3); border-top: 1px solid var(--hair); }
-  .ghost { flex: 1; border: 1px solid var(--hair); background: var(--raise); border-radius: var(--r-sm); padding: 7px 4px; font-size: 12px; font-weight: 500; color: var(--fg-2); transition: all var(--dur) var(--ease); }
+  .ghost { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px; border: 1px solid var(--hair); background: var(--raise); border-radius: var(--r-sm); padding: 7px 4px; font-size: 12px; font-weight: 500; color: var(--fg-2); transition: all var(--dur) var(--ease); }
+  .ghost svg { width: 13px; height: 13px; }
   .ghost:hover { background: var(--raise-2); color: var(--fg); border-color: var(--hair-2); }
   .ghost:active { transform: scale(0.97); }
-  .ghost.danger { flex: 0 0 auto; padding: 7px 13px; color: var(--off); }
+  .ghost.danger { flex: 0 0 auto; padding: 7px 12px; color: var(--off); }
   .ghost.danger:hover { background: color-mix(in oklab, var(--off) 15%, transparent); border-color: color-mix(in oklab, var(--off) 30%, transparent); }
 
-  @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+  /* Tailscale setup state */
+  .setup { text-align: center; padding: 18px 8px 8px; }
+  .setup .glyph { width: 52px; height: 52px; margin: 0 auto var(--s3); display: grid; place-items: center; border-radius: 14px; background: color-mix(in oklab, var(--accent) 16%, transparent); color: var(--accent); }
+  .setup .glyph svg { width: 26px; height: 26px; }
+  .setup h2 { font-size: 15px; letter-spacing: -.015em; }
+  .setup p { color: var(--fg-2); font-size: 12.5px; line-height: 1.5; margin: 7px auto 0; max-width: 280px; }
+  .steps { text-align: left; margin: var(--s3) auto 0; max-width: 280px; display: flex; flex-direction: column; gap: 8px; }
+  .step { display: flex; gap: 9px; align-items: flex-start; font-size: 12px; color: var(--fg-2); }
+  .step .n { flex: none; width: 18px; height: 18px; border-radius: 50%; background: var(--raise-2); border: 1px solid var(--hair-2); color: var(--fg); font: 10px var(--mono); display: grid; place-items: center; margin-top: 1px; }
+  .step code { font: 11px var(--mono); color: var(--accent); background: color-mix(in oklab, var(--accent) 13%, transparent); padding: 1px 5px; border-radius: 4px; }
+  .cta { display: inline-flex; align-items: center; gap: 7px; margin-top: var(--s4); background: var(--accent); color: var(--accent-fg); border: 0; border-radius: var(--r); padding: 9px 18px; font-weight: 600; transition: filter var(--dur) var(--ease), transform var(--dur) var(--ease); }
+  .cta:hover { filter: brightness(1.07); } .cta:active { transform: scale(0.98); }
+
+  .hidden { display: none !important; }
+  @media (prefers-reduced-motion: reduce) { *, .spinner { transition: none !important; animation: none !important; } }
 </style>
 </head>
 <body>
-  <div class="head" id="head">
-    <span class="state"><span class="dot"></span><span id="stateText">Stopped</span><span class="mode-tag" id="modeTag"></span></span>
-    <span class="node num" id="node"></span>
-  </div>
+<div class="shell">
 
-  <button class="power start" id="power" onclick="toggle()">
-    <svg id="powerIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v8"/><path d="M7.5 7a7 7 0 1 0 9 0"/></svg>
-    <span id="powerText">Start</span>
-  </button>
-  <div class="err" id="err"></div>
-
-  <div class="seg" id="seg">
-    <span class="ind"></span>
-    <button data-private="false" class="sel" onclick="setMode(false)">Public · Funnel</button>
-    <button data-private="true" onclick="setMode(true)">Private · Serve</button>
-  </div>
-
-  <div class="sec">
-    <span class="lbl">Services</span><span class="count num" id="count">0</span>
-    <button class="icon-btn" id="refresh" title="Refresh now" onclick="refreshNow()" aria-label="Refresh">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.4M21 3v6h-6"/></svg>
+  <!-- Setup state: Tailscale not installed -->
+  <div id="setup" class="setup hidden">
+    <div class="glyph"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h6m8 0h6"/><path d="M9 9l-3 3 3 3M15 9l3 3-3 3"/></svg></div>
+    <h2>Tailscale required</h2>
+    <p>Tailscale Proxy runs on top of Tailscale. Install it and sign in to get started.</p>
+    <div class="steps">
+      <div class="step"><span class="n">1</span><span>Install the Tailscale app for your platform.</span></div>
+      <div class="step"><span class="n">2</span><span>Sign in — run <code>tailscale up</code>.</span></div>
+      <div class="step"><span class="n">3</span><span>For public sharing, enable <strong>Funnel</strong> in the admin console.</span></div>
+    </div>
+    <button class="cta" onclick="open_('https://tailscale.com/download')">
+      Install Tailscale
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7M9 7h8v8"/></svg>
     </button>
+    <div class="foot"><button class="ghost" onclick="api('/api/settings')">Settings…</button><button class="ghost danger" onclick="api('/api/quit')">Quit</button></div>
   </div>
-  <div class="list" id="list"></div>
 
-  <div class="foot">
-    <button class="ghost" onclick="api('/api/settings')">Settings…</button>
-    <button class="ghost" onclick="api('/api/openconfig')">Config</button>
-    <button class="ghost danger" onclick="api('/api/quit')">Quit</button>
+  <!-- Main state -->
+  <div id="main">
+    <div class="head" id="head">
+      <span class="state"><span class="dot"></span><span id="stateText">Stopped</span><span class="mode-tag" id="modeTag"></span></span>
+      <span class="node num" id="node"></span>
+    </div>
+
+    <button class="power start" id="power" onclick="toggle()">
+      <span id="powerIcon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v8"/><path d="M7.5 7a7 7 0 1 0 9 0"/></svg></span>
+      <span id="powerText">Start</span>
+    </button>
+
+    <div class="banner warn hidden" id="loginBanner"></div>
+    <div class="banner err hidden" id="err"></div>
+
+    <div class="seg" id="seg">
+      <span class="ind"></span>
+      <button data-private="false" class="sel" onclick="setMode(false)">Public · Funnel</button>
+      <button data-private="true" onclick="setMode(true)">Private · Serve</button>
+    </div>
+    <div class="lockhint hidden" id="lockhint">Stop to switch mode</div>
+
+    <div class="sec">
+      <span class="lbl">Services</span><span class="count num" id="count">0</span>
+      <button class="txt-btn" id="refresh" onclick="refreshNow()" aria-label="Refresh">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.4M21 3v6h-6"/></svg>
+        Refresh
+      </button>
+    </div>
+    <div class="list" id="list"></div>
+
+    <div class="foot">
+      <button class="ghost" onclick="api('/api/settings')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8M4.6 9a1.6 1.6 0 0 0-.3-1.8"/><circle cx="12" cy="12" r="9"/></svg>Settings</button>
+      <button class="ghost" onclick="api('/api/openconfig')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3v5h5"/><path d="M19 8v11a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7z"/></svg>Config</button>
+      <button class="ghost danger" onclick="api('/api/quit')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v8"/><path d="M7.5 7a7 7 0 1 0 9 0"/></svg>Quit</button>
+    </div>
   </div>
+
+</div>
 
 <script>
   const TOKEN = "__TOKEN__";
   const HDR = { "X-TSP-Token": TOKEN };
   const $ = (id) => document.getElementById(id);
 
+  // Pending-action guard so Start/Stop can't be double-fired.
+  let pending = false, pendingWant = false, pendingT = 0;
+
   async function api(path, body) {
     try { await fetch(path, { method: "POST", headers: HDR, body: body ? JSON.stringify(body) : null }); } catch (e) {}
     refresh();
   }
-  const toggle = () => { $("power").disabled = true; api("/api/toggle"); };
-  const setMode = (priv) => api("/api/mode", { private: priv });
+  function toggle() {
+    if (pending) return;
+    const running = $("head").classList.contains("on");
+    pending = true; pendingWant = !running; pendingT = Date.now();
+    renderPower(running ? "stop" : "start", true);
+    api("/api/toggle");
+  }
+  function setMode(priv) {
+    if ($("seg").classList.contains("locked") || pending) return;
+    api("/api/mode", { private: priv });
+  }
   const open_ = (url) => api("/api/open", { url });
   function refreshNow() { $("refresh").classList.add("spin"); setTimeout(() => $("refresh").classList.remove("spin"), 560); api("/api/refresh"); }
 
   function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
   function tilde(p) { const a = p.split("/").filter(Boolean); return a.length > 3 ? "…/" + a.slice(-2).join("/") : p; }
+  function ago(sec) { if (!sec) return ""; const d = Math.max(0, Math.floor(Date.now() / 1000 - sec)); if (d < 60) return d + "s"; if (d < 3600) return Math.floor(d / 60) + "m"; if (d < 86400) return Math.floor(d / 3600) + "h"; return Math.floor(d / 86400) + "d"; }
+
+  function renderPower(kind, loading) {
+    const p = $("power");
+    p.className = "power " + kind;
+    p.disabled = !!loading;
+    $("powerText").textContent = loading ? (kind === "start" ? "Starting…" : "Stopping…") : (kind === "start" ? "Start" : "Stop");
+    $("powerIcon").innerHTML = loading
+      ? '<span class="spinner"></span>'
+      : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v8"/><path d="M7.5 7a7 7 0 1 0 9 0"/></svg>';
+  }
 
   function svcRow(v) {
     const row = el("div", "svc");
@@ -154,8 +232,16 @@
     meta.append(el("div", "slug", v.slug));
     const addr = el("div", "addr num");
     addr.append(el("span", null, "127.0.0.1:" + v.port));
-    if (v.pid) addr.append(el("span", "pid", "  ·  pid " + v.pid));
+    if (v.pid) { addr.append(el("span", "sep", " · ")); addr.append(el("span", null, "pid " + v.pid)); }
+    if (v.uptime) { addr.append(el("span", "sep", " · ")); addr.append(el("span", null, "up " + v.uptime)); }
     meta.append(addr);
+    const stats = el("div", "stats");
+    if (v.cpu || v.memMB) {
+      const c = el("span"); c.append(el("span", "num", (v.cpu || 0).toFixed(1) + "%"), document.createTextNode(" cpu")); stats.append(c);
+      const m = el("span"); m.append(el("span", "num", v.memMB + ""), document.createTextNode(" MB")); stats.append(m);
+    }
+    if (v.discoveredAt) stats.append(el("span", null, "seen " + ago(v.discoveredAt) + " ago"));
+    if (stats.childNodes.length) meta.append(stats);
     if (v.dir) { const d = el("div", "dir", tilde(v.dir)); d.title = v.dir; meta.append(d); }
     row.append(el("span", "badge", v.runtime || "?"), meta);
     if (v.url) {
@@ -168,20 +254,32 @@
   }
 
   function render(s) {
+    const ts = s.tailscale || {};
+    const setup = !ts.installed;
+    $("setup").classList.toggle("hidden", !setup);
+    $("main").classList.toggle("hidden", setup);
+    if (setup) return;
+
+    // Resolve pending Start/Stop (state flipped, or timed out after 9s).
+    if (pending && (s.running === pendingWant || Date.now() - pendingT > 9000)) pending = false;
+
     $("head").classList.toggle("on", s.running);
     $("stateText").textContent = s.running ? "Running" : "Stopped";
-    $("modeTag").textContent = s.running && s.mode ? "·  " + (s.private ? "Serve" : "Funnel") : "";
+    $("modeTag").textContent = s.running ? "·  " + (s.private ? "Serve" : "Funnel") : "";
     $("node").textContent = s.node || "";
 
-    const power = $("power");
-    power.disabled = false;
-    power.className = "power " + (s.running ? "stop" : "start");
-    $("powerText").textContent = s.running ? "Stop" : "Start";
+    if (!pending) renderPower(s.running ? "stop" : "start", false);
 
     $("seg").classList.toggle("priv", !!s.private);
+    $("seg").classList.toggle("locked", s.running);
+    $("lockhint").classList.toggle("hidden", !s.running);
     for (const b of document.querySelectorAll(".seg button")) b.classList.toggle("sel", String(s.private) === b.dataset.private);
 
-    $("err").className = "err" + (s.err ? " show" : "");
+    const lb = $("loginBanner");
+    const showLogin = ts.installed && !ts.up;
+    lb.classList.toggle("hidden", !showLogin);
+    if (showLogin) lb.textContent = "⚠ " + (ts.detail || "Tailscale is not logged in — run `tailscale up`.");
+    $("err").classList.toggle("hidden", !s.err);
     $("err").textContent = s.err || "";
 
     const svcs = s.services || [];

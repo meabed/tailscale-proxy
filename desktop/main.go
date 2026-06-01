@@ -12,11 +12,15 @@ import (
 
 	"github.com/meabed/tailscale-proxy/core"
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/wailsapp/wails/v3/pkg/events"
 )
 
 const appName = "Tailscale Proxy"
 
-var bgColour = application.RGBA{Red: 18, Green: 20, Blue: 24, Alpha: 255}
+var (
+	bgColour    = application.RGBA{Red: 18, Green: 20, Blue: 24, Alpha: 255}
+	transparent = application.RGBA{Red: 0, Green: 0, Blue: 0, Alpha: 0}
+)
 
 type ui struct {
 	app      *application.App
@@ -28,6 +32,13 @@ type ui struct {
 	mu    sync.Mutex
 	cfg   core.Config
 	token string
+
+	dmu      sync.Mutex // guards the status caches below
+	seen     map[string]time.Time
+	health   core.TailscaleHealth
+	healthAt time.Time
+	stats    map[int]procStat
+	statsAt  time.Time
 }
 
 func main() {
@@ -56,11 +67,14 @@ func main() {
 		log.Fatalf("dashboard: %v", err)
 	}
 	u.panel = app.Window.NewWithOptions(application.WebviewWindowOptions{
-		Name: "panel", URL: base, Width: 380, Height: 600,
+		Name: "panel", URL: base, Width: 384, Height: 600,
 		Frameless: true, DisableResize: true, AlwaysOnTop: true, Hidden: true,
-		BackgroundColour: bgColour,
+		BackgroundColour: transparent,
+		Mac:              application.MacWindow{Backdrop: application.MacBackdropTranslucent},
 	})
 	u.tray.AttachWindow(u.panel).WindowDebounce(200 * time.Millisecond)
+	// Dismiss the panel when the user clicks away from it.
+	u.panel.OnWindowEvent(events.Common.WindowLostFocus, func(*application.WindowEvent) { u.hidePanel() })
 
 	u.settings = app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Name: "settings", Title: appName + " Settings", URL: base + "/settings",
@@ -98,6 +112,8 @@ func (u *ui) updateIcon() {
 }
 
 func (u *ui) showSettings() { application.InvokeAsync(func() { u.settings.Show() }) }
+
+func (u *ui) hidePanel() { application.InvokeAsync(func() { u.panel.Hide() }) }
 
 func (u *ui) toggle() {
 	if err := u.ctl.Toggle(u.opts()); err != nil {

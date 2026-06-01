@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/meabed/tailscale-proxy/core"
 )
@@ -20,23 +21,28 @@ var panelHTML string
 var settingsHTML string
 
 type svcJSON struct {
-	Slug    string `json:"slug"`
-	Runtime string `json:"runtime"`
-	Port    int    `json:"port"`
-	PID     int    `json:"pid"`
-	Dir     string `json:"dir"`
-	URL     string `json:"url"`
+	Slug         string  `json:"slug"`
+	Runtime      string  `json:"runtime"`
+	Port         int     `json:"port"`
+	PID          int     `json:"pid"`
+	Dir          string  `json:"dir"`
+	URL          string  `json:"url"`
+	CPU          float64 `json:"cpu"`
+	MemMB        int     `json:"memMB"`
+	Uptime       string  `json:"uptime"`
+	DiscoveredAt int64   `json:"discoveredAt"` // unix seconds, 0 if unknown
 }
 
 type statusJSON struct {
-	Running    bool      `json:"running"`
-	Mode       string    `json:"mode"`
-	Private    bool      `json:"private"`
-	Node       string    `json:"node"`
-	PublicBase string    `json:"publicBase"`
-	HTTPSPort  int       `json:"httpsPort"`
-	Err        string    `json:"err"`
-	Services   []svcJSON `json:"services"`
+	Running    bool                 `json:"running"`
+	Mode       string               `json:"mode"`
+	Private    bool                 `json:"private"`
+	Node       string               `json:"node"`
+	PublicBase string               `json:"publicBase"`
+	HTTPSPort  int                  `json:"httpsPort"`
+	Err        string               `json:"err"`
+	Services   []svcJSON            `json:"services"`
+	Tailscale  core.TailscaleHealth `json:"tailscale"`
 }
 
 type configJSON struct {
@@ -55,12 +61,74 @@ func (u *ui) status() statusJSON {
 	u.mu.Unlock()
 	out := statusJSON{
 		Running: st.Running, Mode: st.Mode, Private: private, Node: st.Node,
-		PublicBase: st.PublicBase, HTTPSPort: st.HTTPSPort, Err: st.Err, Services: []svcJSON{},
+		PublicBase: st.PublicBase, HTTPSPort: st.HTTPSPort, Err: st.Err,
+		Services: []svcJSON{}, Tailscale: u.cachedHealth(),
 	}
+
+	pids := make([]int, 0, len(st.Services))
 	for _, s := range st.Services {
-		out.Services = append(out.Services, svcJSON{
+		if s.PID > 0 {
+			pids = append(pids, s.PID)
+		}
+	}
+	stats := u.cachedStats(pids)
+	seen := u.markSeen(st.Services)
+
+	for _, s := range st.Services {
+		row := svcJSON{
 			Slug: s.Slug, Runtime: s.Runtime, Port: s.Port, PID: s.PID, Dir: s.Dir, URL: s.URL,
-		})
+			DiscoveredAt: seen[s.Slug],
+		}
+		if ps, ok := stats[s.PID]; ok {
+			row.CPU, row.MemMB, row.Uptime = ps.CPU, ps.MemMB, ps.Uptime
+		}
+		out.Services = append(out.Services, row)
+	}
+	return out
+}
+
+// cachedHealth probes tailscale at most every 4s.
+func (u *ui) cachedHealth() core.TailscaleHealth {
+	u.dmu.Lock()
+	defer u.dmu.Unlock()
+	if time.Since(u.healthAt) > 4*time.Second {
+		u.health = core.CheckTailscale()
+		u.healthAt = time.Now()
+	}
+	return u.health
+}
+
+// cachedStats batches one ps call for the pids at most every 2s.
+func (u *ui) cachedStats(pids []int) map[int]procStat {
+	u.dmu.Lock()
+	defer u.dmu.Unlock()
+	if u.stats == nil || time.Since(u.statsAt) > 2*time.Second {
+		u.stats = procStats(pids)
+		u.statsAt = time.Now()
+	}
+	return u.stats
+}
+
+// markSeen records first-discovery time per slug and returns slug→unix-seconds.
+func (u *ui) markSeen(svcs []core.ServiceURL) map[string]int64 {
+	u.dmu.Lock()
+	defer u.dmu.Unlock()
+	if u.seen == nil {
+		u.seen = map[string]time.Time{}
+	}
+	live := map[string]bool{}
+	out := map[string]int64{}
+	for _, s := range svcs {
+		live[s.Slug] = true
+		if _, ok := u.seen[s.Slug]; !ok {
+			u.seen[s.Slug] = time.Now()
+		}
+		out[s.Slug] = u.seen[s.Slug].Unix()
+	}
+	for slug := range u.seen {
+		if !live[slug] {
+			delete(u.seen, slug)
+		}
 	}
 	return out
 }
@@ -183,6 +251,10 @@ func (u *ui) startDashboard() (string, error) {
 	}))
 	mux.HandleFunc("/api/settings", auth(func(w http.ResponseWriter, r *http.Request) {
 		u.showSettings()
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	mux.HandleFunc("/api/hidepanel", auth(func(w http.ResponseWriter, r *http.Request) {
+		u.hidePanel()
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	mux.HandleFunc("/api/quit", auth(func(w http.ResponseWriter, r *http.Request) {

@@ -8,27 +8,47 @@ import (
 	"math"
 )
 
-// makeIcon draws a small "hub" mark — an outer ring with a centred dot — as a
-// PNG. Used for the menu-bar icon (idle = black template, running = green).
+// proxy/router glyph: two opposing arrows (data exchange ⇄), as fractions of the
+// canvas. Each entry is a stroked segment {x1,y1,x2,y2}.
+var glyphSegs = [][4]float64{
+	{0.16, 0.37, 0.80, 0.37}, // top shaft →
+	{0.80, 0.37, 0.665, 0.28},
+	{0.80, 0.37, 0.665, 0.46},
+	{0.84, 0.63, 0.20, 0.63}, // bottom shaft ←
+	{0.20, 0.63, 0.335, 0.54},
+	{0.20, 0.63, 0.335, 0.72},
+}
+
+func segDist(px, py, x1, y1, x2, y2 float64) float64 {
+	dx, dy := x2-x1, y2-y1
+	l2 := dx*dx + dy*dy
+	if l2 == 0 {
+		return math.Hypot(px-x1, py-y1)
+	}
+	t := math.Max(0, math.Min(1, ((px-x1)*dx+(py-y1)*dy)/l2))
+	return math.Hypot(px-(x1+t*dx), py-(y1+t*dy))
+}
+
+// makeIcon renders the proxy glyph in col as a 44px PNG (22pt @2x), anti-aliased.
 func makeIcon(col color.NRGBA) []byte {
-	const s = 44 // 22pt @2x
-	const (
-		ring  = 16.0
-		width = 4.0
-		dot   = 5.0
-	)
-	cx, cy := float64(s)/2, float64(s)/2
+	const s = 44
+	const half = 2.5 // stroke half-width, px
 	img := image.NewNRGBA(image.Rect(0, 0, s, s))
 	for y := 0; y < s; y++ {
 		for x := 0; x < s; x++ {
-			// 3×3 supersample for anti-aliasing.
 			var cov float64
 			for sy := 0; sy < 3; sy++ {
 				for sx := 0; sx < 3; sx++ {
 					px := float64(x) + (float64(sx)+0.5)/3
 					py := float64(y) + (float64(sy)+0.5)/3
-					d := math.Hypot(px-cx, py-cy)
-					if (d <= ring && d >= ring-width) || d <= dot {
+					min := math.MaxFloat64
+					for _, g := range glyphSegs {
+						d := segDist(px, py, g[0]*s, g[1]*s, g[2]*s, g[3]*s)
+						if d < min {
+							min = d
+						}
+					}
+					if min <= half {
 						cov++
 					}
 				}
