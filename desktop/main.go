@@ -80,6 +80,11 @@ func main() {
 		Name: "settings", Title: appName + " Settings", URL: base + "/settings",
 		Width: 560, Height: 660, Hidden: true, BackgroundColour: bgColour,
 	})
+	// Hide (not destroy) on close so it can be reopened.
+	u.settings.OnWindowEvent(events.Common.WindowClosing, func(e *application.WindowEvent) {
+		e.Cancel()
+		u.settings.Hide()
+	})
 
 	u.ctl.OnChange(func() { application.InvokeAsync(u.updateIcon) })
 	u.updateIcon()

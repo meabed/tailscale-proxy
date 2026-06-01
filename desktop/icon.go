@@ -8,16 +8,16 @@ import (
 	"math"
 )
 
-// proxy/router glyph: two opposing arrows (data exchange ⇄), as fractions of the
-// canvas. Each entry is a stroked segment {x1,y1,x2,y2}.
-var glyphSegs = [][4]float64{
-	{0.16, 0.37, 0.80, 0.37}, // top shaft →
-	{0.80, 0.37, 0.665, 0.28},
-	{0.80, 0.37, 0.665, 0.46},
-	{0.84, 0.63, 0.20, 0.63}, // bottom shaft ←
-	{0.20, 0.63, 0.335, 0.54},
-	{0.20, 0.63, 0.335, 0.72},
-}
+// Routing fan-out glyph: one entry node on the left routed to three service
+// nodes on the right — the proxy's whole job. Positions are canvas fractions.
+var (
+	glyphEntry = [3]float64{0.20, 0.50, 4.2} // x, y, radius(px)
+	glyphNodes = [][3]float64{
+		{0.80, 0.255, 3.1},
+		{0.825, 0.50, 3.1},
+		{0.80, 0.745, 3.1},
+	}
+)
 
 func segDist(px, py, x1, y1, x2, y2 float64) float64 {
 	dx, dy := x2-x1, y2-y1
@@ -29,10 +29,11 @@ func segDist(px, py, x1, y1, x2, y2 float64) float64 {
 	return math.Hypot(px-(x1+t*dx), py-(y1+t*dy))
 }
 
-// makeIcon renders the proxy glyph in col as a 44px PNG (22pt @2x), anti-aliased.
+// makeIcon renders the glyph in col as a 44px PNG (22pt @2x), anti-aliased.
 func makeIcon(col color.NRGBA) []byte {
 	const s = 44
-	const half = 2.5 // stroke half-width, px
+	const stroke = 1.7 // connecting-line half-width, px
+	ex, ey := glyphEntry[0]*s, glyphEntry[1]*s
 	img := image.NewNRGBA(image.Rect(0, 0, s, s))
 	for y := 0; y < s; y++ {
 		for x := 0; x < s; x++ {
@@ -41,14 +42,15 @@ func makeIcon(col color.NRGBA) []byte {
 				for sx := 0; sx < 3; sx++ {
 					px := float64(x) + (float64(sx)+0.5)/3
 					py := float64(y) + (float64(sy)+0.5)/3
-					min := math.MaxFloat64
-					for _, g := range glyphSegs {
-						d := segDist(px, py, g[0]*s, g[1]*s, g[2]*s, g[3]*s)
-						if d < min {
-							min = d
+					hit := math.Hypot(px-ex, py-ey) <= glyphEntry[2]
+					for _, n := range glyphNodes {
+						nx, ny := n[0]*s, n[1]*s
+						if math.Hypot(px-nx, py-ny) <= n[2] || segDist(px, py, ex, ey, nx, ny) <= stroke {
+							hit = true
+							break
 						}
 					}
-					if min <= half {
+					if hit {
 						cov++
 					}
 				}
