@@ -1,4 +1,4 @@
-package main
+package core
 
 import (
 	"archive/tar"
@@ -25,8 +25,8 @@ func cmdUpdate(argv []string) int {
 		fmt.Fprintf(os.Stderr, "could not check latest version: %v\n", err)
 		return 1
 	}
-	fmt.Printf("current: %s\nlatest:  %s\n", version, latest)
-	if version != "dev" && normalizeVer(latest) == normalizeVer(version) {
+	fmt.Printf("current: %s\nlatest:  %s\n", Version, latest)
+	if Version != "dev" && normalizeVer(latest) == normalizeVer(Version) {
 		fmt.Println("already up to date.")
 		return 0
 	}

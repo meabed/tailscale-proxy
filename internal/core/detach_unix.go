@@ -1,6 +1,6 @@
-//go:build windows
+//go:build !windows
 
-package main
+package core
 
 import (
 	"os"
@@ -8,13 +8,8 @@ import (
 	"syscall"
 )
 
-const (
-	detachedProcess       = 0x00000008
-	createNewProcessGroup = 0x00000200
-)
-
 func detachSysProcAttr() *syscall.SysProcAttr {
-	return &syscall.SysProcAttr{CreationFlags: detachedProcess | createNewProcessGroup}
+	return &syscall.SysProcAttr{Setsid: true}
 }
 
 // spawnDetached re-execs tsp without --bg, detached, with output to logPath.
