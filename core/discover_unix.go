@@ -34,7 +34,7 @@ func (d *Discoverer) listeners(rng PortRange) ([]listener, error) {
 		comm := parsePsComm(psOut)
 		for i := range ls {
 			if c, ok := comm[ls[i].PID]; ok {
-				ls[i].Comm = c
+				ls[i].PsComm = c // keep the lsof Comm; ps is a secondary signal
 			}
 		}
 	}

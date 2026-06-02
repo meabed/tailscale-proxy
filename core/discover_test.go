@@ -107,6 +107,27 @@ func TestBuildServices_filtersUnknownRuntime(t *testing.T) {
 	}
 }
 
+// A node process that renamed itself (ps reports "http-server", lsof still
+// reports "node") must classify by the lsof command, not be dropped.
+func TestBuildServices_psRenamedProcess(t *testing.T) {
+	root := t.TempDir()
+	app := mkProject(t, root, "site")
+	svcs, _ := buildServices([]listener{
+		{Port: 4999, PID: 1, Comm: "node", PsComm: "http-server", Cwd: app},
+	}, false, nil)
+	if len(svcs) != 1 || svcs[0].Runtime != "node" {
+		t.Fatalf("want one node service, got %+v", svcs)
+	}
+}
+
+// `go run` shows an unknown lsof name but a "go-build" ps path → classify as go.
+func TestRuntimeOf_goRunViaPsComm(t *testing.T) {
+	l := listener{Comm: "main", PsComm: "/var/folders/x/go-build123/b001/exe/main"}
+	if rt := runtimeOf(l); rt != "go" {
+		t.Fatalf("want go, got %q", rt)
+	}
+}
+
 func TestBuildServices_distinctProcessesSameFolder(t *testing.T) {
 	// Same project folder, two DISTINCT processes: the real dev server (bun :3087)
 	// and a tool (node :4983, e.g. @ai-sdk/devtools). BOTH are exposed — the

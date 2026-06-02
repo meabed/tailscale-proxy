@@ -31,12 +31,15 @@ type discoverConfig struct {
 	runtimes map[string]bool // nil = all known web runtimes
 }
 
-// listener is a raw OS-level listening socket (pre-classification).
+// listener is a raw OS-level listening socket (pre-classification). Comm is the
+// command name from lsof/netstat (the interpreter, e.g. "node"); PsComm is the
+// process's own name from `ps` (e.g. "http-server", or a "go-build" temp path).
 type listener struct {
-	Port int
-	PID  int
-	Comm string
-	Cwd  string
+	Port   int
+	PID    int
+	Comm   string
+	PsComm string
+	Cwd    string
 }
 
 // knownRuntimes maps a process's executable basename to a runtime label. These
@@ -80,6 +83,17 @@ var projectMarkers = []string{
 	"Cargo.toml",
 	"pom.xml", "build.gradle", "build.gradle.kts",
 	"mix.exs",
+}
+
+// runtimeOf classifies a listener by its lsof command first (the reliable
+// interpreter name, e.g. "node" even when the process renamed itself to
+// "http-server"), falling back to the ps process name (which carries the
+// "go-build" temp path that catches `go run`).
+func runtimeOf(l listener) string {
+	if rt := classifyRuntime(l.Comm); rt != "" {
+		return rt
+	}
+	return classifyRuntime(l.PsComm)
 }
 
 // classifyRuntime maps an executable path to a runtime label, or "" if unknown.
@@ -164,7 +178,7 @@ type Duplicate struct {
 
 // serviceOf builds a Service from a raw listener under a given slug.
 func serviceOf(l listener, slug string) Service {
-	return Service{Slug: slug, Port: l.Port, Runtime: classifyRuntime(l.Comm), Dir: l.Cwd, PID: l.PID}
+	return Service{Slug: slug, Port: l.Port, Runtime: runtimeOf(l), Dir: l.Cwd, PID: l.PID}
 }
 
 // projectBaseSlug derives the clean project slug from a working directory, or
@@ -197,7 +211,7 @@ func buildServices(listeners []listener, includeAll bool, runtimes map[string]bo
 	groups := map[string][]listener{}
 	order := []string{}
 	for _, l := range listeners {
-		rt := classifyRuntime(l.Comm)
+		rt := runtimeOf(l)
 		if !includeAll && (rt == "" || (runtimes != nil && !runtimes[rt])) {
 			continue
 		}
