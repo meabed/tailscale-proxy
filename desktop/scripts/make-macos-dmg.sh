@@ -8,10 +8,12 @@ BIN="${2:?binary path required}"
 OUT="${3:?output dmg path required}"
 
 APP="Tailscale Proxy.app"
+ICON="$(cd "$(dirname "$0")/.." && pwd)/build/icon.icns"
 rm -rf "$APP" dmgroot
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/tailscale-proxy"
 chmod +x "$APP/Contents/MacOS/tailscale-proxy"
+cp "$ICON" "$APP/Contents/Resources/icon.icns"
 
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -22,6 +24,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundleDisplayName</key><string>Tailscale Proxy</string>
   <key>CFBundleIdentifier</key><string>com.meabed.tailscale-proxy</string>
   <key>CFBundleExecutable</key><string>tailscale-proxy</string>
+  <key>CFBundleIconFile</key><string>icon</string>
   <key>CFBundleVersion</key><string>${VERSION}</string>
   <key>CFBundleShortVersionString</key><string>${VERSION}</string>
   <key>CFBundlePackageType</key><string>APPL</string>

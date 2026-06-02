@@ -41,22 +41,26 @@ It runs the exact same engine as the CLI and shares the same `~/.tailscale-proxy
 
 ## Install
 
-**macOS** — open the `.dmg` and drag **Tailscale Proxy** to Applications. It's not yet notarized, so the first launch needs one of:
+### macOS
+
+1. Open the `.dmg` and drag **Tailscale Proxy** into **Applications**.
+2. The app isn't notarized yet, so the first launch needs a one-time bypass —
+   **right-click the app → Open → Open**, or run:
+   ```bash
+   xattr -dr com.apple.quarantine "/Applications/Tailscale Proxy.app"
+   ```
+3. It launches into the **menu bar** (no Dock icon). Click the icon to open the panel.
+
+### Windows
+
+Unzip and run `TailscaleProxy.exe`. It's unsigned, so SmartScreen may warn —
+**More info → Run anyway**. The icon appears in the system tray.
+
+### Linux
 
 ```bash
-# right-click the app → Open,  or:
-xattr -dr com.apple.quarantine "/Applications/Tailscale Proxy.app"
-```
-
-It lives in the **menu bar** (no Dock icon).
-
-**Windows** — unzip and run `TailscaleProxy.exe`. SmartScreen may warn (unsigned): **More info → Run anyway**.
-
-**Linux** — extract and run:
-
-```bash
-tar xzf TailscaleProxy-*-linux-amd64.tar.gz
-sudo apt install libgtk-4-1 libwebkitgtk-6.0-4   # runtime deps
+tar xzf Tailscale-Proxy-Linux.tar.gz
+sudo apt install libgtk-4-1 libwebkitgtk-6.0-4   # one-time runtime deps
 ./tailscale-proxy
 ```
 
