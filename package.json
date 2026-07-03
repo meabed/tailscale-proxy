@@ -74,7 +74,7 @@
     "semantic-release": "^25.0.3"
   },
   "optionalDependencies": {
-    "tailscale-proxy-darwin-arm64": "0.0.0",
+    "tailscale-proxy-darwin-arm64": "0.0.1",
     "tailscale-proxy-darwin-x64": "0.0.0",
     "tailscale-proxy-linux-x64": "0.0.0",
     "tailscale-proxy-linux-arm64": "0.0.0",
