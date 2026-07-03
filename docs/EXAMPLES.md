@@ -37,7 +37,7 @@ sharing several real dev servers through one URL.
    ✓ tailscale installed  (1.98.2)
    ✓ tailscale up
    ✓ funnel enabled
-   ✓ service discovery  (3 service(s) in 3000-5000)
+   ✓ service discovery  (3 service(s) in 3000-6000)
 
    All checks passed — you're ready to `tsp start`.
    ```
@@ -49,7 +49,7 @@ sharing several real dev servers through one URL.
 
 ## 1. Start some dev servers
 
-`tsp` discovers anything **listening on a port in range** (default `3000-5000`).
+`tsp` discovers anything **listening on a port in range** (default `3000-6000`).
 The URL path is the **project folder name**, so run each from its own directory.
 
 These runtimes are **discovered by default**: `node`, `bun`, `deno`, `python`,
@@ -91,19 +91,19 @@ like compiled Go/Rust apps).
 ### Public (Funnel) — the default
 
 ```bash
-tsp                            # discover :3000-5000 and expose publicly
+tsp                            # discover :3000-6000 and expose publicly
 ```
 
 ```
 Using config: /Users/me/.tailscale-proxy/config.json
-  ports=3000-5000  mode=public (Funnel)  proxy=127.0.0.1:8443  https=443
+  ports=3000-6000  mode=public (Funnel)  proxy=127.0.0.1:8443  https=443
   interval=20s  runtimes=default (node,bun,deno,python,ruby,php,go,java,…)  deregister-after=5 scans  log-requests=true
   host=local (apps see localhost)
 
 ✓ tailscale installed  (1.98.2)
 ✓ tailscale up
 ✓ funnel enabled
-✓ service discovery  (3 service(s) in 3000-5000)
+✓ service discovery  (3 service(s) in 3000-6000)
 Tailscale Funnel (public) → 127.0.0.1:8443 (port 443)
 
 Services:

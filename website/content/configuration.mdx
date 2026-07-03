@@ -26,7 +26,7 @@ flowchart LR
 
 ```json
 {
-  "ports": "3000-5000",
+  "ports": "3000-6000",
   "all": false,
   "runtimes": "",
   "private": false,
@@ -38,13 +38,14 @@ flowchart LR
   "deregisterCycles": 5,
   "forwardHost": false,
   "matchSeparators": true,
+  "docker": false,
   "acceptDns": ""
 }
 ```
 
 | Key | Meaning |
 | --- | --- |
-| `ports` | Port range (`"3000-5000"`) or a single port (`"4000"`) to scan |
+| `ports` | Port range (`"3000-6000"`) or a single port (`"4000"`) to scan |
 | `all` | Include every listener, not just known web runtimes |
 | `runtimes` | Comma-separated allow-list, e.g. `"node,bun,python"` (empty = all known) |
 | `private` | Expose via Tailscale Serve (tailnet-only) instead of Funnel |
@@ -56,6 +57,7 @@ flowchart LR
 | `deregisterCycles` | Consecutive missing scans before a service is removed |
 | `forwardHost` | Forward the public host to apps (`X-Forwarded-Host`/`-Proto`) |
 | `matchSeparators` | Treat `-` and `_` as interchangeable in the path slug, so `/module-api/` and `/module_api/` both route (default on) |
+| `docker` | Also discover Docker containers via the local Docker API (read-only, over `/var/run/docker.sock`) |
 | `acceptDns` | `""` leaves Tailscale DNS alone; `"true"`/`"false"` runs `tailscale set --accept-dns` on start |
 
 ## Host header behavior

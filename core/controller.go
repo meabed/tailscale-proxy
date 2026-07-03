@@ -257,7 +257,7 @@ func (c *Controller) notify() {
 
 func withDefaults(o Options) Options {
 	if o.Ports == "" {
-		o.Ports = "3000-5000"
+		o.Ports = "3000-6000"
 	}
 	if o.Bind == "" {
 		o.Bind = "127.0.0.1"

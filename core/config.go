@@ -9,7 +9,7 @@ import (
 // Config is the persisted tsp configuration. Zero values are NOT the defaults —
 // always start from defaultConfig() and overlay the file on top.
 type Config struct {
-	Ports            string `json:"ports"`            // "3000-5000" or single "4000"
+	Ports            string `json:"ports"`            // "3000-6000" or single "4000"
 	All              bool   `json:"all"`              // include non-web runtimes
 	Runtimes         string `json:"runtimes"`         // CSV, "" = all known
 	Private          bool   `json:"private"`          // Serve (private) instead of Funnel
@@ -28,7 +28,7 @@ type Config struct {
 // defaultConfig returns the built-in defaults.
 func defaultConfig() Config {
 	return Config{
-		Ports: "3000-5000", All: false, Runtimes: "", Private: false,
+		Ports: "3000-6000", All: false, Runtimes: "", Private: false,
 		Bind: "127.0.0.1", Port: 8443, Interval: 20, HTTPSPort: 443,
 		LogRequests: true, DeregisterCycles: 5, ForwardHost: false,
 		MatchSeparators: true,

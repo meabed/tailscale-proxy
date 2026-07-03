@@ -29,7 +29,7 @@ Funnel relay.
 `tsp` only registers listeners whose runtime is a known web runtime (`node`, `bun`,
 `deno`) within the port range. If `tsp list` is empty:
 
-- Make sure your dev server is actually listening in range (default `3000-5000`).
+- Make sure your dev server is actually listening in range (default `3000-6000`).
 - Widen the range: `tsp start --ports 3000-9000` (a single port also works:
   `--ports 4000`).
 - Include non-web processes: `tsp start --all`, or add runtimes:

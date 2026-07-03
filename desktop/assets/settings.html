@@ -114,9 +114,10 @@
   <div class="body">
     <div class="pane active" id="pane-settings">
       <div class="group">Discovery &amp; routing</div>
-      <div class="row"><div class="lab"><div class="name">Ports</div><div class="hint">range "3000-5000" or a single "4000"</div></div><div class="ctl"><input type="text" id="ports" class="num"></div></div>
+      <div class="row"><div class="lab"><div class="name">Ports</div><div class="hint">range "3000-6000" or a single "4000"</div></div><div class="ctl"><input type="text" id="ports" class="num"></div></div>
       <div class="row"><div class="lab"><div class="name">Runtimes</div><div class="hint" id="rt-hint">empty = all known</div></div><div class="ctl"><input type="text" id="runtimes" placeholder="node,bun,python"></div></div>
       <div class="row"><div class="lab"><div class="name">Include all listeners</div><div class="hint">discover non-web processes too</div></div><div class="ctl"><span class="sw" id="all" role="switch" tabindex="0" onclick="tog('all')"></span></div></div>
+      <div class="row"><div class="lab"><div class="name">Docker containers</div><div class="hint">also read the local Docker API (read-only)</div></div><div class="ctl"><span class="sw" id="docker" role="switch" tabindex="0" onclick="tog('docker')"></span></div></div>
       <div class="row"><div class="lab"><div class="name">Bind address</div><div class="hint">0.0.0.0 to reach from containers / LAN</div></div><div class="ctl"><input type="text" id="bind" class="num"></div></div>
       <div class="row"><div class="lab"><div class="name">Proxy port</div></div><div class="ctl"><input type="number" id="port" class="num"></div></div>
       <div class="row"><div class="lab"><div class="name">HTTPS port</div><div class="hint">Funnel allows 443 / 8443 / 10000</div></div><div class="ctl"><select id="httpsPort"><option>443</option><option>8443</option><option>10000</option></select></div></div>
@@ -228,6 +229,7 @@
     $("port").value = c.port; $("httpsPort").value = c.httpsPort; $("interval").value = c.interval;
     $("deregisterCycles").value = c.deregisterCycles; $("acceptDns").value = c.acceptDns || "";
     $("all").classList.toggle("on", !!c.all);
+    $("docker").classList.toggle("on", !!c.docker);
     $("forwardHost").classList.toggle("on", !!c.forwardHost);
     $("matchSeparators").classList.toggle("on", c.matchSeparators !== false);
     $("autostart").classList.toggle("on", !!r.autostart);
@@ -240,8 +242,9 @@
   async function save() {
     const cur = await (await fetch("/api/config", { headers: HDR })).json();
     const cfg = {
-      ports: $("ports").value.trim() || "3000-5000",
+      ports: $("ports").value.trim() || "3000-6000",
       all: $("all").classList.contains("on"),
+      docker: $("docker").classList.contains("on"),
       runtimes: $("runtimes").value.trim(),
       private: cur.config.private,           // preserved from the panel toggle
       bind: $("bind").value.trim() || "127.0.0.1",

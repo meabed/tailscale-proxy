@@ -9,8 +9,8 @@ import (
 
 func TestDefaultConfig(t *testing.T) {
 	cfg := defaultConfig()
-	if cfg.Ports != "3000-5000" {
-		t.Errorf("Ports = %q, want %q", cfg.Ports, "3000-5000")
+	if cfg.Ports != "3000-6000" {
+		t.Errorf("Ports = %q, want %q", cfg.Ports, "3000-6000")
 	}
 	if cfg.Port != 8443 {
 		t.Errorf("Port = %d, want 8443", cfg.Port)

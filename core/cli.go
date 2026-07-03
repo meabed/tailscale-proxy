@@ -52,7 +52,7 @@ Usage:
   tsp start [flags]     (also the default: plain "tsp" runs this)
 
 Flags (defaults come from ~/.tailscale-proxy/config.json if present):
-  --ports <lo-hi|port>   Port range or single port to scan   (default 3000-5000)
+  --ports <lo-hi|port>   Port range or single port to scan   (default 3000-6000)
   --all                  Include all listeners, not just web runtimes
   --runtimes <list>      Comma-separated runtimes to keep (default: all known)
   --private              Expose privately via Tailscale Serve (default: Funnel)
