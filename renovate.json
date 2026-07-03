@@ -2,5 +2,15 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
     "config:recommended"
+  ],
+  "packageRules": [
+    {
+      "description": "Never bump this repo's own platform packages — they are pinned to 0.0.0 and versioned at publish time by npm/build-platform-packages.mjs",
+      "matchPackageNames": [
+        "tailscale-proxy",
+        "tailscale-proxy-**"
+      ],
+      "enabled": false
+    }
   ]
 }
