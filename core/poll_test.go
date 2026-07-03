@@ -14,7 +14,7 @@ func TestPoll_picksUpChanges(t *testing.T) {
 			return nil, nil, nil
 		}
 		return []Service{{Slug: "x", Port: 9, Runtime: "node"}}, nil, nil
-	}, 5)
+	}, 5, true)
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() { poll(ctx, store, 10*time.Millisecond, ""); close(done) }()

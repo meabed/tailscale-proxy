@@ -24,6 +24,7 @@ type Options struct {
 	DeregisterCycles int
 	ForwardHost      bool
 	LogRequests      bool
+	MatchSeparators  bool // match slugs with '-' and '_' interchangeably
 	ProxyOnly        bool // run the proxy only; skip the Serve/Funnel entry
 }
 
@@ -33,7 +34,7 @@ func OptionsFromConfig(c Config) Options {
 		Ports: c.Ports, All: c.All, Runtimes: c.Runtimes, Private: c.Private,
 		Bind: c.Bind, Port: c.Port, Interval: c.Interval, HTTPSPort: c.HTTPSPort,
 		DeregisterCycles: c.DeregisterCycles, ForwardHost: c.ForwardHost,
-		LogRequests: c.LogRequests,
+		LogRequests: c.LogRequests, MatchSeparators: c.MatchSeparators,
 	}
 }
 
@@ -123,7 +124,7 @@ func (c *Controller) Start(o Options) error {
 	mode := modeOf(o.Private)
 	disc := newDiscoverer(runner)
 	dcfg := discoverConfig{rng: rng, all: o.All, runtimes: parseRuntimes(o.Runtimes)}
-	store := NewRouteStore(func() ([]Service, []Duplicate, error) { return disc.Discover(dcfg) }, o.DeregisterCycles)
+	store := NewRouteStore(func() ([]Service, []Duplicate, error) { return disc.Discover(dcfg) }, o.DeregisterCycles, o.MatchSeparators)
 	_, _, _, _ = store.refresh()
 
 	srv := &http.Server{

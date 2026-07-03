@@ -21,6 +21,7 @@ func cmdConfigure(argv []string) int {
 	fs.IntVar(&cfg.DeregisterCycles, "deregister-cycles", cfg.DeregisterCycles, "missing scans before removal")
 	fs.BoolVar(&cfg.LogRequests, "log-requests", cfg.LogRequests, "log each proxied request")
 	fs.BoolVar(&cfg.ForwardHost, "forward-host", cfg.ForwardHost, "forward the public host to apps")
+	fs.BoolVar(&cfg.MatchSeparators, "match-separators", cfg.MatchSeparators, "match slugs with '-' and '_' interchangeably")
 	fs.StringVar(&cfg.AcceptDNS, "accept-dns", cfg.AcceptDNS, "set Tailscale MagicDNS (true|false) on start; empty = leave it alone")
 	if err := fs.Parse(argv); err != nil {
 		if err == flag.ErrHelp {

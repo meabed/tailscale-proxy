@@ -62,7 +62,7 @@ Every `--interval` seconds:
 
 ```mermaid
 flowchart TD
-    R["Request /seg/rest?query"] --> M{"first segment<br/>matches a slug?"}
+    R["Request /seg/rest?query"] --> M{"first segment<br/>matches a slug?<br/>(- / _ interchangeable)"}
     M -->|yes| H["strip segment · Host → localhost:port<br/>set tsp_route cookie"]
     M -->|"no (prefix-less asset/HMR)"| CK{"tsp_route<br/>cookie set?"}
     CK -->|yes| FF["forward full path to the cookie's backend"]
@@ -80,6 +80,11 @@ For `/<segment>/<rest…>?<query>`:
   relayed.
 - **Miss / empty** → `404` listing the registered services.
 - **Dead backend** → `502`.
+
+Slugs are canonically dash-separated. With `--match-separators` (on by default),
+an exact miss is retried with `_` folded to `-`, so `/module_api_foo/` and
+`/module-api-foo/` reach the same server. `--match-separators=false` routes only
+the exact dash form.
 
 ### Cookie route-affinity
 

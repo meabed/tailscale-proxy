@@ -113,6 +113,15 @@ expect and which would corrupt them.
   callbacks, canonical links, sitemaps) get it. Enable per-run or in config
   (`"forwardHost": true`).
 
+### Slug separators (`-` vs `_`)
+
+Slugs are canonically **dash-separated** — `slugify` collapses every run of
+non-`[a-z0-9]` characters to a single `-`, so a registered route never contains
+an underscore. By default (`--match-separators`, on) the proxy folds `_` to `-`
+when an exact segment lookup misses, so `/module_api_foo/` reaches the same
+backend as `/module-api-foo/`. Set `--match-separators=false` (or
+`"matchSeparators": false`) to route only the exact dash form.
+
 ### Cookie route-affinity (so apps render correctly)
 
 Apps assume they live at the site root, so their HTML references absolute paths

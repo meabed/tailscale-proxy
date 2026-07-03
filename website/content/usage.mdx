@@ -44,6 +44,7 @@ Defaults come from your config file (see [Configuration](/configuration)).
 | `--https-port <n>` | `443` | Public/tailnet HTTPS port (Funnel: `443`/`8443`/`10000`) |
 | `--deregister-cycles <n>` | `5` | Missing scans before a gone service is removed |
 | `--forward-host` | off | Forward the public host to apps via `X-Forwarded-Host/Proto` (default: local) |
+| `--match-separators` | on | Route `/a-b/` and `/a_b/` alike; `--match-separators=false` for exact-dash |
 | `--accept-dns <bool>` | unset | Optionally `tailscale set --accept-dns` on start; `false` lets a tailnet host resolve the public funnel name (persists) |
 | `--bg` | off | Run detached (logs → `./tsp.log`) |
 | `--proxy-only` | off | Run the proxy only; print the `tailscale` command |
@@ -76,4 +77,5 @@ tsp --interval 5               # faster pickup of new servers
 tsp --proxy-only               # local proxy only; print the tailscale command
 tsp --bg                       # run detached; logs → ./tsp.log
 tsp --forward-host             # send the public host to apps
+tsp --match-separators=false   # exact-dash routing (default treats - and _ alike)
 ```

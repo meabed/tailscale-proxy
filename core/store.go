@@ -2,6 +2,7 @@ package core
 
 import (
 	"sort"
+	"strings"
 	"sync"
 )
 
@@ -14,11 +15,14 @@ type RouteStore struct {
 	missing          map[string]int // slug → consecutive missing refreshes
 	duplicates       []Duplicate    // latest same-project multi-port info
 	deregisterCycles int
+	matchSeparators  bool // treat '-' and '_' as interchangeable in path slugs
 	discover         func() ([]Service, []Duplicate, error)
 }
 
 // NewRouteStore creates an empty store. deregisterCycles < 1 is clamped to 1.
-func NewRouteStore(discover func() ([]Service, []Duplicate, error), deregisterCycles int) *RouteStore {
+// When matchSeparators is true, lookups treat '-' and '_' as interchangeable so
+// a route registered as "module-api" is also reachable as "module_api".
+func NewRouteStore(discover func() ([]Service, []Duplicate, error), deregisterCycles int, matchSeparators bool) *RouteStore {
 	if deregisterCycles < 1 {
 		deregisterCycles = 1
 	}
@@ -26,15 +30,29 @@ func NewRouteStore(discover func() ([]Service, []Duplicate, error), deregisterCy
 		services:         map[string]Service{},
 		missing:          map[string]int{},
 		deregisterCycles: deregisterCycles,
+		matchSeparators:  matchSeparators,
 		discover:         discover,
 	}
 }
 
+// lookup resolves a path segment to a service port. Slugs are canonically
+// dash-separated (see slugify), so when matchSeparators is on we retry an exact
+// miss with underscores folded to dashes — letting "/module_api/" reach the
+// route registered as "module-api".
 func (s *RouteStore) lookup(slug string) (int, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	svc, ok := s.services[slug]
-	return svc.Port, ok
+	if svc, ok := s.services[slug]; ok {
+		return svc.Port, true
+	}
+	if s.matchSeparators {
+		if norm := strings.ReplaceAll(slug, "_", "-"); norm != slug {
+			if svc, ok := s.services[norm]; ok {
+				return svc.Port, true
+			}
+		}
+	}
+	return 0, false
 }
 
 func (s *RouteStore) snapshot() map[string]Service {

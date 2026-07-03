@@ -56,6 +56,10 @@ service around for a few scans before de-registering (no flapping on restarts), 
 streams SSE / proxies WebSocket upgrades. Zero runtime dependencies — one small Go
 binary.
 
+The path slug is **separator-insensitive** by default: a project routed as
+`/module-api/` is equally reachable at `/module_api/`, so you never have to remember
+whether a name used dashes or underscores (turn off with `--match-separators=false`).
+
 ---
 
 ## Quick start
@@ -158,6 +162,7 @@ Run `tsp start --help` for all flags. Global: `-h/--help`, `-v/--version`.
 | `--https-port <n>` | `443` | Public/tailnet HTTPS port (Funnel: `443`/`8443`/`10000`) |
 | `--deregister-cycles <n>` | `5` | Missing scans before a gone service is removed |
 | `--forward-host` | off | Forward the public host to apps via `X-Forwarded-Host/Proto`. Default presents a **local** request so apps behave exactly like `localhost` |
+| `--match-separators` | on | Treat `-` and `_` as interchangeable in the path slug, so `/module-api/` and `/module_api/` both route. Pass `--match-separators=false` for exact-dash routing |
 | `--accept-dns <bool>` | unset | Optionally `tailscale set --accept-dns=<true\|false>` on start. Unset = leave it alone. `false` lets a tailnet host resolve the **public** funnel name (persists after exit) |
 | `--bg` | off | Run detached (logs → `./tsp.log`) |
 | `--proxy-only` | off | Run the proxy only; print the `tailscale` command |
@@ -189,7 +194,8 @@ use). Flags override config at runtime; the file is the source of defaults.
 {
   "ports": "3000-5000", "all": false, "runtimes": "", "private": false,
   "bind": "127.0.0.1", "port": 8443, "interval": 20, "httpsPort": 443,
-  "logRequests": true, "deregisterCycles": 5, "forwardHost": false, "acceptDns": ""
+  "logRequests": true, "deregisterCycles": 5, "forwardHost": false,
+  "matchSeparators": true, "acceptDns": ""
 }
 ```
 
@@ -254,7 +260,7 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-    R["Request /seg/rest?query"] --> M{"first segment<br/>matches a slug?"}
+    R["Request /seg/rest?query"] --> M{"first segment<br/>matches a slug?<br/>(- / _ interchangeable)"}
     M -->|yes| H["strip segment · Host → localhost:port<br/>set tsp_route cookie"]
     M -->|"no (prefix-less asset/HMR)"| CK{"tsp_route<br/>cookie set?"}
     CK -->|yes| FF["forward full path to the cookie's backend"]

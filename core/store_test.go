@@ -7,8 +7,37 @@ func fixedDiscover(svcs ...Service) func() ([]Service, []Duplicate, error) {
 	return func() ([]Service, []Duplicate, error) { return svcs, nil, nil }
 }
 
+func TestRouteStore_matchSeparators(t *testing.T) {
+	// Canonical slugs are dash-separated; with matchSeparators on, an underscore
+	// form of the same path resolves to the registered dash slug.
+	store := NewRouteStore(fixedDiscover(Service{Slug: "module-api-foo", Port: 7, Runtime: "node"}), 1, true)
+	store.refresh()
+
+	for _, in := range []string{"module-api-foo", "module_api_foo", "module-api_foo"} {
+		if port, ok := store.lookup(in); !ok || port != 7 {
+			t.Errorf("lookup(%q) = (%d, %v), want (7, true)", in, port, ok)
+		}
+	}
+	if _, ok := store.lookup("module.api.foo"); ok {
+		t.Errorf("lookup with dots should not match a dash slug")
+	}
+}
+
+func TestRouteStore_matchSeparatorsOff(t *testing.T) {
+	// With matchSeparators off, only the exact dash slug routes.
+	store := NewRouteStore(fixedDiscover(Service{Slug: "module-api-foo", Port: 7, Runtime: "node"}), 1, false)
+	store.refresh()
+
+	if port, ok := store.lookup("module-api-foo"); !ok || port != 7 {
+		t.Errorf("exact lookup = (%d, %v), want (7, true)", port, ok)
+	}
+	if _, ok := store.lookup("module_api_foo"); ok {
+		t.Errorf("underscore lookup should miss when matchSeparators is off")
+	}
+}
+
 func TestRouteStore_addAndLookup(t *testing.T) {
-	store := NewRouteStore(fixedDiscover(Service{Slug: "a", Port: 1, Runtime: "node"}), 1)
+	store := NewRouteStore(fixedDiscover(Service{Slug: "a", Port: 1, Runtime: "node"}), 1, true)
 
 	added, repointed, removed, err := store.refresh()
 	if err != nil {
@@ -35,7 +64,7 @@ func TestRouteStore_debounceDeregister(t *testing.T) {
 			return nil, nil, nil
 		}
 		return []Service{{Slug: "a", Port: 1, Runtime: "node"}}, nil, nil
-	}, 3)
+	}, 3, true)
 
 	store.refresh() // add a
 	empty = true
@@ -67,7 +96,7 @@ func TestRouteStore_reappearResetsMissing(t *testing.T) {
 			return nil, nil, nil
 		}
 		return []Service{{Slug: "a", Port: 1, Runtime: "node"}}, nil, nil
-	}, 3)
+	}, 3, true)
 
 	store.refresh()                   // add a
 	empty = true                      //
@@ -95,7 +124,7 @@ func TestRouteStore_repointOnPortChange(t *testing.T) {
 	port := 1
 	store := NewRouteStore(func() ([]Service, []Duplicate, error) {
 		return []Service{{Slug: "a", Port: port, Runtime: "node"}}, nil, nil
-	}, 1)
+	}, 1, true)
 
 	store.refresh() // add a@1
 	port = 2
@@ -121,7 +150,7 @@ func TestRouteStore_exposesDuplicates(t *testing.T) {
 	}
 	store := NewRouteStore(func() ([]Service, []Duplicate, error) {
 		return []Service{{Slug: "a", Port: 3087, Runtime: "bun"}}, []Duplicate{dup}, nil
-	}, 1)
+	}, 1, true)
 	store.refresh()
 	got := store.dupes()
 	if len(got) != 1 || got[0].Slug != "a" || len(got[0].Members) != 2 || got[0].Members[1].Slug != "a-4983" {

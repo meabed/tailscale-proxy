@@ -21,6 +21,7 @@ type Config struct {
 	DeregisterCycles int    `json:"deregisterCycles"` // missing scans before removal
 	ForwardHost      bool   `json:"forwardHost"`      // forward the external host to the app
 	AcceptDNS        string `json:"acceptDns"`        // "" = leave Tailscale DNS alone; "true"/"false" = set on start
+	MatchSeparators  bool   `json:"matchSeparators"`  // match slugs with '-' and '_' interchangeably
 }
 
 // defaultConfig returns the built-in defaults.
@@ -29,6 +30,7 @@ func defaultConfig() Config {
 		Ports: "3000-5000", All: false, Runtimes: "", Private: false,
 		Bind: "127.0.0.1", Port: 8443, Interval: 20, HTTPSPort: 443,
 		LogRequests: true, DeregisterCycles: 5, ForwardHost: false,
+		MatchSeparators: true,
 	}
 }
 

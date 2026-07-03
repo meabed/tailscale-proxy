@@ -66,6 +66,9 @@ Flags (defaults come from ~/.tailscale-proxy/config.json if present):
   --proxy-only           Run the proxy only; print the tailscale command
   --forward-host         Forward the public host to apps (X-Forwarded-Host/Proto);
                          default presents a local request (apps behave like localhost)
+  --match-separators     Treat '-' and '_' as interchangeable in the path slug, so
+                         /module-api/ and /module_api/ both route (default on;
+                         pass --match-separators=false for exact-dash routing)
   --accept-dns <bool>    Optionally set Tailscale MagicDNS (true|false) on start;
                          default unset = leave it alone. accept-dns=false lets a
                          tailnet host resolve the public funnel name (persists)
@@ -91,6 +94,7 @@ type startOpts struct {
 	proxyOnly        bool
 	logRequests      bool
 	forwardHost      bool
+	matchSeparators  bool
 	quiet            bool
 	acceptDNS        string
 }
@@ -123,6 +127,7 @@ func cmdStart(argv []string) int {
 	fs.IntVar(&o.deregisterCycles, "deregister-cycles", cfg.DeregisterCycles, "missing scans before removal")
 	fs.BoolVar(&o.logRequests, "log-requests", cfg.LogRequests, "log each proxied request")
 	fs.BoolVar(&o.forwardHost, "forward-host", cfg.ForwardHost, "forward the public host to apps (X-Forwarded-Host/Proto); default presents a local request")
+	fs.BoolVar(&o.matchSeparators, "match-separators", cfg.MatchSeparators, "match slugs with '-' and '_' interchangeably (default on); use --match-separators=false for exact-dash routing")
 	fs.StringVar(&o.acceptDNS, "accept-dns", cfg.AcceptDNS, "optionally set Tailscale MagicDNS (true|false) on start; default unset = leave it alone")
 	fs.BoolVar(&o.quiet, "quiet", false, "disable per-request logging")
 	fs.BoolVar(&o.bg, "bg", false, "run detached in background")
@@ -196,7 +201,7 @@ func cmdStart(argv []string) int {
 
 	// One Discoverer + one store, refreshed on a ticker. The store debounces
 	// de-registration so brief restarts don't flap routes.
-	store := NewRouteStore(func() ([]Service, []Duplicate, error) { return disc.Discover(dcfg) }, o.deregisterCycles)
+	store := NewRouteStore(func() ([]Service, []Duplicate, error) { return disc.Discover(dcfg) }, o.deregisterCycles, o.matchSeparators)
 	if _, _, _, err := store.refresh(); err != nil {
 		log.Printf("warn: initial discovery failed: %v", err)
 	}

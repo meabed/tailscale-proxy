@@ -123,6 +123,7 @@
       <div class="row"><div class="lab"><div class="name">Re-scan interval</div><div class="hint">seconds between discovery scans</div></div><div class="ctl"><input type="number" id="interval" class="num"></div></div>
       <div class="row"><div class="lab"><div class="name">De-register after</div><div class="hint">missing scans before a route is dropped</div></div><div class="ctl"><input type="number" id="deregisterCycles" class="num"></div></div>
       <div class="row"><div class="lab"><div class="name">Forward host</div><div class="hint">send public host via X-Forwarded-Host</div></div><div class="ctl"><span class="sw" id="forwardHost" role="switch" tabindex="0" onclick="tog('forwardHost')"></span></div></div>
+      <div class="row"><div class="lab"><div class="name">Match separators</div><div class="hint">route <code>/a_b/</code> and <code>/a-b/</code> the same</div></div><div class="ctl"><span class="sw" id="matchSeparators" role="switch" tabindex="0" onclick="tog('matchSeparators')"></span></div></div>
       <div class="row"><div class="lab"><div class="name">MagicDNS on start</div><div class="hint">runs <code>tailscale set --accept-dns</code></div></div><div class="ctl"><select id="acceptDns"><option value="">Leave alone</option><option value="false">Disable (false)</option><option value="true">Enable (true)</option></select></div></div>
 
       <div class="group">Application</div>
@@ -228,6 +229,7 @@
     $("deregisterCycles").value = c.deregisterCycles; $("acceptDns").value = c.acceptDns || "";
     $("all").classList.toggle("on", !!c.all);
     $("forwardHost").classList.toggle("on", !!c.forwardHost);
+    $("matchSeparators").classList.toggle("on", c.matchSeparators !== false);
     $("autostart").classList.toggle("on", !!r.autostart);
     $("hideDock").classList.toggle("on", !!r.hideDock);
     $("name").textContent = r.name || "Tailscale Proxy";
@@ -249,6 +251,7 @@
       logRequests: cur.config.logRequests,
       deregisterCycles: +$("deregisterCycles").value || 5,
       forwardHost: $("forwardHost").classList.contains("on"),
+      matchSeparators: $("matchSeparators").classList.contains("on"),
       acceptDns: $("acceptDns").value,
     };
     await post("/api/config", cfg);

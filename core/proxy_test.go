@@ -18,7 +18,7 @@ import (
 
 // storeWith builds a RouteStore whose discovery returns fixed services.
 func storeWith(svcs ...Service) *RouteStore {
-	s := NewRouteStore(func() ([]Service, []Duplicate, error) { return svcs, nil, nil }, 5)
+	s := NewRouteStore(func() ([]Service, []Duplicate, error) { return svcs, nil, nil }, 5, true)
 	s.refresh()
 	return s
 }
@@ -70,6 +70,29 @@ func TestHandler_routesAndStripsPrefix(t *testing.T) {
 	}
 	if got := rec.Result().Header.Get("X-Echo-Host"); got == "" {
 		t.Error("backend Host header empty; expected rewrite to 127.0.0.1:port")
+	}
+}
+
+func TestHandler_underscoreAliasRoutes(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Echo-Path", r.URL.Path)
+		io.WriteString(w, "ok")
+	}))
+	defer backend.Close()
+
+	port := mustPort(t, backend.URL)
+	// Registered under the canonical dash slug; the underscore form must reach it.
+	store := storeWith(Service{Slug: "module-api-foo", Port: port, Runtime: "node"})
+
+	h := newHandler(store, false, false)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("GET", "/module_api_foo/bar?x=1", nil))
+
+	if rec.Code != 200 {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	if got := rec.Result().Header.Get("X-Echo-Path"); got != "/bar" {
+		t.Errorf("backend path = %q, want /bar (prefix stripped)", got)
 	}
 }
 

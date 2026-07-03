@@ -155,6 +155,7 @@ tsp --interval 5               # re-scan every 5s (faster pickup of new servers)
 tsp --proxy-only               # run the proxy only; print the tailscale command
 tsp --bg                       # run detached; logs → ./tsp.log
 tsp --forward-host             # send the public host to apps (X-Forwarded-Host/Proto)
+tsp --match-separators=false   # exact-dash routing (default treats - and _ alike)
 tsp --quiet                    # no per-request logs
 ```
 

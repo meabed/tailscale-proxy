@@ -89,6 +89,9 @@ Tests are `*_test.go` beside each file in `core/`. See [docs/TESTING.md](docs/TE
   `127.0.0.1:<port>`; rewrite `Host: localhost:<port>`; cookie route-affinity
   (`tsp_route`) routes prefix-less asset/HMR requests; SSE streamed, WebSocket
   upgrades proxied.
+- **Slug matching:** slugs are canonically dash-separated (`slugify`). With
+  `--match-separators` (default on), `RouteStore.lookup` retries an exact miss
+  with `_`→`-`, so `/module_api/` reaches the `module-api` route. Off = exact-dash.
 - **De-registration is debounced** by `deregisterCycles` so brief restarts don't
   flap routes.
 - Default presents a **local** request to apps (`X-Forwarded-*`, not PROXY

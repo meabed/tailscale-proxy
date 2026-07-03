@@ -37,6 +37,7 @@ flowchart LR
   "logRequests": true,
   "deregisterCycles": 5,
   "forwardHost": false,
+  "matchSeparators": true,
   "acceptDns": ""
 }
 ```
@@ -54,6 +55,7 @@ flowchart LR
 | `logRequests` | Log each proxied request |
 | `deregisterCycles` | Consecutive missing scans before a service is removed |
 | `forwardHost` | Forward the public host to apps (`X-Forwarded-Host`/`-Proto`) |
+| `matchSeparators` | Treat `-` and `_` as interchangeable in the path slug, so `/module-api/` and `/module_api/` both route (default on) |
 | `acceptDns` | `""` leaves Tailscale DNS alone; `"true"`/`"false"` runs `tailscale set --accept-dns` on start |
 
 ## Host header behavior
@@ -64,3 +66,10 @@ behaves exactly like it does on `localhost` (CORS, cookies, host-allowlists all
 match). Set `forwardHost: true` (or `--forward-host`) to surface the public host
 via `X-Forwarded-Host` + `X-Forwarded-Proto: https` for apps that need the public
 URL (OAuth callbacks, canonical links).
+
+## Slug separators
+
+Slugs are canonically dash-separated. With `matchSeparators` on (the default),
+`tsp` folds `_` to `-` when an exact route lookup misses, so `/module_api_foo/`
+and `/module-api-foo/` reach the same dev server. Set `matchSeparators: false`
+(or `--match-separators=false`) to route only the exact dash form.
