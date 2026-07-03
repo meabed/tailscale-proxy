@@ -14,8 +14,8 @@ func TestRouteStore_matchSeparators(t *testing.T) {
 	store.refresh()
 
 	for _, in := range []string{"module-api-foo", "module_api_foo", "module-api_foo"} {
-		if port, ok := store.lookup(in); !ok || port != 7 {
-			t.Errorf("lookup(%q) = (%d, %v), want (7, true)", in, port, ok)
+		if svc, ok := store.lookup(in); !ok || svc.Port != 7 {
+			t.Errorf("lookup(%q) = (%+v, %v), want port 7 and true", in, svc, ok)
 		}
 	}
 	if _, ok := store.lookup("module.api.foo"); ok {
@@ -28,8 +28,8 @@ func TestRouteStore_matchSeparatorsOff(t *testing.T) {
 	store := NewRouteStore(fixedDiscover(Service{Slug: "module-api-foo", Port: 7, Runtime: "node"}), 1, false)
 	store.refresh()
 
-	if port, ok := store.lookup("module-api-foo"); !ok || port != 7 {
-		t.Errorf("exact lookup = (%d, %v), want (7, true)", port, ok)
+	if svc, ok := store.lookup("module-api-foo"); !ok || svc.Port != 7 {
+		t.Errorf("exact lookup = (%+v, %v), want port 7 and true", svc, ok)
 	}
 	if _, ok := store.lookup("module_api_foo"); ok {
 		t.Errorf("underscore lookup should miss when matchSeparators is off")
@@ -49,11 +49,30 @@ func TestRouteStore_addAndLookup(t *testing.T) {
 	if len(repointed) != 0 || len(removed) != 0 {
 		t.Errorf("expected no repointed/removed, got %v %v", repointed, removed)
 	}
-	if port, ok := store.lookup("a"); !ok || port != 1 {
-		t.Errorf("lookup(a) = (%d, %v), want (1, true)", port, ok)
+	if svc, ok := store.lookup("a"); !ok || svc.Port != 1 {
+		t.Errorf("lookup(a) = (%+v, %v), want port 1 and true", svc, ok)
 	}
 	if store.snapshot()["a"].Runtime != "node" {
 		t.Errorf("snapshot[a].Runtime wrong")
+	}
+}
+
+func TestRouteStore_repointsWhenHostChanges(t *testing.T) {
+	stage := 0
+	store := NewRouteStore(func() ([]Service, []Duplicate, error) {
+		stage++
+		if stage == 1 {
+			return []Service{{Slug: "a", Host: "127.0.0.1", Port: 3000}}, nil, nil
+		}
+		return []Service{{Slug: "a", Host: "172.17.0.2", Port: 3000}}, nil, nil
+	}, 1, true)
+
+	if added, repointed, _, _ := store.refresh(); len(added) != 1 || len(repointed) != 0 {
+		t.Fatalf("initial refresh added/repointed = %v/%v", added, repointed)
+	}
+	_, repointed, _, _ := store.refresh()
+	if len(repointed) != 1 || repointed[0].Host != "172.17.0.2" {
+		t.Fatalf("host change should repoint, got %+v", repointed)
 	}
 }
 

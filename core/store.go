@@ -35,24 +35,24 @@ func NewRouteStore(discover func() ([]Service, []Duplicate, error), deregisterCy
 	}
 }
 
-// lookup resolves a path segment to a service port. Slugs are canonically
+// lookup resolves a path segment to a service. Slugs are canonically
 // dash-separated (see slugify), so when matchSeparators is on we retry an exact
 // miss with underscores folded to dashes — letting "/module_api/" reach the
 // route registered as "module-api".
-func (s *RouteStore) lookup(slug string) (int, bool) {
+func (s *RouteStore) lookup(slug string) (Service, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if svc, ok := s.services[slug]; ok {
-		return svc.Port, true
+		return svc, true
 	}
 	if s.matchSeparators {
 		if norm := strings.ReplaceAll(slug, "_", "-"); norm != slug {
 			if svc, ok := s.services[norm]; ok {
-				return svc.Port, true
+				return svc, true
 			}
 		}
 	}
-	return 0, false
+	return Service{}, false
 }
 
 func (s *RouteStore) snapshot() map[string]Service {
@@ -95,7 +95,7 @@ func (s *RouteStore) refresh() (added, repointed []Service, removed []string, er
 		switch {
 		case !ok:
 			added = append(added, svc)
-		case prev.Port != svc.Port:
+		case prev.Port != svc.Port || prev.Host != svc.Host:
 			repointed = append(repointed, svc)
 		}
 		s.services[slug] = svc // register or update

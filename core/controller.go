@@ -25,6 +25,7 @@ type Options struct {
 	ForwardHost      bool
 	LogRequests      bool
 	MatchSeparators  bool // match slugs with '-' and '_' interchangeably
+	Docker           bool // also query the Docker API for containers
 	ProxyOnly        bool // run the proxy only; skip the Serve/Funnel entry
 }
 
@@ -34,7 +35,7 @@ func OptionsFromConfig(c Config) Options {
 		Ports: c.Ports, All: c.All, Runtimes: c.Runtimes, Private: c.Private,
 		Bind: c.Bind, Port: c.Port, Interval: c.Interval, HTTPSPort: c.HTTPSPort,
 		DeregisterCycles: c.DeregisterCycles, ForwardHost: c.ForwardHost,
-		LogRequests: c.LogRequests, MatchSeparators: c.MatchSeparators,
+		LogRequests: c.LogRequests, MatchSeparators: c.MatchSeparators, Docker: c.Docker,
 	}
 }
 
@@ -123,7 +124,7 @@ func (c *Controller) Start(o Options) error {
 
 	mode := modeOf(o.Private)
 	disc := newDiscoverer(runner)
-	dcfg := discoverConfig{rng: rng, all: o.All, runtimes: parseRuntimes(o.Runtimes)}
+	dcfg := discoverConfig{rng: rng, all: o.All, runtimes: parseRuntimes(o.Runtimes), docker: o.Docker}
 	store := NewRouteStore(func() ([]Service, []Duplicate, error) { return disc.Discover(dcfg) }, o.DeregisterCycles, o.MatchSeparators)
 	_, _, _, _ = store.refresh()
 
@@ -343,6 +344,6 @@ func Doctor(o Options) []Check {
 		rng = PortRange{Lo: 3000, Hi: 5000}
 	}
 	r := execRunner{}
-	dcfg := discoverConfig{rng: rng, all: o.All, runtimes: parseRuntimes(o.Runtimes)}
+	dcfg := discoverConfig{rng: rng, all: o.All, runtimes: parseRuntimes(o.Runtimes), docker: o.Docker}
 	return runDoctor(r, newDiscoverer(r), dcfg, modeOf(o.Private))
 }

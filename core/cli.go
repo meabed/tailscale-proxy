@@ -74,6 +74,7 @@ Flags (defaults come from ~/.tailscale-proxy/config.json if present):
                          tailnet host resolve the public funnel name (persists)
   --log-requests         Log each proxied request             (default on)
   --quiet                Disable per-request logging
+  --docker               Also query Docker API for containers (default off)
   -h, --help             Show this help
 
 Press Ctrl-C to stop — the Serve/Funnel entry is reset automatically on exit.
@@ -97,6 +98,7 @@ type startOpts struct {
 	matchSeparators  bool
 	quiet            bool
 	acceptDNS        string
+	docker           bool
 }
 
 // modeOf returns the exposure mode for the private flag.
@@ -130,6 +132,7 @@ func cmdStart(argv []string) int {
 	fs.BoolVar(&o.matchSeparators, "match-separators", cfg.MatchSeparators, "match slugs with '-' and '_' interchangeably (default on); use --match-separators=false for exact-dash routing")
 	fs.StringVar(&o.acceptDNS, "accept-dns", cfg.AcceptDNS, "optionally set Tailscale MagicDNS (true|false) on start; default unset = leave it alone")
 	fs.BoolVar(&o.quiet, "quiet", false, "disable per-request logging")
+	fs.BoolVar(&o.docker, "docker", cfg.Docker, "also query Docker API for containers (default off)")
 	fs.BoolVar(&o.bg, "bg", false, "run detached in background")
 	var fg bool
 	fs.BoolVar(&fg, "fg", false, "run in foreground (default)")
@@ -191,7 +194,7 @@ func cmdStart(argv []string) int {
 		fmt.Printf("set tailscale accept-dns=%s (persists after exit; revert with: tailscale set --accept-dns=%s)\n", o.acceptDNS, revert)
 	}
 
-	dcfg := discoverConfig{rng: rng, all: o.all, runtimes: parseRuntimes(o.runtimesRaw)}
+	dcfg := discoverConfig{rng: rng, all: o.all, runtimes: parseRuntimes(o.runtimesRaw), docker: o.docker}
 	disc := newDiscoverer(runner)
 
 	if !printChecks(runDoctor(runner, disc, dcfg, mode)) && !o.proxyOnly {

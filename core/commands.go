@@ -22,6 +22,7 @@ func cmdConfigure(argv []string) int {
 	fs.BoolVar(&cfg.LogRequests, "log-requests", cfg.LogRequests, "log each proxied request")
 	fs.BoolVar(&cfg.ForwardHost, "forward-host", cfg.ForwardHost, "forward the public host to apps")
 	fs.BoolVar(&cfg.MatchSeparators, "match-separators", cfg.MatchSeparators, "match slugs with '-' and '_' interchangeably")
+	fs.BoolVar(&cfg.Docker, "docker", cfg.Docker, "also query Docker API for containers")
 	fs.StringVar(&cfg.AcceptDNS, "accept-dns", cfg.AcceptDNS, "set Tailscale MagicDNS (true|false) on start; empty = leave it alone")
 	if err := fs.Parse(argv); err != nil {
 		if err == flag.ErrHelp {
@@ -95,10 +96,11 @@ func queryConfig(argv []string) (Mode, discoverConfig, int) {
 	runtimesRaw := fs.String("runtimes", cfg.Runtimes, "comma-separated runtimes")
 	private := fs.Bool("private", cfg.Private, "private (Serve) mode")
 	httpsPort := fs.Int("https-port", cfg.HTTPSPort, "public/tailnet HTTPS port")
+	docker := fs.Bool("docker", cfg.Docker, "also query Docker API for containers")
 	_ = fs.Parse(argv)
 	rng, err := parsePortRange(*portsRaw)
 	if err != nil {
 		rng = PortRange{Lo: 3000, Hi: 5000}
 	}
-	return modeOf(*private), discoverConfig{rng: rng, all: *all, runtimes: parseRuntimes(*runtimesRaw)}, *httpsPort
+	return modeOf(*private), discoverConfig{rng: rng, all: *all, runtimes: parseRuntimes(*runtimesRaw), docker: *docker}, *httpsPort
 }

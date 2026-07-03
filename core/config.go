@@ -22,6 +22,7 @@ type Config struct {
 	ForwardHost      bool   `json:"forwardHost"`      // forward the external host to the app
 	AcceptDNS        string `json:"acceptDns"`        // "" = leave Tailscale DNS alone; "true"/"false" = set on start
 	MatchSeparators  bool   `json:"matchSeparators"`  // match slugs with '-' and '_' interchangeably
+	Docker           bool   `json:"docker"`           // also query Docker API for containers
 }
 
 // defaultConfig returns the built-in defaults.
