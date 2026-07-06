@@ -95,7 +95,7 @@ jobs:
           merge-multiple: true
       - run: ls -la dist
       - name: Create GitHub release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           # Rolling tag → permanent download URLs (releases/download/desktop-latest/<asset>)
           # that don't collide with the CLI's own `releases/latest`.
