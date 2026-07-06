@@ -26,8 +26,10 @@ Funnel relay.
 
 ## No services found
 
-`tsp` only registers listeners whose runtime is a known web runtime (`node`, `bun`,
-`deno`) within the port range. If `tsp list` is empty:
+`tsp start` does **not** exit when the range is empty — it keeps the proxy running
+and watches, registering routes as dev servers come up. `tsp` only registers
+listeners whose runtime is a known web runtime (`node`, `bun`, `deno`) within the
+port range. If `tsp list` is empty:
 
 - Make sure your dev server is actually listening in range (default `3000-6000`).
 - Widen the range: `tsp start --ports 3000-9000` (a single port also works:

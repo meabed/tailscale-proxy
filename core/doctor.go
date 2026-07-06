@@ -89,15 +89,16 @@ func runDoctor(r Runner, disc *Discoverer, cfg discoverConfig, mode Mode) []Chec
 			Fix: "Ensure `lsof` is installed (macOS has it; Linux: `apt install lsof` / `dnf install lsof`)",
 		})
 	} else {
+		// Zero services is not a failure: the proxy polls on a ticker and picks up
+		// dev servers as they start. Keep preflight passing and surface an advisory
+		// so the user isn't blocked from just leaving tsp running and watching.
 		detail := fmt.Sprintf("%d service(s) in %d-%d", len(svcs), cfg.rng.Lo, cfg.rng.Hi)
-		fix := ""
-		ok := true
+		note := ""
 		if len(svcs) == 0 {
-			ok = false
-			detail = fmt.Sprintf("no services found in %d-%d", cfg.rng.Lo, cfg.rng.Hi)
-			fix = "Start a dev server in range, widen --ports, or pass --all to include non-web processes"
+			detail = fmt.Sprintf("none yet in %d-%d — watching, routes appear as servers start", cfg.rng.Lo, cfg.rng.Hi)
+			note = "Start a dev server in range, widen --ports, or pass --all to include non-web processes"
 		}
-		checks = append(checks, Check{Name: "service discovery", OK: ok, Detail: detail, Fix: fix})
+		checks = append(checks, Check{Name: "service discovery", OK: true, Detail: detail, Note: note})
 	}
 
 	return checks

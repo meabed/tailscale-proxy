@@ -14,6 +14,7 @@ node_modules/
 
 # desktop app build artifacts
 desktop/tsp-app
+desktop/desktop
 desktop/build/bin/
 desktop/dmgroot/
 desktop/*.app/

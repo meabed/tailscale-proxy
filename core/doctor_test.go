@@ -90,6 +90,24 @@ func TestDoctor_noMagicDNSAdvisoryWhenAcceptDNSOff(t *testing.T) {
 	}
 }
 
+func TestDoctor_noServicesPassesAsAdvisory(t *testing.T) {
+	r := scriptRunner{responses: map[string][3]string{
+		"tailscale version":                 {"1.98.2", "", ""},
+		"tailscale status":                  {"100.1.1.1 node user macOS -", "", ""},
+		"tailscale funnel status":           {"Funnel on", "", ""},
+		"lsof -nP -iTCP -sTCP:LISTEN -Fpcn": {"", "", ""},
+	}}
+	disc := newDiscoverer(r)
+	cfg := discoverConfig{rng: PortRange{3000, 5000}}
+	c := findCheck(t, runDoctor(r, disc, cfg, ModeFunnel), "service discovery")
+	if !c.OK {
+		t.Fatal("zero services must not fail preflight — the proxy watches for them")
+	}
+	if c.Note == "" {
+		t.Fatal("zero services should surface an advisory note")
+	}
+}
+
 func findCheck(t *testing.T, checks []Check, name string) Check {
 	t.Helper()
 	for _, c := range checks {
