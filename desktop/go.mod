@@ -4,7 +4,7 @@ go 1.25.0
 
 require (
 	github.com/meabed/tailscale-proxy v1.6.0
-	github.com/wailsapp/wails/v3 v3.0.0-alpha2.114
+	github.com/wailsapp/wails/v3 v3.0.0-alpha2.117
 )
 
 require (
