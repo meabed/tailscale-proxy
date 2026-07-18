@@ -144,7 +144,7 @@ jobs:
         # when a real release attempt ran (gate enabled). Each step self-skips
         # without its webhook secret.
         if: ${{ !cancelled() && steps.gate.outputs.enabled == 'true' && env.HAS_SLACK_WEBHOOK_URL == 'true' }}
-        uses: slackapi/slack-github-action@v3.0.3
+        uses: slackapi/slack-github-action@v4.0.0
         with:
           webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
           webhook-type: incoming-webhook
