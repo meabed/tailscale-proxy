@@ -68,10 +68,10 @@
     "@semantic-release/github": "^12.0.9",
     "@semantic-release/npm": "^13.1.5",
     "@semantic-release/release-notes-generator": "^14.1.1",
-    "conventional-changelog-conventionalcommits": "^10.2.1",
+    "conventional-changelog-conventionalcommits": "^10.4.0",
     "husky": "^9.1.7",
-    "lint-staged": "^17.0.8",
-    "semantic-release": "^25.0.5"
+    "lint-staged": "^17.5.1",
+    "semantic-release": "^25.0.9"
   },
   "optionalDependencies": {
     "tailscale-proxy-darwin-arm64": "0.0.0",
@@ -81,7 +81,7 @@
     "tailscale-proxy-win32-x64": "0.0.0",
     "tailscale-proxy-win32-arm64": "0.0.0"
   },
-  "packageManager": "bun@1.3.14",
+  "packageManager": "bun@1.4.2",
   "engines": {
     "node": ">= 18.0"
   },

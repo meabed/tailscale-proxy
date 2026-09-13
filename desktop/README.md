@@ -39,7 +39,7 @@ the HTML) blocks other local processes/browsers from driving it.
 
 ## Run it (dev)
 
-Requires Go 1.25+ and a C toolchain (Xcode CLT on macOS; WebKitGTK + libgtk dev
+Requires Go 1.26+ and a C toolchain (Xcode CLT on macOS; WebKitGTK + libgtk dev
 packages on Linux). From this directory:
 
 ```bash

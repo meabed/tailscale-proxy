@@ -39,7 +39,7 @@ The status-aware emoji uses GitHub's `A && B || C` expression idiom (operator `&
 ```yaml
 - name: Notify Slack
   if: ${{ !cancelled() && env.HAS_SLACK_WEBHOOK_URL == 'true' }}
-  uses: slackapi/slack-github-action@v3.0.3
+  uses: slackapi/slack-github-action@v4.0.0
   with:
     webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
     webhook-type: incoming-webhook
