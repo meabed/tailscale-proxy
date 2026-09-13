@@ -21,7 +21,7 @@
     "@types/node": "26.5.1",
     "@types/react": "^19.3.0",
     "pagefind": "^1.5.2",
-    "typescript": "^6.0.3"
+    "typescript": "^7.0.0"
   },
   "overrides": {
     "@xmldom/xmldom": "^0.9.12"
