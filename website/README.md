@@ -7,10 +7,15 @@
 
 ```bash
 cd website
-npm install            # or: bun install / pnpm install
-npm run dev            # http://localhost:3000
-npm run build          # production build (+ pagefind search index)
+bun install
+bun run dev            # http://localhost:3000
+bun run typecheck
+bun run build          # production build (+ pagefind search index)
 ```
+
+Type checks use TypeScript 7's `tsc`, including during `next build`. Bun applies
+the patch in `patches/`, which defers Twoslash initialization until a code block
+requests it. This avoids [Nextra's startup error](https://github.com/shuding/nextra/issues/5046).
 
 ## Deploy to Vercel
 

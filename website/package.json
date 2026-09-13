@@ -5,6 +5,7 @@
   "description": "Documentation site for tailscale-proxy (Nextra + Next.js, deployed on Vercel).",
   "scripts": {
     "dev": "next dev",
+    "typecheck": "next typegen && tsc --noEmit",
     "build": "next build",
     "export": "next build",
     "start": "next start",
@@ -21,9 +22,12 @@
     "@types/node": "26.5.1",
     "@types/react": "^19.3.0",
     "pagefind": "^1.5.2",
-    "typescript": "^6.0.3"
+    "typescript": "^7.0.2"
   },
   "overrides": {
     "@xmldom/xmldom": "^0.9.12"
+  },
+  "patchedDependencies": {
+    "@shikijs/twoslash@3.23.0": "patches/@shikijs%2Ftwoslash@3.23.0.patch"
   }
 }
