@@ -1,9 +1,3 @@
-import nextra from "nextra";
-
-const withNextra = nextra({
-  defaultShowCopyCode: true,
-});
-
-export default withNextra({
+export default {
   reactStrictMode: true,
-});
+};

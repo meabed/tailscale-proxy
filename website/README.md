@@ -13,9 +13,9 @@ bun run typecheck
 bun run build          # production build (+ pagefind search index)
 ```
 
-Type checks use TypeScript 7's `tsc`, including during `next build`. Bun applies
-the patch in `patches/`, which defers Twoslash initialization until a code block
-requests it. This avoids [Nextra's startup error](https://github.com/shuding/nextra/issues/5046).
+Type checks use TypeScript 7's `tsc`, including during `next build`. Pages are
+statically generated from `content/*.mdx` using Nextra's public
+[`compileMdx` and `evaluate` APIs](https://nextra.site/docs/advanced/remote).
 
 ## Deploy to Vercel
 
@@ -25,5 +25,5 @@ requests it. This avoids [Nextra's startup error](https://github.com/shuding/nex
    output handled automatically.
 4. Deploy. Pushes to `master` redeploy automatically.
 
-> Edit a page: change the matching file in `content/` and the nav in
-> `content/_meta.ts`.
+> Edit a page: change the matching file in `content/`. Add navigation links in
+> `app/nav.tsx`.

@@ -1,2 +1,0 @@
-# Blank context lines in generated patches begin with a space.
-*.patch whitespace=-blank-at-eol

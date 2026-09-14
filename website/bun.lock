@@ -5,6 +5,7 @@
     "": {
       "name": "tailscale-proxy-website",
       "dependencies": {
+        "@theguild/remark-mermaid": "^0.3.0",
         "next": "^16.3.5",
         "nextra": "^4.6.1",
         "nextra-theme-docs": "^4.6.1",
@@ -18,9 +19,6 @@
         "typescript": "^7.0.2",
       },
     },
-  },
-  "patchedDependencies": {
-    "@shikijs/twoslash@3.23.0": "patches/@shikijs%2Ftwoslash@3.23.0.patch",
   },
   "overrides": {
     "@xmldom/xmldom": "^0.9.12",
