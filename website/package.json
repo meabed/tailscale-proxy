@@ -20,7 +20,7 @@
     "react-dom": "^19.3.0"
   },
   "devDependencies": {
-    "@types/node": "26.5.1",
+    "@types/node": "26.6.0",
     "@types/react": "^19.3.0",
     "pagefind": "^1.5.2",
     "typescript": "^7.0.2"
