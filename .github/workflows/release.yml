@@ -76,7 +76,7 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         if: steps.gate.outputs.enabled == 'true'
         with:
-          bun-version: "1.4.2"
+          bun-version: "1.4.3"
 
       - name: Install goreleaser
         if: steps.gate.outputs.enabled == 'true'
