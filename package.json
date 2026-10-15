@@ -1,6 +1,6 @@
 {
   "name": "tailscale-proxy",
-  "version": "0.0.0",
+  "version": "1.7.0",
   "description": "Discover local dev servers by port and expose them through one Tailscale Serve/Funnel entry, routed by project name.",
   "keywords": [
     "tailscale",
@@ -74,12 +74,12 @@
     "semantic-release": "^25.0.9"
   },
   "optionalDependencies": {
-    "tailscale-proxy-darwin-arm64": "0.0.0",
-    "tailscale-proxy-darwin-x64": "0.0.0",
-    "tailscale-proxy-linux-x64": "0.0.0",
-    "tailscale-proxy-linux-arm64": "0.0.0",
-    "tailscale-proxy-win32-x64": "0.0.0",
-    "tailscale-proxy-win32-arm64": "0.0.0"
+    "tailscale-proxy-darwin-arm64": "1.7.0",
+    "tailscale-proxy-darwin-x64": "1.7.0",
+    "tailscale-proxy-linux-x64": "1.7.0",
+    "tailscale-proxy-linux-arm64": "1.7.0",
+    "tailscale-proxy-win32-x64": "1.7.0",
+    "tailscale-proxy-win32-arm64": "1.7.0"
   },
   "packageManager": "bun@1.4.3",
   "engines": {
