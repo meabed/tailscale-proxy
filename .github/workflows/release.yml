@@ -70,7 +70,7 @@ jobs:
       - uses: actions/setup-node@v7
         if: steps.gate.outputs.enabled == 'true'
         with:
-          node-version: "24"
+          node-version: "26"
           registry-url: "https://registry.npmjs.org"
 
       - uses: oven-sh/setup-bun@v2
