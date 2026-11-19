@@ -16,12 +16,12 @@
         "semantic-release": "^25.0.9",
       },
       "optionalDependencies": {
-        "tailscale-proxy-darwin-arm64": "0.0.0",
-        "tailscale-proxy-darwin-x64": "0.0.0",
-        "tailscale-proxy-linux-arm64": "0.0.0",
-        "tailscale-proxy-linux-x64": "0.0.0",
-        "tailscale-proxy-win32-arm64": "0.0.0",
-        "tailscale-proxy-win32-x64": "0.0.0",
+        "tailscale-proxy-darwin-arm64": "1.7.0",
+        "tailscale-proxy-darwin-x64": "1.7.0",
+        "tailscale-proxy-linux-arm64": "1.7.0",
+        "tailscale-proxy-linux-x64": "1.7.0",
+        "tailscale-proxy-win32-arm64": "1.7.0",
+        "tailscale-proxy-win32-x64": "1.7.0",
       },
     },
   },
@@ -461,6 +461,18 @@
     "supports-hyperlinks": ["supports-hyperlinks@3.2.0", "", { "dependencies": { "has-flag": "^4.0.0", "supports-color": "^7.0.0" } }, "sha512-zFObLMyZeEwzAoKCyu1B91U79K2t7ApXuQfo8OuxwXLDgcKxuwM+YvcbIhm6QWqz7mHUH1TVytR1PwVVjEuMig=="],
 
     "tagged-tag": ["tagged-tag@1.0.0", "", {}, "sha512-yEFYrVhod+hdNyx7g5Bnkkb0G6si8HJurOoOEgC8B/O0uXLHlaey/65KRv6cuWBNhBgHKAROVpc7QyYqE5gFng=="],
+
+    "tailscale-proxy-darwin-arm64": ["tailscale-proxy-darwin-arm64@1.7.0", "", { "os": "darwin", "cpu": "arm64" }, "sha512-9ZgWUHc/YZ/PZ5zHUNbI7dgQXgw9wLqzMiXE4siUaeEtSp5WH8W/1/DmocCTPC7K83dAwIq170GMAkuLs43AGA=="],
+
+    "tailscale-proxy-darwin-x64": ["tailscale-proxy-darwin-x64@1.7.0", "", { "os": "darwin", "cpu": "x64" }, "sha512-FXwb/odYoRm82Mk+/aLtSqycfO0fmr213krCP8jHv3fFqoATwN5MNr8aBZOO9XLx7bczz9aWhV/DEYn1KZgpIw=="],
+
+    "tailscale-proxy-linux-arm64": ["tailscale-proxy-linux-arm64@1.7.0", "", { "os": "linux", "cpu": "arm64" }, "sha512-aGzaC6rkF5N6W22pf84TDOZeqBxAPxvgUKr0Wy8G7qirdp15wxy9qCsXhYtu7R8PSwtXfg85fmZYCpO2hs993g=="],
+
+    "tailscale-proxy-linux-x64": ["tailscale-proxy-linux-x64@1.7.0", "", { "os": "linux", "cpu": "x64" }, "sha512-lmqIdao6vAbqX7E0QNF0IIw7z/iohZLK4lCYB4PJ8tYU1mObpjX//GpAyb6BwJ/mFSCWJ6MgtXKwxTNQjI82TA=="],
+
+    "tailscale-proxy-win32-arm64": ["tailscale-proxy-win32-arm64@1.7.0", "", { "os": "win32", "cpu": "arm64" }, "sha512-n6W4nnIZyyyzuVhXv5cXKDANmP+Pa4Ou0QiJ4MMzewGzUfdiuOUckycMp6YE4qzBVFrxe++PkA+7SXAykNt1JA=="],
+
+    "tailscale-proxy-win32-x64": ["tailscale-proxy-win32-x64@1.7.0", "", { "os": "win32", "cpu": "x64" }, "sha512-p/EfP7Hj2h6wXE5AzCgUizLFgsE7RGABZMg65vIwnI9fy7RSeYJjdqCkYDJwO4SE87ZpbIhjmV5Fakuty3gSJw=="],
 
     "temp-dir": ["temp-dir@3.0.0", "", {}, "sha512-nHc6S/bwIilKHNRgK/3jlhDoIHcp45YgyiwcAk46Tr0LfEqGBVpmiAyuiuxeVE44m3mXnEeVhaipLOEWmH+Njw=="],
 
