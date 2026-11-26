@@ -95,13 +95,13 @@ func shell(script string) []string {
 }
 
 func TestRunChild_exitCodes(t *testing.T) {
-	if code := runChild(shell("exit 0"), os.Environ(), nil); code != 0 {
+	if code := runChild(shell("exit 0"), os.Environ()); code != 0 {
 		t.Errorf("exit 0 → %d", code)
 	}
-	if code := runChild(shell("exit 3"), os.Environ(), nil); code != 3 {
+	if code := runChild(shell("exit 3"), os.Environ()); code != 3 {
 		t.Errorf("exit 3 → %d", code)
 	}
-	if code := runChild([]string{filepath.Join(t.TempDir(), "missing")}, os.Environ(), nil); code != 127 {
+	if code := runChild([]string{filepath.Join(t.TempDir(), "missing")}, os.Environ()); code != 127 {
 		t.Errorf("missing command → %d, want 127", code)
 	}
 }

@@ -70,6 +70,16 @@ func running(t *testing.T, reg *localRegistry, rt LocalRoute) (stop func()) {
 	return release
 }
 
+// liveRoute finds name among the registry's live routes.
+func liveRoute(reg *localRegistry, name string) (LocalRoute, bool) {
+	for _, rt := range reg.list() {
+		if rt.Name == name {
+			return rt, true
+		}
+	}
+	return LocalRoute{}, false
+}
+
 func TestRegistry_claimIsExclusive(t *testing.T) {
 	reg := testRegistry(t)
 	release, ok, err := reg.claim("api")
@@ -98,14 +108,14 @@ func TestRegistry_addGetListRemove(t *testing.T) {
 	if len(got) != 2 || got[0].Name != "a" || got[1].Name != "b" {
 		t.Fatalf("list() = %+v, want a then b", got)
 	}
-	if rt, ok := reg.get("a"); !ok || rt.Port != 4001 || rt.Dir != "/a" {
+	if rt, ok := liveRoute(reg, "a"); !ok || rt.Port != 4001 || rt.Dir != "/a" {
 		t.Errorf("get(a) = %+v, %v", rt, ok)
 	}
 	reg.remove("a")
-	if _, ok := reg.get("a"); ok {
+	if _, ok := liveRoute(reg, "a"); ok {
 		t.Error("get(a) found a removed route")
 	}
-	if _, ok := reg.get("missing"); ok {
+	if _, ok := liveRoute(reg, "missing"); ok {
 		t.Error("get(missing) found a route")
 	}
 }
@@ -114,7 +124,7 @@ func TestRegistry_addReplacesAtomically(t *testing.T) {
 	reg := testRegistry(t)
 	running(t, reg, LocalRoute{Name: "a", Port: 4001, PID: 1})
 	_ = reg.add(LocalRoute{Name: "a", Port: 4009, PID: 2})
-	if rt, _ := reg.get("a"); rt.Port != 4009 || rt.PID != 2 {
+	if rt, _ := liveRoute(reg, "a"); rt.Port != 4009 || rt.PID != 2 {
 		t.Errorf("get(a) = %+v, want the second write", rt)
 	}
 	entries, _ := os.ReadDir(reg.dir)
@@ -141,7 +151,7 @@ func TestRegistry_deadRunsAreDropped(t *testing.T) {
 			t.Errorf("%s.json was not removed", name)
 		}
 	}
-	if _, ok := reg.get("dead"); ok {
+	if _, ok := liveRoute(reg, "dead"); ok {
 		t.Error("get(dead) = true")
 	}
 	if _, ok, _ := reg.claim("dead"); !ok {
@@ -196,7 +206,7 @@ func TestRegistry_readRejectsInvalid(t *testing.T) {
 		"badjs":  `{`,
 	} {
 		_ = os.WriteFile(reg.file(name), []byte(body), 0o644)
-		if _, ok := reg.read(reg.file(name)); ok {
+		if _, ok := reg.read(name); ok {
 			t.Errorf("read(%s) accepted %s", name, body)
 		}
 	}
@@ -259,6 +269,23 @@ func TestRegistry_forget(t *testing.T) {
 	if _, ok := reg.lookup("a"); ok {
 		t.Fatal("lookup(a) still served a forgotten route")
 	}
+}
+
+func TestWaitLock(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "x.lock")
+	held, _, _ := tryLock(path)
+	if _, ok, err := waitLock(path, 150*time.Millisecond); ok || err != nil {
+		t.Fatalf("waitLock on a held lock = %v, %v", ok, err)
+	}
+	go func() {
+		time.Sleep(150 * time.Millisecond)
+		held()
+	}()
+	release, ok, err := waitLock(path, 5*time.Second)
+	if !ok || err != nil {
+		t.Fatalf("waitLock after release = %v, %v", ok, err)
+	}
+	release()
 }
 
 func TestPickPort(t *testing.T) {

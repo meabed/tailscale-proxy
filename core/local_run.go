@@ -139,7 +139,7 @@ func cmdRun(argv []string) int {
 		return 2
 	}
 	if os.Getenv("TSP") == "0" {
-		return runChild(spec.argv, os.Environ(), nil)
+		return runChild(spec.argv, os.Environ())
 	}
 	dir, err := stateDir()
 	if err != nil {
@@ -153,7 +153,7 @@ func cmdRun(argv []string) int {
 		return 1
 	}
 	if !ok {
-		prev, _ := reg.read(reg.file(spec.name))
+		prev, _ := reg.read(spec.name)
 		if !*force {
 			fmt.Fprintf(os.Stderr, "tsp run: %s already runs (pid %d, %s, port %d). Stop it, or take it over with: tsp run --force\n", LocalRoute{Name: spec.name}.URL(), prev.PID, prev.Dir, prev.Port)
 			return 1
@@ -187,10 +187,10 @@ func cmdRun(argv []string) int {
 	fmt.Fprintf(os.Stderr, "tsp: %s → 127.0.0.1:%d\n", rt.URL(), port)
 	if st, ok := runningProxy(dir); !ok {
 		fmt.Fprintf(os.Stderr, "tsp: ⚠ the local HTTPS proxy is not running, so %s will not answer: tsp service install (once)\n", rt.URL())
-	} else if st.Version != Version && Version != "dev" {
+	} else if st.outdated() {
 		fmt.Fprintf(os.Stderr, "tsp: the local proxy runs tsp %s (this is %s): tsp service install updates it\n", st.Version, Version)
 	}
-	return runChild(spec.argv, runEnv(os.Environ(), port, caPath, os.Getenv), nil)
+	return runChild(spec.argv, runEnv(os.Environ(), port, caPath, os.Getenv))
 }
 
 // takeOver asks the run that holds name (prev) to stop, then claims the name as
@@ -201,24 +201,18 @@ func takeOver(reg *localRegistry, name string, prev LocalRoute) (release func(),
 	if prev.PID > 0 {
 		_ = stopProcess(prev.PID)
 	}
-	for i := 0; i < 50; i++ {
-		if release, ok, err := reg.claim(name); err == nil && ok {
-			return release, true
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	return nil, false
+	release, ok, err := waitLock(reg.lock(name), 5*time.Second)
+	return release, err == nil && ok
 }
 
 // interruptGrace is how long tsp waits after a SIGINT before passing it on.
-var interruptGrace = 2 * time.Second
+const interruptGrace = 2 * time.Second
 
 // runChild runs argv with env and stdio attached and returns its exit code.
 // SIGTERM and SIGHUP are passed on. Ctrl-C in the terminal already reaches the
 // app (same process group), so a SIGINT is passed on only if the app is still
 // running after interruptGrace (it was sent to tsp alone, e.g. kill -INT).
-// started (tests) is called with the child once it runs.
-func runChild(argv []string, env []string, started func(*exec.Cmd)) int {
+func runChild(argv []string, env []string) int {
 	cmd := exec.Command(argv[0], argv[1:]...)
 	cmd.Env, cmd.Stdin, cmd.Stdout, cmd.Stderr = env, os.Stdin, os.Stdout, os.Stderr
 	sigs := make(chan os.Signal, 4)
@@ -227,9 +221,6 @@ func runChild(argv []string, env []string, started func(*exec.Cmd)) int {
 	if err := cmd.Start(); err != nil {
 		fmt.Fprintf(os.Stderr, "tsp run: starting %s: %v\n", argv[0], err)
 		return 127
-	}
-	if started != nil {
-		started(cmd)
 	}
 	done := make(chan error, 1)
 	go func() { done <- cmd.Wait() }()
@@ -251,16 +242,14 @@ func runChild(argv []string, env []string, started func(*exec.Cmd)) int {
 			pass(os.Interrupt)
 		case err := <-done:
 			var exit *exec.ExitError
-			if errors.As(err, &exit) {
-				if code := exit.ExitCode(); code >= 0 {
-					return code
-				}
-				return 1 // ended by a signal
+			switch {
+			case err == nil:
+				return 0
+			case errors.As(err, &exit) && exit.ExitCode() >= 0:
+				return exit.ExitCode()
+			default:
+				return 1 // ended by a signal, or Wait failed
 			}
-			if err != nil {
-				return 1
-			}
-			return 0
 		}
 	}
 }

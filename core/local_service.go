@@ -1,6 +1,7 @@
 package core
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -46,13 +47,9 @@ type serviceSpec struct {
 	home     string
 }
 
-func (s serviceSystem) proxyArgs(sp serviceSpec) []string {
-	return []string{s.binPath, "proxy", "--uid", strconv.Itoa(sp.uid), "--gid", strconv.Itoa(sp.gid), "--home", sp.home}
-}
-
 // unit renders the launchd plist or systemd unit.
 func (s serviceSystem) unit(sp serviceSpec) string {
-	args := s.proxyArgs(sp)
+	args := []string{s.binPath, "proxy", "--uid", strconv.Itoa(sp.uid), "--gid", strconv.Itoa(sp.gid), "--home", sp.home}
 	if s.kind == "systemd" {
 		quoted := make([]string, len(args))
 		for i, a := range args {
@@ -187,40 +184,38 @@ Run "tsp trust" once as well, so browsers trust its certificates.
 }
 
 func cmdService(argv []string) int {
-	if len(argv) == 0 || argv[0] == "-h" || argv[0] == "--help" {
+	if len(argv) == 0 {
 		serviceUsage()
-		if len(argv) == 0 {
-			return 2
-		}
-		return 0
+		return 2
 	}
+	s, supported := platformService()
 	switch argv[0] {
-	case "install", "uninstall", "status":
+	case "-h", "--help":
+		serviceUsage()
+		return 0
+	case "status":
+		return cmdServiceStatus(s, supported)
+	case "install", "uninstall":
 	default:
 		serviceUsage()
 		return 2
 	}
-	s, ok := platformService()
-	if !ok && argv[0] != "status" {
+	if !supported {
 		fmt.Fprintln(os.Stderr, "tsp service supports macOS (launchd) and Linux (systemd); elsewhere run `tsp proxy` yourself")
 		return 1
 	}
-	switch argv[0] {
-	case "install":
+	if argv[0] == "install" {
 		return cmdServiceInstall(s, argv[1:])
-	case "uninstall":
-		if code, done := elevate(argv); done {
-			return code
-		}
-		if err := s.uninstall(serviceRunner); err != nil {
-			fmt.Fprintln(os.Stderr, "tsp service uninstall:", err)
-			return 1
-		}
-		fmt.Println("✓ local HTTPS proxy removed (the CA stays in ~/.tailscale-proxy/ca; tsp trust added it to the OS trust store)")
-		return 0
-	default: // status
-		return cmdServiceStatus(s, ok)
 	}
+	if code, done := elevate(argv); done {
+		return code
+	}
+	if err := s.uninstall(serviceRunner); err != nil {
+		fmt.Fprintln(os.Stderr, "tsp service uninstall:", err)
+		return 1
+	}
+	fmt.Println("✓ local HTTPS proxy removed (the CA stays in ~/.tailscale-proxy/ca; tsp trust added it to the OS trust store)")
+	return 0
 }
 
 func cmdServiceInstall(s serviceSystem, argv []string) int {
@@ -298,7 +293,8 @@ func elevate(args []string) (code int, done bool) {
 	}
 	fmt.Fprintln(os.Stderr, "tsp: this needs root (port 443 and the boot service): sudo", strings.Join(full[1:], " "))
 	if err := interactive(append([]string{"sudo"}, full...)); err != nil {
-		if exit, ok := err.(*exec.ExitError); ok {
+		var exit *exec.ExitError
+		if errors.As(err, &exit) {
 			return exit.ExitCode(), true
 		}
 		fmt.Fprintln(os.Stderr, "sudo:", err)
@@ -337,7 +333,7 @@ func cmdServiceStatus(s serviceSystem, supported bool) int {
 	}
 	st, running := runningProxy(dir)
 	line(running, fmt.Sprintf("proxy running (tsp %s, pid %d, port %d)", st.Version, st.PID, st.Port), "tsp service install (or `tsp proxy` in a terminal)")
-	if running && st.Version != Version && Version != "dev" {
+	if running && st.outdated() {
 		fmt.Printf("  ! the proxy runs tsp %s, this is %s: tsp service install updates it\n", st.Version, Version)
 	}
 	ca, err := loadCA(caFiles(dir))

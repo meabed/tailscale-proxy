@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"syscall"
 	"testing"
 	"time"
 )
@@ -63,15 +62,11 @@ func TestDropPrivileges_needsRoot(t *testing.T) {
 }
 
 func TestRunChild_forwardsTerm(t *testing.T) {
-	// SIGTERM to tsp reaches the app; the app's exit code comes back.
+	// The app sends SIGTERM to tsp (its parent) once its trap is set: tsp passes it
+	// on, and the app's exit code comes back.
 	done := make(chan int, 1)
 	go func() {
-		done <- runChild([]string{"sh", "-c", "trap 'exit 7' TERM; while :; do sleep 0.05; done"}, os.Environ(), func(c *exec.Cmd) {
-			go func() {
-				time.Sleep(200 * time.Millisecond)
-				_ = syscall.Kill(os.Getpid(), syscall.SIGTERM)
-			}()
-		})
+		done <- runChild([]string{"sh", "-c", "trap 'exit 7' TERM; kill -TERM $PPID; while :; do sleep 0.05; done"}, os.Environ())
 	}()
 	select {
 	case code := <-done:
@@ -84,7 +79,7 @@ func TestRunChild_forwardsTerm(t *testing.T) {
 }
 
 func TestRunChild_signalExit(t *testing.T) {
-	code := runChild([]string{"sh", "-c", "kill -9 $$"}, os.Environ(), nil)
+	code := runChild([]string{"sh", "-c", "kill -9 $$"}, os.Environ())
 	if code != 1 {
 		t.Errorf("killed app → %d, want 1", code)
 	}

@@ -117,7 +117,7 @@ func TestLocalHandler_deadAppIs502AndForgotten(t *testing.T) {
 	if rec.Code != 502 || !strings.Contains(rec.Body.String(), "not answering") {
 		t.Fatalf("got %d %q, want 502", rec.Code, rec.Body.String())
 	}
-	if _, ok := reg.get("gone"); !ok {
+	if _, ok := liveRoute(reg, "gone"); !ok {
 		t.Fatal("a live run's route was dropped on one failed request")
 	}
 	stop() // its run ends

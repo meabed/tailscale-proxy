@@ -7,6 +7,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -65,15 +66,10 @@ func newLocalHandler(reg *localRegistry) http.Handler {
 // lookupWithParents resolves name, else its nearest registered parent:
 // acme.help-chat → help-chat, so one app serves every <tenant>.<name>.localhost.
 func lookupWithParents(reg *localRegistry, name string) (LocalRoute, bool) {
-	for n := name; n != ""; {
+	for n := name; n != ""; _, n, _ = strings.Cut(n, ".") {
 		if rt, ok := reg.lookup(n); ok {
 			return rt, true
 		}
-		i := strings.IndexByte(n, '.')
-		if i < 0 {
-			break
-		}
-		n = n[i+1:]
 	}
 	return LocalRoute{}, false
 }
@@ -103,6 +99,9 @@ type proxyState struct {
 	Version string `json:"version"`
 	Port    int    `json:"port"`
 }
+
+// outdated reports whether the running proxy is another tsp version than this one.
+func (st proxyState) outdated() bool { return st.Version != Version && Version != "dev" }
 
 func proxyStatePath(dir string) string { return filepath.Join(dir, "proxy.json") }
 func proxyLockPath(dir string) string  { return filepath.Join(dir, "proxy.lock") }
@@ -181,7 +180,7 @@ func cmdProxy(argv []string) int {
 		if *port < 1024 && os.Geteuid() != 0 {
 			fmt.Fprintln(os.Stderr, "Ports below 1024 need root: install the boot service with `tsp service install`.")
 		} else {
-			fmt.Fprintln(os.Stderr, "Another proxy holds it (portless? a second tsp proxy?): `lsof -nP -iTCP:443 -sTCP:LISTEN` shows which.")
+			fmt.Fprintln(os.Stderr, "Another proxy holds it (a second tsp proxy?): `lsof -nP -iTCP:443 -sTCP:LISTEN` shows which.")
 		}
 		return 1
 	}
@@ -225,7 +224,7 @@ func serveLocal(ctx context.Context, lns []net.Listener, port int) int {
 	}
 	srv := newServer("", newLocalHandler(newLocalRegistry(filepath.Join(dir, "routes"))))
 	srv.TLSConfig = &tls.Config{GetCertificate: iss.GetCertificate, MinVersion: tls.VersionTLS12}
-	srv.ErrorLog = log.New(discardTLSNoise{}, "", 0)
+	srv.ErrorLog = log.New(io.Discard, "", 0) // per-connection TLS noise: an untrusted CA, a port scan
 
 	state, _ := json.Marshal(proxyState{PID: os.Getpid(), Version: Version, Port: port})
 	if err := writeFileAtomic(proxyStatePath(dir), state, 0o644); err != nil {
@@ -253,9 +252,3 @@ func serveLocal(ctx context.Context, lns []net.Listener, port int) int {
 	_ = srv.Shutdown(shut)
 	return 0
 }
-
-// discardTLSNoise drops the per-connection TLS handshake errors (a browser that
-// does not trust the CA yet, a port scan) that would otherwise fill the log.
-type discardTLSNoise struct{}
-
-func (discardTLSNoise) Write(p []byte) (int, error) { return len(p), nil }

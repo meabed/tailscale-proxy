@@ -107,8 +107,9 @@ func (r *localRegistry) add(rt LocalRoute) error {
 // remove deletes the route; only its owner (the claim holder) calls it.
 func (r *localRegistry) remove(name string) { _ = os.Remove(r.file(name)) }
 
-func (r *localRegistry) read(path string) (LocalRoute, bool) {
-	data, err := os.ReadFile(path)
+// read parses name's route file; ok=false when it is missing or invalid.
+func (r *localRegistry) read(name string) (LocalRoute, bool) {
+	data, err := os.ReadFile(r.file(name))
 	if err != nil {
 		return LocalRoute{}, false
 	}
@@ -135,15 +136,6 @@ func (r *localRegistry) alive(name string) bool {
 	return false
 }
 
-// get returns the live route for name, if any (read from disk, not the cache).
-func (r *localRegistry) get(name string) (LocalRoute, bool) {
-	rt, ok := r.read(r.file(name))
-	if !ok || !r.alive(name) {
-		return LocalRoute{}, false
-	}
-	return rt, true
-}
-
 // list returns the live routes sorted by name, removing dead and unreadable ones.
 func (r *localRegistry) list() []LocalRoute {
 	entries, err := os.ReadDir(r.dir)
@@ -156,12 +148,9 @@ func (r *localRegistry) list() []LocalRoute {
 		if e.IsDir() || !isRoute || validateName(name) != nil {
 			continue
 		}
-		rt, ok := r.read(filepath.Join(r.dir, e.Name()))
-		if !r.alive(name) {
-			continue
-		}
-		if !ok || rt.Name != name {
-			continue // unreadable or mislabelled while its run lives: skip it, never delete another run's file
+		rt, ok := r.read(name)
+		if !r.alive(name) || !ok || rt.Name != name {
+			continue // dead (now removed), or unreadable/mislabelled while its run lives: never delete another run's file
 		}
 		out = append(out, rt)
 	}
@@ -201,6 +190,18 @@ func (r *localRegistry) forget(rt LocalRoute) {
 	r.mu.Lock()
 	r.routes = nil
 	r.mu.Unlock()
+}
+
+// waitLock retries tryLock on path for up to d (ok=false: still held).
+func waitLock(path string, d time.Duration) (release func(), ok bool, err error) {
+	deadline := time.Now().Add(d)
+	for {
+		release, ok, err = tryLock(path)
+		if err != nil || ok || time.Now().After(deadline) {
+			return release, ok, err
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
 }
 
 // pickPort returns a free app port for name: a stable one derived from the name

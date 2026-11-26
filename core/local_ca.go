@@ -51,23 +51,18 @@ func ensureCA(dir string) (*localCA, error) {
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return nil, err
 	}
-	if err := os.MkdirAll(filepath.Dir(certPath), 0o700); err != nil {
+	caDir := filepath.Dir(certPath)
+	if err := os.MkdirAll(caDir, 0o700); err != nil {
 		return nil, err
 	}
-	for i := 0; ; i++ {
-		release, ok, err := tryLock(filepath.Join(filepath.Dir(certPath), "ca.lock"))
-		if err != nil {
-			return nil, err
-		}
-		if ok {
-			defer release()
-			break
-		}
-		if i == 50 {
-			return nil, fmt.Errorf("another tsp is creating the local CA in %s", filepath.Dir(certPath))
-		}
-		time.Sleep(100 * time.Millisecond)
+	release, ok, err := waitLock(filepath.Join(caDir, "ca.lock"), 5*time.Second)
+	if err != nil {
+		return nil, err
 	}
+	if !ok {
+		return nil, fmt.Errorf("another tsp is creating the local CA in %s", caDir)
+	}
+	defer release()
 	if ca, err := loadCA(certPath, keyPath); err == nil {
 		return ca, nil // made by the process that held the lock before us
 	}
