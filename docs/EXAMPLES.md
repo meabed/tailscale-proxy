@@ -96,7 +96,7 @@ tsp                            # discover :3000-6000 and expose publicly
 
 ```
 Using config: /Users/me/.tailscale-proxy/config.json
-  ports=3000-6000  mode=public (Funnel)  proxy=127.0.0.1:8443  https=443
+  ports=3000-6000  mode=public (Funnel)  proxy=127.0.0.1:18443  https=443
   interval=20s  runtimes=default (node,bun,deno,python,ruby,php,go,java,…)  deregister-after=5 scans  log-requests=true
   host=local (apps see localhost)
 
@@ -104,7 +104,7 @@ Using config: /Users/me/.tailscale-proxy/config.json
 ✓ tailscale up
 ✓ funnel enabled
 ✓ service discovery  (3 service(s) in 3000-6000)
-Tailscale Funnel (public) → 127.0.0.1:8443 (port 443)
+Tailscale Funnel (public) → 127.0.0.1:18443 (port 443)
 
 Services:
   https://bigfoot.tail-scale.ts.net/portfolio/  →  127.0.0.1:3000
@@ -150,7 +150,7 @@ tsp update                     # update tsp to the latest release
 
 tsp --ports 4000               # scan a single port
 tsp --ports 8000-8999          # a different range
-tsp --port 9000                # run the local proxy on :9000 (not :8443)
+tsp --port 9000                # run the local proxy on :9000 (not :18443)
 tsp --interval 5               # re-scan every 5s (faster pickup of new servers)
 tsp --proxy-only               # run the proxy only; print the tailscale command
 tsp --bg                       # run detached; logs → ./tsp.log

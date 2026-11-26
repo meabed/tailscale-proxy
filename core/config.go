@@ -3,6 +3,7 @@ package core
 import (
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 )
 
@@ -25,11 +26,40 @@ type Config struct {
 	Docker           bool   `json:"docker"`           // also query Docker API for containers
 }
 
+// defaultLocalPort is the local proxy's port. It is never one of Funnel's public
+// ports (443, 8443, 10000): Tailscale.app's Serve listens on that port on every
+// address, so a local proxy there could not bind it.
+const defaultLocalPort = 18443
+
+// defaultHTTPSPort is the public Serve/Funnel port: 8443 when portless runs on
+// this machine (its HTTPS proxy owns local 443, which a Serve on 443 takes on
+// macOS, and every https://*.localhost hangs), else 443.
+func defaultHTTPSPort() int {
+	if portlessPresent() {
+		return 8443
+	}
+	return 443
+}
+
+// portlessPresent reports whether portless is installed or has state here. A
+// variable so tests can pin it.
+var portlessPresent = func() bool {
+	if _, err := exec.LookPath("portless"); err == nil {
+		return true
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return false
+	}
+	_, err = os.Stat(filepath.Join(home, ".portless"))
+	return err == nil
+}
+
 // defaultConfig returns the built-in defaults.
 func defaultConfig() Config {
 	return Config{
 		Ports: "3000-6000", All: false, Runtimes: "", Private: false,
-		Bind: "127.0.0.1", Port: 8443, Interval: 20, HTTPSPort: 443,
+		Bind: "127.0.0.1", Port: defaultLocalPort, Interval: 20, HTTPSPort: defaultHTTPSPort(),
 		LogRequests: true, DeregisterCycles: 5, ForwardHost: false,
 		MatchSeparators: true,
 	}

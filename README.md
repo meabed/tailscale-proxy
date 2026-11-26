@@ -158,9 +158,9 @@ Run `tsp start --help` for all flags. Global: `-h/--help`, `-v/--version`.
 | `--docker` | off | Also discover **Docker containers** via the local Docker API (read-only, over `/var/run/docker.sock`) |
 | `--private` | off | Expose privately via Tailscale **Serve** (default: **Funnel**) |
 | `--bind <addr>` | `127.0.0.1` | Proxy listen address. Use `0.0.0.0` to reach the proxy from **Docker containers / the LAN** without MagicDNS |
-| `--port <n>` | `8443` | Local proxy HTTP port |
+| `--port <n>` | `18443` | Local proxy HTTP port (never a Funnel port: Tailscale.app's Serve binds that port on every address) |
 | `--interval <sec>` | `20` | Re-scan period |
-| `--https-port <n>` | `443` | Public/tailnet HTTPS port (Funnel: `443`/`8443`/`10000`) |
+| `--https-port <n>` | `443` (`8443` when portless is installed) | Public/tailnet HTTPS port (Funnel: `443`/`8443`/`10000`) |
 | `--deregister-cycles <n>` | `5` | Missing scans before a gone service is removed |
 | `--forward-host` | off | Forward the public host to apps via `X-Forwarded-Host/Proto`. Default presents a **local** request so apps behave exactly like `localhost` |
 | `--match-separators` | on | Treat `-` and `_` as interchangeable in the path slug, so `/module-api/` and `/module_api/` both route. Pass `--match-separators=false` for exact-dash routing |
@@ -175,7 +175,7 @@ then logs each discovered service and any de-registration:
 
 ```
 Using config: /Users/me/.tailscale-proxy/config.json
-  ports=3000-6000  mode=public (Funnel)  proxy=127.0.0.1:8443  https=443
+  ports=3000-6000  mode=public (Funnel)  proxy=127.0.0.1:18443  https=443
   interval=20s  runtimes=default (node,bun,deno,python,ruby,php,go,java,…)  deregister-after=5 scans  log-requests=true
 
 2026/05/31 02:05:48 discovered help-ai-web   node   :4983   ~/work/help-ai/apps/web
@@ -194,7 +194,7 @@ use). Flags override config at runtime; the file is the source of defaults.
 ```json
 {
   "ports": "3000-6000", "all": false, "runtimes": "", "private": false,
-  "bind": "127.0.0.1", "port": 8443, "interval": 20, "httpsPort": 443,
+  "bind": "127.0.0.1", "port": 18443, "interval": 20, "httpsPort": 443,
   "logRequests": true, "deregisterCycles": 5, "forwardHost": false,
   "matchSeparators": true, "docker": false, "acceptDns": ""
 }
@@ -234,7 +234,7 @@ flowchart LR
     subgraph machine["your machine"]
         direction TB
         TS["tailscale funnel | serve<br/>TLS · :443 / 8443 / 10000"]
-        P["tsp proxy<br/>net/http · :8443"]
+        P["tsp proxy<br/>net/http · :18443"]
         SCAN["discovery loop<br/>lsof·ps / netstat·tasklist"]
         D1["127.0.0.1:4983<br/>web · bun"]
         D2["127.0.0.1:3000<br/>api · node"]

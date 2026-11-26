@@ -96,7 +96,7 @@ tsp --bind 0.0.0.0            # proxy now listens on all interfaces
 ```
 ```bash
 # inside the container — routes /<slug>/ to your local dev server:
-curl http://host.docker.internal:8443/<slug>/        # Docker Desktop (mac/win)
+curl http://host.docker.internal:18443/<slug>/        # Docker Desktop (mac/win)
 # Linux: docker run --add-host=host.docker.internal:host-gateway ...
 #        (or use the docker bridge gateway IP, often 172.17.0.1)
 ```
@@ -216,10 +216,27 @@ tailscale serve status   # should print "No serve config"
 
 ## Port already in use
 
-`tsp` listens on `--port` (default `8443`). If something else holds it:
+`tsp` listens on `--port` (default `18443`). If something else holds it:
 `tsp start --port 9000`.
 
 ## Background mode
 
 `tsp start --bg` detaches and logs to `./tsp.log`. Stop it by `kill`-ing the printed
 pid (or `pgrep -f "tsp"`), then `tsp reset` to be sure the Serve/Funnel entry is down.
+
+## `https://*.localhost` hangs while tsp runs (portless on macOS)
+
+Tailscale.app's Serve listens on its public port on **every** address, so a Serve or
+Funnel on `443` takes the port [portless](https://github.com/vercel-labs/portless)'s
+HTTPS proxy needs: every `https://<app>.localhost` hangs. With portless installed,
+tsp defaults to `--https-port 8443` (public URLs become
+`https://<node>.ts.net:8443/<project>/`); a saved config that pins `443` gets a
+warning on start. Fix an existing setup with:
+
+```bash
+tsp reset                          # remove the Serve/Funnel entry on 443
+tsp configure --https-port 8443    # then start tsp again
+```
+
+The local proxy port (`--port`, default `18443`) must never be the public port: tsp
+refuses `--port` equal to `--https-port`.

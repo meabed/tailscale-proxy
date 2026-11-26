@@ -16,7 +16,7 @@ flowchart LR
     subgraph machine["your machine"]
         direction TB
         TS["tailscale funnel | serve<br/>TLS · :443 / 8443 / 10000"]
-        P["tsp proxy<br/>net/http · :8443"]
+        P["tsp proxy<br/>net/http · :18443"]
         SCAN["discovery loop<br/>lsof·ps / netstat·tasklist"]
         D1["127.0.0.1:4983<br/>web · bun"]
         D2["127.0.0.1:3000<br/>api · node"]

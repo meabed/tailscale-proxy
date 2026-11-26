@@ -263,13 +263,13 @@ func withDefaults(o Options) Options {
 		o.Bind = "127.0.0.1"
 	}
 	if o.Port == 0 {
-		o.Port = 8443
+		o.Port = defaultLocalPort
 	}
 	if o.Interval < 1 {
 		o.Interval = 20
 	}
 	if o.HTTPSPort == 0 {
-		o.HTTPSPort = 443
+		o.HTTPSPort = defaultHTTPSPort()
 	}
 	if o.DeregisterCycles < 1 {
 		o.DeregisterCycles = 5

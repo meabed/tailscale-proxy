@@ -7,13 +7,21 @@ import (
 	"testing"
 )
 
+func pinPortless(t *testing.T, present bool) {
+	t.Helper()
+	orig := portlessPresent
+	portlessPresent = func() bool { return present }
+	t.Cleanup(func() { portlessPresent = orig })
+}
+
 func TestDefaultConfig(t *testing.T) {
+	pinPortless(t, false)
 	cfg := defaultConfig()
 	if cfg.Ports != "3000-6000" {
 		t.Errorf("Ports = %q, want %q", cfg.Ports, "3000-6000")
 	}
-	if cfg.Port != 8443 {
-		t.Errorf("Port = %d, want 8443", cfg.Port)
+	if cfg.Port != 18443 {
+		t.Errorf("Port = %d, want 18443", cfg.Port)
 	}
 	if cfg.Interval != 20 {
 		t.Errorf("Interval = %d, want 20", cfg.Interval)
@@ -35,6 +43,13 @@ func TestDefaultConfig(t *testing.T) {
 	}
 	if cfg.Docker {
 		t.Error("Docker = true, want false")
+	}
+}
+
+func TestDefaultConfigWithPortless(t *testing.T) {
+	pinPortless(t, true)
+	if got := defaultConfig().HTTPSPort; got != 8443 {
+		t.Errorf("HTTPSPort with portless = %d, want 8443", got)
 	}
 }
 
