@@ -1,6 +1,7 @@
 package core
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -18,7 +19,7 @@ func TestTrustCommands(t *testing.T) {
 		root, debian bool
 		want         string
 	}{
-		{"darwin", false, false, "security add-trusted-cert -r trustRoot -k /h/Library/Keychains/login.keychain-db /ca.pem"},
+		{"darwin", false, false, "security add-trusted-cert -r trustRoot -k " + filepath.Join("/h", "Library", "Keychains", "login.keychain-db") + " /ca.pem"},
 		{"windows", false, false, "certutil -user -f -addstore Root /ca.pem"},
 		{"linux", false, true, "sudo install -m 0644 /ca.pem /usr/local/share/ca-certificates/tailscale-proxy-ca.crt; sudo update-ca-certificates"},
 		{"linux", true, true, "install -m 0644 /ca.pem /usr/local/share/ca-certificates/tailscale-proxy-ca.crt; update-ca-certificates"},

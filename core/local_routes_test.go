@@ -89,9 +89,11 @@ func TestRegistry_claimIsExclusive(t *testing.T) {
 	if _, ok, _ := reg.claim("api"); ok {
 		t.Fatal("a second claim on a held name succeeded")
 	}
-	if _, ok, _ := reg.claim("other"); !ok {
+	other, ok, _ := reg.claim("other")
+	if !ok {
 		t.Fatal("a claim on another name failed")
 	}
+	other()
 	release()
 	again, ok, _ := reg.claim("api")
 	if !ok {

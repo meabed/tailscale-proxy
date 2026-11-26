@@ -62,7 +62,7 @@ func TestServiceUnit_launchd(t *testing.T) {
 func TestServiceUnit_systemd(t *testing.T) {
 	s, _ := testService(t, "systemd")
 	u := s.unit(serviceSpec{uid: 1000, gid: 1000, home: "/home/me"})
-	want := `ExecStart="` + s.binPath + `" "proxy" "--uid" "1000" "--gid" "1000" "--home" "/home/me"`
+	want := `ExecStart=` + systemdQuote(s.binPath) + ` "proxy" "--uid" "1000" "--gid" "1000" "--home" "/home/me"`
 	if !strings.Contains(u, want) || !strings.Contains(u, "Restart=always") || !strings.Contains(u, "WantedBy=multi-user.target") {
 		t.Errorf("unit:\n%s\nwant %q", u, want)
 	}
@@ -160,6 +160,9 @@ func TestSystemdQuote(t *testing.T) {
 }
 
 func TestServiceInstall_refusesAUserWritablePath(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the boot service (and its root-only check) is macOS/Linux only")
+	}
 	s, src := testService(t, "launchd")
 	checkRootOnlyPath = checkRootOnly // the real check: the temp dir is ours, not root's
 	if err := s.install(&recRunner{}, src, testUser); err == nil || !strings.Contains(err.Error(), "must belong to root") {
