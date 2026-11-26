@@ -13,7 +13,7 @@ GOOS=windows GOARCH=amd64 go build -o /dev/null .   # always cross-check Windows
 gofmt -l . && go vet ./...                     # must be clean
 ```
 
-Tests live in `*_test.go` beside the file they cover (`package main`), one test
+Tests live in `*_test.go` beside the file they cover (`package core`), one test
 file per source file (`doctor_test.go`, `proxy_test.go`, `discover_unix_test.go`, …).
 
 ## Faking external commands
@@ -33,8 +33,8 @@ the real binaries from a test. Two fakes exist:
 - **`recRunner`** + **`pinSystem`** (`local_service_test.go`) — record service commands and
   pin `geteuid`, `interactive` (sudo / trust dialogs) and `serviceRunner`; **`testService`**
   points every service path into a temp dir.
-- **`testRegistry`** (`local_routes_test.go`) — a route registry in a temp dir with a fixed
-  set of live pids; **`isolate`** (`local_run_test.go`) sets `HOME` and the cwd to temp dirs.
+- **`testRegistry`** / **`running`** (`local_routes_test.go`) — a route registry in a temp dir,
+  and a route registered the way `tsp run` does (claim the lock, write the file); **`isolate`** (`local_run_test.go`) sets `HOME` and the cwd to temp dirs.
 
 ## What to cover when adding a feature
 

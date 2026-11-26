@@ -48,26 +48,26 @@ module** under `desktop/` that imports `core` and drives it in-process.
 | `core/dispatch.go` | Subcommand dispatch (bare `tsp` / leading flag → `start`); `Version` |
 | `core/cli.go` | `start`: flags, server lifecycle, signal handling, header |
 | `core/commands.go` | `list` / `status` / `reset` / `configure` + `queryConfig` |
-| `core/controller.go` | **`Controller`** (Start/Stop/Status/OnChange) + exported embedder API (`LoadConfig`, `SaveConfig`, `ConfigPath`, `Doctor`, `OptionsFromConfig`) |
-| `core/config.go` | `Config`, `defaultConfig()` overlay, load/save `~/.tailscale-proxy/config.json` |
+| `core/controller.go` | **`Controller`** (Start/Stop/Status/OnChange), `Options`/`OptionsFromConfig`, `CheckUpdate`, `CheckTailscale` — the embedder API; export only what `desktop/` uses |
+| `core/config.go` | `Config`, `defaultConfig()` overlay, `LoadConfig`/`SaveConfig`/`ConfigPath` (`~/.tailscale-proxy/config.json`), `stateDir`, `writeFileAtomic` (every state file) |
 | `core/discover.go` | `Service`/`Duplicate` model, runtime classification, slug from project root, `buildServices` |
 | `core/discover_unix.go` | `//go:build !windows` — `lsof`/`ps` listeners + parsers |
 | `core/discover_windows.go` | `//go:build windows` — `netstat`/`tasklist` + parsers |
-| `core/store.go` | `RouteStore`: `refresh`, debounced de-registration |
+| `core/store.go` | `routeStore`: `refresh`, debounced de-registration |
 | `core/proxy.go` | `newHandler`: reverse proxy, path routing, cookie affinity, Host rewrite |
 | `core/expose.go` | `Runner` iface, `Mode` (Funnel/Serve), `tailscale serve\|funnel\|set`, `nodeDNSName`, accept-dns |
-| `core/doctor.go` | `runDoctor` + `Check{}` + `printChecks` |
+| `core/doctor.go` | `runDoctor` + `check{}` + `printChecks` |
 | `core/output.go` | Start header, service URLs, duplicate notes |
 | `core/poll.go` | Periodic re-scan loop + logging (CLI) |
 | `core/update.go` | Self-update (brew / npm / standalone) |
-| `core/local_routes.go` | `LocalRoute`, name rules, the per-route file registry (`~/.tailscale-proxy/routes`), stable port pick |
+| `core/local_routes.go` | `localRoute`, name rules, the per-route file registry (`~/.tailscale-proxy/routes`), stable port pick |
 | `core/local_ca.go` | Local CA (name-constrained to `localhost`), per-name leaf issuer with a bounded cache, `caTrusted` |
 | `core/local_proxy.go` | `tsp proxy`: HTTPS on `127.0.0.1`/`[::1]:443`, routes by Host, privilege drop, `proxy.json` |
 | `core/local_run.go` | `tsp run`: package.json `"tsp"` or explicit command, env, registration, signal pass-through |
 | `core/local_service.go` | `tsp service install/uninstall/status` (launchd/systemd), sudo re-run, test seams |
 | `core/local_trust.go` | `tsp trust`: per-OS trust-store commands |
 | `core/service_*.go` / `core/process_*.go` | Build-tagged init-system paths; pid liveness, stop, privilege drop |
-| `core/detach_unix.go` / `core/detach_windows.go` | Build-tagged `--bg` background spawn |
+| `core/detach.go` (+ `detach_unix.go` / `detach_windows.go`) | `--bg` background spawn; the build-tagged files hold only `detachSysProcAttr` |
 | `desktop/` | **Separate module** — Wails v3 tray app over `core.Controller`. See [desktop/README.md](desktop/README.md) |
 
 Tests are `*_test.go` beside each file in `core/`. See [docs/TESTING.md](docs/TESTING.md).
@@ -101,7 +101,7 @@ Tests are `*_test.go` beside each file in `core/`. See [docs/TESTING.md](docs/TE
   (`tsp_route`) routes prefix-less asset/HMR requests; SSE streamed, WebSocket
   upgrades proxied.
 - **Slug matching:** slugs are canonically dash-separated (`slugify`). With
-  `--match-separators` (default on), `RouteStore.lookup` retries an exact miss
+  `--match-separators` (default on), `routeStore.lookup` retries an exact miss
   with `_`→`-`, so `/module_api/` reaches the `module-api` route. Off = exact-dash.
 - **De-registration is debounced** by `deregisterCycles` so brief restarts don't
   flap routes.

@@ -46,7 +46,7 @@ flowchart TD
     A["List listeners in port range (with PID)<br/>mac/linux: lsof -iTCP -sTCP:LISTEN · ps · cwd<br/>windows: netstat -ano · tasklist"] --> B["Classify runtime from exe basename<br/>node·bun·deno·python·ruby·php·go·java·dotnet·elixir·perl·docker"]
     B --> C["Derive slug = nearest project-root folder<br/>(package.json · .git · go.mod · pyproject.toml · …)"]
     C --> D["Resolve duplicates per project folder<br/>lowest port = main · others suffixed by port"]
-    D --> E["RouteStore.refresh<br/>debounced de-register (deregisterCycles)"]
+    D --> E["routeStore.refresh<br/>debounced de-register (deregisterCycles)"]
     E --> F["slug → service map"]
 ```
 
@@ -160,14 +160,14 @@ sequenceDiagram
     U->>Px: listen
     U->>Ts: funnel | serve --bg <port>
     loop every --interval
-        U->>U: discover → RouteStore.refresh (debounced)
+        U->>U: discover → routeStore.refresh (debounced)
     end
     Note over U,Ts: SIGINT / SIGTERM
     U->>Px: drain & shutdown
     U->>Ts: serve | funnel reset (synchronous)
 ```
 
-- A `RouteStore` holds the current `slug → service` map, refreshed by a ticker.
+- A `routeStore` holds the current `slug → service` map, refreshed by a ticker.
 - **De-register debounce:** a service missing from discovery is retained for
   `deregisterCycles` (default 5) consecutive scans before removal — so a dev-server
   restart doesn't drop its route. New services are logged on discovery; removals are
