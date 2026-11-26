@@ -144,8 +144,6 @@ func cmdStart(argv []string) int {
 	fs.BoolVar(&o.quiet, "quiet", false, "disable per-request logging")
 	fs.BoolVar(&o.docker, "docker", cfg.Docker, "also query Docker API for containers (default off)")
 	fs.BoolVar(&o.bg, "bg", false, "run detached in background")
-	var fg bool
-	fs.BoolVar(&fg, "fg", false, "run in foreground (default)")
 	fs.BoolVar(&o.proxyOnly, "proxy-only", false, "proxy only; print tailscale command")
 	if err := fs.Parse(argv); err != nil {
 		if err == flag.ErrHelp {

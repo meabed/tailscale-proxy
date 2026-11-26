@@ -53,7 +53,9 @@ func cmdReset(argv []string) int {
 	cfg, _, _, _ := LoadConfig()
 	fs := flag.NewFlagSet("reset", flag.ContinueOnError)
 	private := fs.Bool("private", cfg.Private, "reset the Serve entry instead of Funnel")
-	_ = fs.Parse(argv)
+	if code, stop := parseFlags(fs, argv); stop {
+		return code
+	}
 	mode := modeOf(*private)
 	if err := exposeReset(execRunner{}, mode); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -64,7 +66,10 @@ func cmdReset(argv []string) int {
 }
 
 func cmdStatus(argv []string) int {
-	mode, dcfg, httpsPort := queryConfig(argv)
+	mode, dcfg, httpsPort, exit := queryConfig(argv)
+	if exit >= 0 {
+		return exit
+	}
 	if out, err := exposeStatus(execRunner{}, mode); err != nil {
 		fmt.Fprintln(os.Stderr, "status:", err)
 	} else {
@@ -74,12 +79,18 @@ func cmdStatus(argv []string) int {
 }
 
 func cmdList(argv []string) int {
-	mode, dcfg, httpsPort := queryConfig(argv)
+	mode, dcfg, httpsPort, exit := queryConfig(argv)
+	if exit >= 0 {
+		return exit
+	}
 	return printDiscovered(dcfg, mode, httpsPort)
 }
 
 func cmdDoctor(argv []string) int {
-	mode, dcfg, _ := queryConfig(argv)
+	mode, dcfg, _, exit := queryConfig(argv)
+	if exit >= 0 {
+		return exit
+	}
 	if printChecks(runDoctor(execRunner{}, newDiscoverer(execRunner{}), dcfg, mode)) {
 		fmt.Println("\nAll checks passed — you're ready to `tsp start`.")
 		return 0
@@ -87,23 +98,40 @@ func cmdDoctor(argv []string) int {
 	return 1
 }
 
+// parseFlags parses argv into fs; stop=true means exit now with code (0 after
+// -h/--help, 2 after a bad flag, whose error the flag package already printed).
+func parseFlags(fs *flag.FlagSet, argv []string) (code int, stop bool) {
+	err := fs.Parse(argv)
+	if err == nil {
+		return 0, false
+	}
+	if err == flag.ErrHelp {
+		return 0, true
+	}
+	return 2, true
+}
+
 // queryConfig parses the shared discovery/mode flags (seeded from saved config)
-// for list/status/doctor, returning the mode, discovery config, and HTTPS port.
-func queryConfig(argv []string) (Mode, discoverConfig, int) {
+// for list/status/doctor. exit >= 0: stop with that code (help, a bad flag or
+// a bad --ports, which is printed).
+func queryConfig(argv []string) (mode Mode, dcfg discoverConfig, httpsPort, exit int) {
 	cfg, _, _, _ := LoadConfig()
 	fs := flag.NewFlagSet("query", flag.ContinueOnError)
 	portsRaw := fs.String("ports", cfg.Ports, "port range or single port")
 	all := fs.Bool("all", cfg.All, "include all listeners")
 	runtimesRaw := fs.String("runtimes", cfg.Runtimes, "comma-separated runtimes")
 	private := fs.Bool("private", cfg.Private, "private (Serve) mode")
-	httpsPort := fs.Int("https-port", cfg.HTTPSPort, "public/tailnet HTTPS port")
+	port := fs.Int("https-port", cfg.HTTPSPort, "public/tailnet HTTPS port")
 	docker := fs.Bool("docker", cfg.Docker, "also query Docker API for containers")
-	_ = fs.Parse(argv)
+	if code, stop := parseFlags(fs, argv); stop {
+		return 0, discoverConfig{}, 0, code
+	}
 	rng, err := parsePortRange(*portsRaw)
 	if err != nil {
-		rng = portRange{Lo: 3000, Hi: 5000}
+		fmt.Fprintln(os.Stderr, err)
+		return 0, discoverConfig{}, 0, 2
 	}
-	return modeOf(*private), discoverConfig{rng: rng, all: *all, runtimes: parseRuntimes(*runtimesRaw), docker: *docker}, *httpsPort
+	return modeOf(*private), discoverConfig{rng: rng, all: *all, runtimes: parseRuntimes(*runtimesRaw), docker: *docker}, *port, -1
 }
 
 // cmdRoutes lists the running local names (`tsp run`), as text or --json.

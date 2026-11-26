@@ -27,7 +27,7 @@ func Run(argv []string) int {
 		return cmdReset(argv[1:])
 	case "doctor":
 		return cmdDoctor(argv[1:])
-	case "configure", "config":
+	case "configure":
 		return cmdConfigure(argv[1:])
 	case "update":
 		return cmdUpdate(argv[1:])
