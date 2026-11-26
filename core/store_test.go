@@ -1,6 +1,9 @@
 package core
 
-import "testing"
+import (
+	"strconv"
+	"testing"
+)
 
 // fixedDiscover returns a discover func yielding the given services (no dups).
 func fixedDiscover(svcs ...Service) func() ([]Service, []Duplicate, error) {
@@ -174,5 +177,32 @@ func TestRouteStore_exposesDuplicates(t *testing.T) {
 	got := store.dupes()
 	if len(got) != 1 || got[0].Slug != "a" || len(got[0].Members) != 2 || got[0].Members[1].Slug != "a-4983" {
 		t.Fatalf("store.dupes() = %+v, want the agent-api project with 2 members", got)
+	}
+}
+
+// BenchmarkRouteStore_refresh measures one steady-state refresh of 50 routes.
+func BenchmarkRouteStore_refresh(b *testing.B) {
+	svcs := make([]Service, 50)
+	for i := range svcs {
+		svcs[i] = Service{Slug: "app-" + strconv.Itoa(i), Port: 3000 + i, Runtime: "node"}
+	}
+	s := NewRouteStore(fixedDiscover(svcs...), 5, true)
+	b.ReportAllocs()
+	for b.Loop() {
+		s.refresh()
+	}
+}
+
+// BenchmarkRouteStore_lookup measures the per-request route lookup.
+func BenchmarkRouteStore_lookup(b *testing.B) {
+	svcs := make([]Service, 50)
+	for i := range svcs {
+		svcs[i] = Service{Slug: "app-" + strconv.Itoa(i), Port: 3000 + i, Runtime: "node"}
+	}
+	s := NewRouteStore(fixedDiscover(svcs...), 5, true)
+	s.refresh()
+	b.ReportAllocs()
+	for b.Loop() {
+		s.lookup("app_42")
 	}
 }

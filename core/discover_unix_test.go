@@ -2,7 +2,14 @@
 
 package core
 
-import "testing"
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"testing"
+)
 
 func TestParseLsofListeners(t *testing.T) {
 	// lsof -nP -iTCP -sTCP:LISTEN -Fpcn  (p=pid, c=command, n=name)
@@ -124,5 +131,66 @@ func TestDockerListenerContainerNamesRemainDistinctProjects(t *testing.T) {
 	}
 	if _, ok := bySlug["model-server"]; !ok {
 		t.Fatalf("missing model-server slug: %+v", svcs)
+	}
+}
+
+// lsofRunner fakes the discovery commands: the listening-socket lsof, the cwd
+// lsof, and ps. It counts calls so tests can assert what a scan spawns.
+type lsofRunner struct {
+	listen, cwd, ps string
+	calls           map[string]int
+}
+
+func (r *lsofRunner) Run(name string, args ...string) (string, string, error) {
+	if r.calls == nil {
+		r.calls = map[string]int{}
+	}
+	key := name
+	if name == "lsof" && strings.Contains(strings.Join(args, " "), "cwd") {
+		key = "lsof-cwd"
+	}
+	r.calls[key]++
+	switch key {
+	case "lsof":
+		return r.listen, "", nil
+	case "lsof-cwd":
+		return r.cwd, "", nil
+	case "ps":
+		return r.ps, "", nil
+	}
+	return "", "unexpected", errString("unexpected " + name)
+}
+
+// fakeDevBox returns a runner describing n node servers, each in its own project.
+func fakeDevBox(t testing.TB, n int) *lsofRunner {
+	root := t.TempDir()
+	var listen, cwd, ps strings.Builder
+	for i := 0; i < n; i++ {
+		pid := 1000 + i
+		dir := filepath.Join(root, "proj-"+strconv.Itoa(i), "apps", "web")
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(root, "proj-"+strconv.Itoa(i), "package.json"), []byte("{}"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		fmt.Fprintf(&listen, "p%d\ncnode\nf20\nn*:%d\nf21\nn[::1]:%d\n", pid, 3000+i, 3000+i)
+		fmt.Fprintf(&cwd, "p%d\nfcwd\nn%s\n", pid, dir)
+		fmt.Fprintf(&ps, "%d /opt/homebrew/bin/node\n", pid)
+	}
+	return &lsofRunner{listen: listen.String(), cwd: cwd.String(), ps: ps.String()}
+}
+
+// BenchmarkDiscover_steadyState measures one re-scan of 20 unchanged servers
+// (the 20s poll), excluding the cost of the spawned commands themselves.
+func BenchmarkDiscover_steadyState(b *testing.B) {
+	d := newDiscoverer(fakeDevBox(b, 20))
+	cfg := discoverConfig{rng: PortRange{3000, 6000}}
+	if _, _, err := d.Discover(cfg); err != nil {
+		b.Fatal(err)
+	}
+	b.ReportAllocs()
+	for b.Loop() {
+		d.Discover(cfg)
 	}
 }

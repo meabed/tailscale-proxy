@@ -326,3 +326,53 @@ func mustPort(t *testing.T, rawURL string) int {
 	}
 	return p
 }
+
+// benchHandler proxies to a tiny upstream through a store of n services, the
+// way a busy dev box looks (many routes, one hot one).
+func benchHandler(b *testing.B, n int) (http.Handler, string) {
+	b.Helper()
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, "ok")
+	}))
+	b.Cleanup(backend.Close)
+	u, _ := url.Parse(backend.URL)
+	port, _ := strconv.Atoi(u.Port())
+	svcs := make([]Service, 0, n)
+	for i := 0; i < n-1; i++ {
+		svcs = append(svcs, Service{Slug: fmt.Sprintf("app-%d", i), Port: 1 + i, Runtime: "node"})
+	}
+	svcs = append(svcs, Service{Slug: "hot", Port: port, Runtime: "node"})
+	return newHandler(storeWith(svcs...), false, false), "/hot/api/items?x=1"
+}
+
+// BenchmarkHandler_proxy measures one routed round trip (routing + reverse proxy
+// + upstream keep-alive pool), run in parallel like concurrent browser tabs.
+func BenchmarkHandler_proxy(b *testing.B) {
+	h, path := benchHandler(b, 50)
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+	client := &http.Client{Transport: &http.Transport{MaxIdleConnsPerHost: 64}}
+	target := srv.URL + path
+	b.ReportAllocs()
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			resp, err := client.Get(target)
+			if err != nil {
+				b.Fatal(err)
+			}
+			io.Copy(io.Discard, resp.Body)
+			resp.Body.Close()
+		}
+	})
+}
+
+// BenchmarkHandler_notFound measures the 404 index path (public scanners hit it).
+func BenchmarkHandler_notFound(b *testing.B) {
+	h, _ := benchHandler(b, 50)
+	req := httptest.NewRequest("GET", "/nope/x", nil)
+	b.ReportAllocs()
+	for b.Loop() {
+		h.ServeHTTP(httptest.NewRecorder(), req)
+	}
+}
