@@ -43,6 +43,7 @@ jobs:
       contents: write # semantic-release pushes tags + GitHub release
       issues: write # release comments on released issues
       pull-requests: write # release comments on released PRs
+      id-token: write # npm trusted publishing (OIDC) and provenance
     steps:
       - name: Check release secrets
         id: gate
