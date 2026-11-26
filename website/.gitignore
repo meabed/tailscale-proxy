@@ -1,6 +1,5 @@
 node_modules/
-.next/
-public/_pagefind/
-next-env.d.ts
-*.tsbuildinfo
-/out/
+# build output: prerendered pages and the Pagefind index (dist/client/pagefind)
+dist/
+.tanstack/
+.vercel

@@ -1,0 +1,27 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "printWidth": 240,
+  "tabWidth": 2,
+  "useTabs": false,
+  "semi": true,
+  "singleQuote": true,
+  "jsxSingleQuote": true,
+  "trailingComma": "all",
+  "arrowParens": "always",
+  "bracketSameLine": false,
+  "bracketSpacing": true,
+  "endOfLine": "lf",
+  "ignorePatterns": ["dist/**", ".output/**", "src/routeTree.gen.ts", "content/**"],
+  "sortImports": {
+    "groups": [["value-builtin", "value-external"], "value-internal", ["value-parent", "value-sibling", "value-index"], "type-import", "unknown"],
+    "internalPattern": ["@/", "~/"],
+    "newlinesBetween": true
+  },
+  "sortTailwindcss": {
+    "functions": ["cn"],
+    "attributes": ["className"]
+  },
+  "sortPackageJson": {
+    "sortScripts": false
+  }
+}

@@ -31,7 +31,7 @@ cross-platform (macOS, Linux, Windows, WSL). Module `github.com/meabed/tailscale
 | Testing approach & helpers | [docs/TESTING.md](docs/TESTING.md) |
 | Release process | [docs/RELEASING.md](docs/RELEASING.md) |
 | User overview | [README.md](README.md) |
-| Published docs site | `website/` → https://tailscaleproxy.vercel.app |
+| Published docs site (TanStack Start, static) | `website/` → https://tailscaleproxy.vercel.app · [website/README.md](website/README.md) |
 
 When a flag or behavior changes, update the relevant doc above **and** the README
 and `website/content/*.mdx` so all three stay in sync.
@@ -137,7 +137,10 @@ Tests are `*_test.go` beside each file in `core/`. See [docs/TESTING.md](docs/TE
 - Desktop app (separate module, needs CGO + system webview):
   `cd desktop && go build -o tsp-app .` (package with `wails3 build`). See
   [desktop/README.md](desktop/README.md).
-- Website: `cd website && bun run build`.
+- Website (`website/`, TanStack Start + MDX, prerendered to static HTML for Vercel): `cd website && bun run build`
+  (all pages + Pagefind index), then `bun run lint` · `bun run format:check` · `bun run typecheck`. Pages are
+  `website/content/*.mdx`; sidebar order and titles are `website/src/lib/pages.ts`. See
+  [website/README.md](website/README.md).
 - **Branching:** work on `master` (the default branch). Pushes to `master`/`main`
   trigger semantic-release. Branch first if asked to commit on the default branch;
   push/commit only when the user asks.

@@ -1,0 +1,7 @@
+@import 'tailwindcss';
+
+/* Color, type and layout tokens (light + dark) and their Tailwind names. */
+@import './styles/theme.css';
+
+/* MDX page body: headings, lists, tables, code, the download buttons. */
+@import './styles/prose.css';

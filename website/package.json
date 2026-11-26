@@ -2,30 +2,47 @@
   "name": "tailscale-proxy-website",
   "version": "0.0.0",
   "private": true,
-  "description": "Documentation site for tailscale-proxy (Nextra + Next.js, deployed on Vercel).",
+  "description": "Documentation site for tailscale-proxy (TanStack Start, prerendered, deployed on Vercel).",
+  "type": "module",
   "scripts": {
-    "dev": "next dev",
-    "typecheck": "next typegen && tsc --noEmit",
-    "build": "next build",
-    "export": "next build",
-    "start": "next start",
-    "postbuild": "pagefind --site .next/server/app --output-path public/_pagefind || true"
+    "build": "bun --bun vite build && pagefind --site dist/client",
+    "dev": "bun --bun vite dev",
+    "format": "bun fmt",
+    "format:check": "bun fmt --check",
+    "lint": "oxlint --type-aware --deny-warnings",
+    "preview": "bun --bun vite preview",
+    "typecheck": "bun check"
   },
   "dependencies": {
+    "@mdx-js/react": "^3.1.1",
+    "@tanstack/react-router": "1.170.46",
+    "@tanstack/react-start": "1.169.7",
     "@theguild/remark-mermaid": "^0.3.0",
-    "next": "^16.4.6",
-    "nextra": "^4.6.1",
-    "nextra-theme-docs": "^4.6.1",
     "react": "^19.3.1",
     "react-dom": "^19.3.1"
   },
   "devDependencies": {
-    "@types/node": "26.6.11",
+    "@mdx-js/rollup": "^3.1.1",
+    "@shikijs/rehype": "^4.6.0",
+    "@tailwindcss/vite": "^4.3.5",
+    "@types/mdx": "^2.0.14",
     "@types/react": "^19.3.3",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.3.0",
+    "bun-types": "^1.4.5",
+    "oxlint": "^1.95.0",
+    "oxlint-tsgolint": "^7.0.2009",
     "pagefind": "^1.6.0",
-    "typescript": "^7.0.2"
+    "rehype-slug": "^6.0.0",
+    "remark-frontmatter": "^5.0.0",
+    "remark-gfm": "^4.0.1",
+    "remark-mdx-frontmatter": "^6.0.0",
+    "tailwindcss": "^4.3.5",
+    "typescript": "^7.0.2",
+    "vite": "8.4.0"
   },
-  "overrides": {
-    "@xmldom/xmldom": "^0.9.12"
-  }
+  "engines": {
+    "bun": ">=1.4.5"
+  },
+  "packageManager": "bun@1.4.5"
 }

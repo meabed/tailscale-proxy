@@ -1,0 +1,225 @@
+/* Element styles for the MDX body (markdown has no class names). In the components layer so utilities on the
+ * components MDX renders (Callout, Tabs, CodeBlock) still win. */
+@layer components {
+  .tsp-content {
+    max-width: var(--measure);
+  }
+
+  .tsp-content h1 {
+    font-size: clamp(2rem, 1.4rem + 2.4vw, 2.7rem);
+    font-weight: 700;
+    line-height: 1.12;
+    letter-spacing: -0.025em;
+    color: var(--fg-strong);
+    margin: 0 0 var(--space-md);
+    overflow-wrap: anywhere;
+  }
+
+  .tsp-content h2 {
+    font-size: 1.45rem;
+    font-weight: 700;
+    letter-spacing: -0.015em;
+    color: var(--fg-strong);
+    margin: var(--space-xl) 0 var(--space-md);
+    padding-top: var(--space-md);
+    border-top: 1px solid var(--border);
+  }
+
+  .tsp-content h3 {
+    font-size: 1.14rem;
+    font-weight: 700;
+    color: var(--fg-strong);
+    margin: var(--space-lg) 0 var(--space-sm);
+  }
+
+  .tsp-content p {
+    margin: var(--space-md) 0;
+  }
+
+  .tsp-content ul,
+  .tsp-content ol {
+    margin: var(--space-md) 0;
+    padding-left: 1.4rem;
+  }
+
+  .tsp-content ul {
+    list-style: disc;
+  }
+
+  .tsp-content ol {
+    list-style: decimal;
+  }
+
+  .tsp-content li {
+    margin: 0.4rem 0;
+  }
+
+  .tsp-content li::marker {
+    color: var(--muted);
+  }
+
+  .tsp-content strong {
+    font-weight: 600;
+    color: var(--fg-strong);
+  }
+
+  .tsp-content code:not(pre code) {
+    font-family: var(--font-mono);
+    font-size: 0.85em;
+    background: var(--code-bg);
+    color: var(--code-fg);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 0.12em 0.4em;
+  }
+
+  .tsp-content pre {
+    background: var(--code-bg) !important;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: var(--space-md);
+    margin: var(--space-md) 0;
+    overflow-x: auto;
+    font-size: 0.855rem;
+    line-height: 1.6;
+    box-shadow: var(--shadow);
+  }
+
+  .tsp-content pre code {
+    font-family: var(--font-mono);
+    background: none;
+  }
+
+  .tsp-content table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: var(--space-lg) 0;
+    font-size: 0.92rem;
+    display: block;
+    overflow-x: auto;
+  }
+
+  .tsp-content th,
+  .tsp-content td {
+    border: 1px solid var(--border);
+    padding: 0.55rem 0.8rem;
+    text-align: left;
+  }
+
+  .tsp-content th {
+    background: var(--paper-2);
+    font-weight: 600;
+    color: var(--fg-strong);
+  }
+
+  .tsp-content blockquote {
+    margin: var(--space-md) 0;
+    padding: 0.4rem 1.1rem;
+    border-left: 2.5px solid var(--accent);
+    color: var(--muted);
+    background: var(--paper-2);
+    border-radius: 0 var(--radius) var(--radius) 0;
+  }
+
+  .tsp-content hr {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: var(--space-xl) 0;
+  }
+
+  /* Download buttons and hero (index + desktop pages). */
+  .dl-hero {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0 0.25rem;
+  }
+
+  .dl-hero img {
+    width: 92px;
+    height: 92px;
+    filter: drop-shadow(0 10px 28px oklch(54% 0.17 256 / 0.35));
+  }
+
+  .dl-hero .dl-tag {
+    color: var(--muted);
+    max-width: 30rem;
+    margin: 0;
+  }
+
+  .dl-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.6rem;
+    margin: var(--space-lg) 0;
+  }
+
+  .dl-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    padding: 0.8rem 1rem;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius);
+    background: var(--paper-2);
+    color: var(--fg-strong);
+    transition:
+      border-color 0.15s var(--ease-out),
+      background-color 0.15s var(--ease-out),
+      transform 0.15s var(--ease-out);
+  }
+
+  .dl-btn:hover {
+    text-decoration: none;
+    border-color: var(--accent);
+    background: var(--paper-3);
+    transform: translateY(-1px);
+  }
+
+  .dl-btn svg {
+    width: 22px;
+    height: 22px;
+    flex: none;
+    color: var(--fg-strong);
+  }
+
+  .dl-btn b {
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+
+  .dl-btn span {
+    display: block;
+    color: var(--muted);
+    font-size: 0.8rem;
+  }
+
+  .dl-shot {
+    width: 100%;
+    max-width: 360px;
+    display: block;
+    margin: var(--space-lg) auto;
+    border-radius: 14px;
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow);
+  }
+
+  @media (max-width: 560px) {
+    .dl-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+}
+
+/* Shiki emits light colors inline and the dark ones as --shiki-dark; switch with the same rule as the tokens. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) .shiki span {
+    color: var(--shiki-dark) !important;
+  }
+}
+
+:root[data-theme='dark'] .shiki span {
+  color: var(--shiki-dark) !important;
+}

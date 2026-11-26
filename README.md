@@ -321,6 +321,17 @@ go build -o tsp .      # build the binary
 goreleaser release --snapshot --clean --skip=publish   # full cross-platform build
 ```
 
+The docs site ([tailscaleproxy.vercel.app](https://tailscaleproxy.vercel.app)) lives in `website/`: a TanStack
+Start app whose pages are `website/content/*.mdx`, prerendered to static HTML.
+
+```bash
+cd website && bun install
+bun run dev            # http://localhost:5173
+bun run build          # prerender every page + search index; bun run preview to serve it
+```
+
+See [website/README.md](website/README.md).
+
 CI builds, vets, and race-tests on Linux/macOS/Windows and cross-compiles all six
 release targets on every push. Releases are tag-driven — see
 [docs/RELEASING.md](docs/RELEASING.md).
