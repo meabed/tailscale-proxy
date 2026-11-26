@@ -332,7 +332,11 @@ func cmdServiceStatus(s serviceSystem, supported bool) int {
 		line(s.installed(), "boot service "+s.unitPath, "tsp service install")
 	}
 	st, running := runningProxy(dir)
-	line(running, fmt.Sprintf("proxy running (tsp %s, pid %d, port %d)", st.Version, st.PID, st.Port), "tsp service install (or `tsp proxy` in a terminal)")
+	proxyLine := "local HTTPS proxy not running"
+	if running {
+		proxyLine = fmt.Sprintf("proxy running (tsp %s, pid %d, port %d)", st.Version, st.PID, st.Port)
+	}
+	line(running, proxyLine, "tsp service install (or `tsp proxy` in a terminal)")
 	if running && st.outdated() {
 		fmt.Printf("  ! the proxy runs tsp %s, this is %s: tsp service install updates it\n", st.Version, Version)
 	}

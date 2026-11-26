@@ -1,6 +1,8 @@
 package core
 
 import (
+	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -189,11 +191,51 @@ func TestCmdService_usage(t *testing.T) {
 	}
 }
 
+// captureStdout returns what f prints to stdout.
+func captureStdout(t *testing.T, f func()) string {
+	t.Helper()
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	orig := os.Stdout
+	os.Stdout = w
+	defer func() { os.Stdout = orig }()
+	out := make(chan string)
+	go func() {
+		data, _ := io.ReadAll(r)
+		out <- string(data)
+	}()
+	f()
+	_ = w.Close()
+	return <-out
+}
+
 func TestCmdServiceStatus_notSetUp(t *testing.T) {
 	isolate(t)
 	s, _ := testService(t, "launchd")
-	if code := cmdServiceStatus(s, true); code != 1 {
+	code := 0
+	out := captureStdout(t, func() { code = cmdServiceStatus(s, true) })
+	if code != 1 {
 		t.Errorf("status with nothing installed = %d, want 1", code)
+	}
+	if !strings.Contains(out, "✗ local HTTPS proxy not running\n    → tsp service install") || strings.Contains(out, "pid 0") {
+		t.Errorf("status output:\n%s", out)
+	}
+}
+
+func TestCmdServiceStatus_proxyRunning(t *testing.T) {
+	home, _ := isolate(t)
+	dir := filepath.Join(home, ".tailscale-proxy")
+	_ = os.MkdirAll(dir, 0o755)
+	data, _ := json.Marshal(proxyState{PID: 42, Version: Version, Port: 443})
+	_ = os.WriteFile(proxyStatePath(dir), data, 0o644)
+	release, _, _ := tryLock(proxyLockPath(dir))
+	defer release()
+	s, _ := testService(t, "launchd")
+	out := captureStdout(t, func() { cmdServiceStatus(s, true) })
+	if !strings.Contains(out, "\n✓ proxy running (tsp "+Version+", pid 42, port 443)\n") {
+		t.Errorf("status output:\n%s", out)
 	}
 }
 
