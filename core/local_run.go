@@ -155,7 +155,7 @@ func cmdRun(argv []string) int {
 	if !ok {
 		prev, _ := reg.read(spec.name)
 		if !*force {
-			fmt.Fprintf(os.Stderr, "tsp run: %s already runs (pid %d, %s, port %d). Stop it, or take it over with: tsp run --force\n", LocalRoute{Name: spec.name}.URL(), prev.PID, prev.Dir, prev.Port)
+			fmt.Fprintf(os.Stderr, "tsp run: %s already runs (pid %d, %s, port %d). Stop it, or take it over with: tsp run --force\n", localRoute{Name: spec.name}.URL(), prev.PID, prev.Dir, prev.Port)
 			return 1
 		}
 		if release, ok = takeOver(reg, spec.name, prev); !ok {
@@ -175,7 +175,7 @@ func cmdRun(argv []string) int {
 		fmt.Fprintln(os.Stderr, "tsp run:", err)
 		return 1
 	}
-	rt := LocalRoute{Name: spec.name, Port: port, PID: os.Getpid(), Dir: cwd}
+	rt := localRoute{Name: spec.name, Port: port, PID: os.Getpid(), Dir: cwd}
 	if err := reg.add(rt); err != nil {
 		fmt.Fprintln(os.Stderr, "tsp run:", err)
 		return 1
@@ -196,8 +196,8 @@ func cmdRun(argv []string) int {
 // takeOver asks the run that holds name (prev) to stop, then claims the name as
 // soon as its lock is free (up to 5s). The pid comes from the holder's own route
 // file and the holder still has the lock, so the signal reaches that run.
-func takeOver(reg *localRegistry, name string, prev LocalRoute) (release func(), ok bool) {
-	fmt.Fprintf(os.Stderr, "tsp: taking %s over from pid %d\n", LocalRoute{Name: name}.URL(), prev.PID)
+func takeOver(reg *localRegistry, name string, prev localRoute) (release func(), ok bool) {
+	fmt.Fprintf(os.Stderr, "tsp: taking %s over from pid %d\n", localRoute{Name: name}.URL(), prev.PID)
 	if prev.PID > 0 {
 		_ = stopProcess(prev.PID)
 	}

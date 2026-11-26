@@ -38,14 +38,14 @@ func newLocalHandler(reg *localRegistry) http.Handler {
 		BufferPool:    copyBuffers,
 		FlushInterval: -1, // SSE, streaming, chunked
 		Rewrite: func(pr *httputil.ProxyRequest) {
-			rt := pr.In.Context().Value(localRouteKey{}).(LocalRoute)
+			rt := pr.In.Context().Value(localRouteKey{}).(localRoute)
 			pr.Out.URL.Scheme = "http"
 			pr.Out.URL.Host = net.JoinHostPort("127.0.0.1", strconv.Itoa(rt.Port))
 			pr.Out.Host = pr.In.Host
 			pr.SetXForwarded() // X-Forwarded-For, -Host (the .localhost name), -Proto https
 		},
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
-			rt := r.Context().Value(localRouteKey{}).(LocalRoute)
+			rt := r.Context().Value(localRouteKey{}).(localRoute)
 			reg.forget(rt)
 			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 			w.WriteHeader(http.StatusBadGateway)
@@ -65,13 +65,13 @@ func newLocalHandler(reg *localRegistry) http.Handler {
 
 // lookupWithParents resolves name, else its nearest registered parent:
 // acme.help-chat → help-chat, so one app serves every <tenant>.<name>.localhost.
-func lookupWithParents(reg *localRegistry, name string) (LocalRoute, bool) {
+func lookupWithParents(reg *localRegistry, name string) (localRoute, bool) {
 	for n := name; n != ""; _, n, _ = strings.Cut(n, ".") {
 		if rt, ok := reg.lookup(n); ok {
 			return rt, true
 		}
 	}
-	return LocalRoute{}, false
+	return localRoute{}, false
 }
 
 // writeLocalIndex answers an unknown name with 404 and the names that are running.

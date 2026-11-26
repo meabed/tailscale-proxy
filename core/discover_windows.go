@@ -12,7 +12,7 @@ import (
 // tasklist. Working directory is not available on Windows. Names are resolved
 // fresh every scan (not cached per PID): Windows reuses PIDs quickly and has no
 // cheap creation-time source to tell a reused PID apart.
-func (d *Discoverer) listeners(rng PortRange) ([]listener, error) {
+func (d *discoverer) listeners(rng portRange) ([]listener, error) {
 	out, stderr, err := d.run.Run("netstat", "-ano", "-p", "TCP")
 	if err != nil {
 		return nil, fmt.Errorf("netstat failed: %v\n%s", err, stderr)
@@ -33,7 +33,7 @@ func (d *Discoverer) listeners(rng PortRange) ([]listener, error) {
 }
 
 // parseNetstat parses `netstat -ano -p TCP`, keeping LISTENING rows in range.
-func parseNetstat(out string, rng PortRange) []listener {
+func parseNetstat(out string, rng portRange) []listener {
 	var res []listener
 	seen := map[string]bool{}
 	for _, line := range strings.Split(out, "\n") {

@@ -9,7 +9,7 @@ import (
 
 func TestPoll_picksUpChanges(t *testing.T) {
 	var stage atomic.Int32
-	store := NewRouteStore(func() ([]Service, []Duplicate, error) {
+	store := newRouteStore(func() ([]Service, []duplicate, error) {
 		if stage.Load() == 0 {
 			return nil, nil, nil
 		}

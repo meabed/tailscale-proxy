@@ -101,3 +101,20 @@ func TestPublicBase(t *testing.T) {
 		t.Errorf("8443: %q", got)
 	}
 }
+
+func TestValidAcceptDNS(t *testing.T) {
+	for v, want := range map[string]bool{"": true, "true": true, "false": true, "yes": false, "1": false} {
+		if got := validAcceptDNS(v); got != want {
+			t.Errorf("validAcceptDNS(%q) = %v, want %v", v, got, want)
+		}
+	}
+}
+
+func TestLoggedIn(t *testing.T) {
+	if !loggedIn(&fakeRunner{stdout: "100.64.0.1 node user macOS -"}) {
+		t.Error("a logged-in status read as logged out")
+	}
+	if loggedIn(&fakeRunner{stdout: "Logged out."}) || loggedIn(&fakeRunner{err: errString("exit 1")}) {
+		t.Error("a logged-out or failing status read as logged in")
+	}
+}

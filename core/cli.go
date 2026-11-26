@@ -120,7 +120,7 @@ func modeOf(private bool) Mode {
 }
 
 func cmdStart(argv []string) int {
-	cfg, cfgPath, existed, cfgErr := loadConfig()
+	cfg, cfgPath, existed, cfgErr := LoadConfig()
 	if cfgErr != nil {
 		fmt.Fprintf(os.Stderr, "warning: reading %s: %v (using defaults)\n", cfgPath, cfgErr)
 	}
@@ -177,7 +177,7 @@ func cmdStart(argv []string) int {
 	if o.bind == "" {
 		o.bind = "127.0.0.1"
 	}
-	if o.acceptDNS != "" && o.acceptDNS != "true" && o.acceptDNS != "false" {
+	if !validAcceptDNS(o.acceptDNS) {
 		fmt.Fprintf(os.Stderr, "invalid --accept-dns %q: use true or false\n", o.acceptDNS)
 		return 2
 	}
@@ -219,9 +219,9 @@ func cmdStart(argv []string) int {
 		return 1
 	}
 
-	// One Discoverer + one store, refreshed on a ticker. The store debounces
+	// One discoverer + one store, refreshed on a ticker. The store debounces
 	// de-registration so brief restarts don't flap routes.
-	store := NewRouteStore(func() ([]Service, []Duplicate, error) { return disc.Discover(dcfg) }, o.deregisterCycles, o.matchSeparators)
+	store := newRouteStore(func() ([]Service, []duplicate, error) { return disc.discover(dcfg) }, o.deregisterCycles, o.matchSeparators)
 	if _, _, _, err := store.refresh(); err != nil {
 		log.Printf("warn: initial discovery failed: %v", err)
 	}

@@ -9,7 +9,7 @@ import (
 // poll refreshes the store on an interval (and once immediately), logging
 // discovered / re-pointed / de-registered services and same-project duplicates.
 // base is the public URL prefix (https://node.ts.net[:port]); "" hides URLs.
-func poll(ctx context.Context, store *RouteStore, interval time.Duration, base string) {
+func poll(ctx context.Context, store *routeStore, interval time.Duration, base string) {
 	var lastDupKey string
 	refresh := func() {
 		added, repointed, removed, err := store.refresh()

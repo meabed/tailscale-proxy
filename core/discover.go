@@ -21,14 +21,14 @@ type Service struct {
 	PID     int
 }
 
-// PortRange is an inclusive TCP port range.
-type PortRange struct{ Lo, Hi int }
+// portRange is an inclusive TCP port range.
+type portRange struct{ Lo, Hi int }
 
-func (r PortRange) contains(p int) bool { return p >= r.Lo && p <= r.Hi }
+func (r portRange) contains(p int) bool { return p >= r.Lo && p <= r.Hi }
 
 // discoverConfig bundles the discovery filters.
 type discoverConfig struct {
-	rng      PortRange
+	rng      portRange
 	all      bool
 	runtimes map[string]bool // nil = all known web runtimes
 	docker   bool            // also query Docker API for containers
@@ -47,10 +47,10 @@ type listener struct {
 	Root   string // project root dir of Cwd (cached per process); "" = resolve from Cwd
 }
 
-// knownRuntimes maps a process's executable basename to a runtime label. These
+// runtimeByExe maps a process's executable basename to a runtime label. These
 // are the runtimes discovered by default; --all includes everything, --runtimes
 // restricts to a subset. Server wrappers (uvicorn, puma, …) map to their language.
-var knownRuntimes = map[string]string{
+var runtimeByExe = map[string]string{
 	// JavaScript / TypeScript
 	"node": "node", "bun": "bun", "deno": "deno",
 	// Python (interpreter + common app servers)
@@ -105,7 +105,7 @@ func runtimeOf(l listener) string {
 func classifyRuntime(comm string) string {
 	base := strings.ToLower(filepath.Base(comm))
 	base = strings.TrimSuffix(base, ".exe")
-	if rt, ok := knownRuntimes[base]; ok {
+	if rt, ok := runtimeByExe[base]; ok {
 		return rt
 	}
 	switch {
@@ -119,11 +119,11 @@ func classifyRuntime(comm string) string {
 	return ""
 }
 
-// knownRuntimeLabels returns the distinct runtime labels, sorted — used in help
-// and the startup banner so the default set is self-documenting.
-func knownRuntimeLabels() []string {
+// KnownRuntimes returns the distinct runtime labels discovery recognizes,
+// sorted (the startup banner, the desktop settings).
+func KnownRuntimes() []string {
 	set := map[string]bool{}
-	for _, label := range knownRuntimes {
+	for _, label := range runtimeByExe {
 		set[label] = true
 	}
 	out := make([]string, 0, len(set))
@@ -168,9 +168,9 @@ func slugify(name string) string {
 	return strings.Trim(s, "-")
 }
 
-// Duplicate records a project folder that exposes more than one service (more
+// duplicate records a project folder that exposes more than one service (more
 // than one distinct process listening in it). Members holds them all, main first.
-type Duplicate struct {
+type duplicate struct {
 	Slug    string
 	Members []Service // all services for this project, main (clean slug) first
 }
@@ -210,7 +210,7 @@ func projectBaseSlug(l listener) string {
 //     main slug to stay unique.
 //
 // Projects exposing more than one service are returned as Duplicates for display.
-func buildServices(listeners []listener, includeAll bool, runtimes map[string]bool) ([]Service, []Duplicate) {
+func buildServices(listeners []listener, includeAll bool, runtimes map[string]bool) ([]Service, []duplicate) {
 	// Group surviving listeners by project-root dir (ungroupable → unique key).
 	groups := map[string][]listener{}
 	order := []string{}
@@ -261,7 +261,7 @@ func buildServices(listeners []listener, includeAll bool, runtimes map[string]bo
 	}
 
 	var services []Service
-	var dups []Duplicate
+	var dups []duplicate
 	for _, p := range projects {
 		mainSlug := p.slug
 		if slugCounts[mainSlug] > 1 { // distinct projects share a folder name
@@ -278,7 +278,7 @@ func buildServices(listeners []listener, includeAll bool, runtimes map[string]bo
 			services = append(services, svc)
 		}
 		if len(members) > 1 {
-			dups = append(dups, Duplicate{Slug: mainSlug, Members: members})
+			dups = append(dups, duplicate{Slug: mainSlug, Members: members})
 		}
 	}
 	sort.Slice(services, func(i, j int) bool { return services[i].Slug < services[j].Slug })
@@ -286,24 +286,24 @@ func buildServices(listeners []listener, includeAll bool, runtimes map[string]bo
 	return services, dups
 }
 
-// parsePortRange parses "lo-hi" or a single "port" into a validated PortRange.
-func parsePortRange(s string) (PortRange, error) {
+// parsePortRange parses "lo-hi" or a single "port" into a validated portRange.
+func parsePortRange(s string) (portRange, error) {
 	s = strings.TrimSpace(s)
 	// Single port, e.g. "4000" -> {4000, 4000}.
 	if !strings.Contains(s, "-") {
 		p, err := strconv.Atoi(s)
 		if err != nil || p < 1 || p > 65535 {
-			return PortRange{}, fmt.Errorf("invalid port %q", s)
+			return portRange{}, fmt.Errorf("invalid port %q", s)
 		}
-		return PortRange{Lo: p, Hi: p}, nil
+		return portRange{Lo: p, Hi: p}, nil
 	}
 	parts := strings.SplitN(s, "-", 2)
 	lo, err1 := strconv.Atoi(strings.TrimSpace(parts[0]))
 	hi, err2 := strconv.Atoi(strings.TrimSpace(parts[1]))
 	if err1 != nil || err2 != nil || lo < 1 || hi < lo || hi > 65535 {
-		return PortRange{}, fmt.Errorf("invalid port range %q (want lo-hi or a single port)", s)
+		return portRange{}, fmt.Errorf("invalid port range %q (want lo-hi or a single port)", s)
 	}
-	return PortRange{Lo: lo, Hi: hi}, nil
+	return portRange{Lo: lo, Hi: hi}, nil
 }
 
 // parseRuntimes turns "node,bun" into a set; "" yields nil (all known).
@@ -321,11 +321,11 @@ func parseRuntimes(s string) map[string]bool {
 	return m
 }
 
-// Discoverer lists services using an injected command Runner (for exec parsers).
+// discoverer lists services using an injected command Runner (for exec parsers).
 // It remembers what it learned about each listening process by PID, so a
 // steady-state re-scan spawns only the listener listing; PIDs that stop
 // listening are evicted every scan, so the cache never outgrows the live set.
-type Discoverer struct {
+type discoverer struct {
 	run   Runner
 	mu    sync.Mutex // one scan at a time: guards procs, no overlapping lsof runs
 	procs map[int]procInfo
@@ -336,11 +336,11 @@ type Discoverer struct {
 // command was reused and is resolved again.
 type procInfo struct{ comm, psComm, cwd, root string }
 
-func newDiscoverer(r Runner) *Discoverer { return &Discoverer{run: r, procs: map[int]procInfo{}} }
+func newDiscoverer(r Runner) *discoverer { return &discoverer{run: r, procs: map[int]procInfo{}} }
 
-// Discover returns the filtered services in the configured range, plus any
+// discover returns the filtered services in the configured range, plus any
 // duplicate-instance info (same project on multiple ports).
-func (d *Discoverer) Discover(cfg discoverConfig) ([]Service, []Duplicate, error) {
+func (d *discoverer) discover(cfg discoverConfig) ([]Service, []duplicate, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	ls, err := d.listeners(cfg.rng)

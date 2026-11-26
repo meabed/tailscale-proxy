@@ -10,7 +10,7 @@ func TestParseNetstat(t *testing.T) {
 		"  TCP    [::]:4983        [::]:0            LISTENING    1234\n" +
 		"  TCP    0.0.0.0:9000     0.0.0.0:0         LISTENING    5\n" + // out of range
 		"  TCP    0.0.0.0:3000     1.2.3.4:55        ESTABLISHED  77\n" // not listening
-	ls := parseNetstat(out, PortRange{Lo: 3000, Hi: 5000})
+	ls := parseNetstat(out, portRange{Lo: 3000, Hi: 5000})
 	if len(ls) != 2 {
 		t.Fatalf("got %d: %+v", len(ls), ls)
 	}
@@ -48,11 +48,11 @@ func TestListeners_reusedPIDGetsCurrentName(t *testing.T) {
 		calls:    map[string]int{},
 	}
 	d := newDiscoverer(r)
-	if ls, err := d.listeners(PortRange{3000, 5000}); err != nil || len(ls) != 1 || ls[0].Comm != "node.exe" {
+	if ls, err := d.listeners(portRange{3000, 5000}); err != nil || len(ls) != 1 || ls[0].Comm != "node.exe" {
 		t.Fatalf("first scan: %+v, %v", ls, err)
 	}
 	r.tasklist = "\"python.exe\",\"1234\",\"Console\",\"1\",\"40,000 K\"\n" // PID 1234 reused
-	if ls, _ := d.listeners(PortRange{3000, 5000}); len(ls) != 1 || ls[0].Comm != "python.exe" {
+	if ls, _ := d.listeners(portRange{3000, 5000}); len(ls) != 1 || ls[0].Comm != "python.exe" {
 		t.Fatalf("reused PID kept the old name: %+v", ls)
 	}
 }

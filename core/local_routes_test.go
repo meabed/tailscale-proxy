@@ -40,7 +40,7 @@ func TestNameFromHost(t *testing.T) {
 }
 
 func TestLocalRouteURL(t *testing.T) {
-	if got := (LocalRoute{Name: "api.acme"}).URL(); got != "https://api.acme.localhost" {
+	if got := (localRoute{Name: "api.acme"}).URL(); got != "https://api.acme.localhost" {
 		t.Errorf("URL() = %q", got)
 	}
 }
@@ -57,7 +57,7 @@ func testRegistry(t *testing.T) *localRegistry {
 
 // running registers rt the way its `tsp run` does (claim, then the route file)
 // and returns the function that ends that run's claim.
-func running(t *testing.T, reg *localRegistry, rt LocalRoute) (stop func()) {
+func running(t *testing.T, reg *localRegistry, rt localRoute) (stop func()) {
 	t.Helper()
 	release, ok, err := reg.claim(rt.Name)
 	if err != nil || !ok {
@@ -71,13 +71,13 @@ func running(t *testing.T, reg *localRegistry, rt LocalRoute) (stop func()) {
 }
 
 // liveRoute finds name among the registry's live routes.
-func liveRoute(reg *localRegistry, name string) (LocalRoute, bool) {
+func liveRoute(reg *localRegistry, name string) (localRoute, bool) {
 	for _, rt := range reg.list() {
 		if rt.Name == name {
 			return rt, true
 		}
 	}
-	return LocalRoute{}, false
+	return localRoute{}, false
 }
 
 func TestRegistry_claimIsExclusive(t *testing.T) {
@@ -102,8 +102,8 @@ func TestRegistry_claimIsExclusive(t *testing.T) {
 
 func TestRegistry_addGetListRemove(t *testing.T) {
 	reg := testRegistry(t)
-	running(t, reg, LocalRoute{Name: "b", Port: 4002, PID: 20, Dir: "/b"})
-	running(t, reg, LocalRoute{Name: "a", Port: 4001, PID: 10, Dir: "/a"})
+	running(t, reg, localRoute{Name: "b", Port: 4002, PID: 20, Dir: "/b"})
+	running(t, reg, localRoute{Name: "a", Port: 4001, PID: 10, Dir: "/a"})
 	got := reg.list()
 	if len(got) != 2 || got[0].Name != "a" || got[1].Name != "b" {
 		t.Fatalf("list() = %+v, want a then b", got)
@@ -122,8 +122,8 @@ func TestRegistry_addGetListRemove(t *testing.T) {
 
 func TestRegistry_addReplacesAtomically(t *testing.T) {
 	reg := testRegistry(t)
-	running(t, reg, LocalRoute{Name: "a", Port: 4001, PID: 1})
-	_ = reg.add(LocalRoute{Name: "a", Port: 4009, PID: 2})
+	running(t, reg, localRoute{Name: "a", Port: 4001, PID: 1})
+	_ = reg.add(localRoute{Name: "a", Port: 4009, PID: 2})
 	if rt, _ := liveRoute(reg, "a"); rt.Port != 4009 || rt.PID != 2 {
 		t.Errorf("get(a) = %+v, want the second write", rt)
 	}
@@ -137,8 +137,8 @@ func TestRegistry_addReplacesAtomically(t *testing.T) {
 
 func TestRegistry_deadRunsAreDropped(t *testing.T) {
 	reg := testRegistry(t)
-	running(t, reg, LocalRoute{Name: "live", Port: 4001, PID: 1})
-	stop := running(t, reg, LocalRoute{Name: "dead", Port: 4002, PID: 2})
+	running(t, reg, localRoute{Name: "live", Port: 4001, PID: 1})
+	stop := running(t, reg, localRoute{Name: "dead", Port: 4002, PID: 2})
 	stop()                                                                                       // its run ended without removing the file (kill -9)
 	_ = os.WriteFile(reg.file("orphan"), []byte(`{"name":"orphan","port":4003,"pid":3}`), 0o644) // never claimed
 
@@ -162,7 +162,7 @@ func TestRegistry_deadRunsAreDropped(t *testing.T) {
 func TestRegistry_liveRunsFilesAreNeverDeleted(t *testing.T) {
 	// While a run holds its name, an unreadable or mislabelled file of its is skipped, not deleted.
 	reg := testRegistry(t)
-	running(t, reg, LocalRoute{Name: "a", Port: 4001, PID: 1})
+	running(t, reg, localRoute{Name: "a", Port: 4001, PID: 1})
 	_ = os.WriteFile(reg.file("a"), []byte("{"), 0o644)
 	if got := reg.list(); len(got) != 0 {
 		t.Errorf("list() = %+v", got)
@@ -170,7 +170,7 @@ func TestRegistry_liveRunsFilesAreNeverDeleted(t *testing.T) {
 	if _, err := os.Stat(reg.file("a")); err != nil {
 		t.Error("a live run's file was deleted")
 	}
-	running(t, reg, LocalRoute{Name: "b", Port: 4002, PID: 1})
+	running(t, reg, localRoute{Name: "b", Port: 4002, PID: 1})
 	_ = os.WriteFile(reg.file("b"), []byte(`{"name":"other","port":4002,"pid":1}`), 0o644)
 	if got := reg.list(); len(got) != 0 {
 		t.Errorf("a mislabelled file was listed: %+v", got)
@@ -229,12 +229,12 @@ func TestRegistry_lookupFollowsChanges(t *testing.T) {
 	if _, ok := reg.lookup("a"); ok {
 		t.Fatal("lookup in an empty registry found a route")
 	}
-	stopA := running(t, reg, LocalRoute{Name: "a", Port: 4001, PID: 1})
+	stopA := running(t, reg, localRoute{Name: "a", Port: 4001, PID: 1})
 	bump(t, reg.dir)
 	if rt, ok := reg.lookup("a"); !ok || rt.Port != 4001 {
 		t.Fatalf("lookup(a) = %+v, %v after add", rt, ok)
 	}
-	running(t, reg, LocalRoute{Name: "b", Port: 4002, PID: 2})
+	running(t, reg, localRoute{Name: "b", Port: 4002, PID: 2})
 	bump(t, reg.dir)
 	if _, ok := reg.lookup("b"); !ok {
 		t.Fatal("lookup(b) missed a route added after the first read")
@@ -252,7 +252,7 @@ func TestRegistry_lookupFollowsChanges(t *testing.T) {
 
 func TestRegistry_forget(t *testing.T) {
 	reg := testRegistry(t)
-	rt := LocalRoute{Name: "a", Port: 4001, PID: 1}
+	rt := localRoute{Name: "a", Port: 4001, PID: 1}
 	stop := running(t, reg, rt)
 	if _, ok := reg.lookup("a"); !ok {
 		t.Fatal("lookup(a) missed")

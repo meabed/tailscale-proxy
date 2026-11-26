@@ -5,9 +5,9 @@ import (
 	"strings"
 )
 
-// Check is one preflight result with a remediation hint. Fix prints only when
+// check is one preflight result with a remediation hint. Fix prints only when
 // the check fails; Note is advisory and prints whether or not the check passed.
-type Check struct {
+type check struct {
 	Name   string
 	OK     bool
 	Detail string
@@ -22,8 +22,8 @@ const (
 )
 
 // runDoctor probes tailscale, exposure readiness, lsof, and discovery.
-func runDoctor(r Runner, disc *Discoverer, cfg discoverConfig, mode Mode) []Check {
-	var checks []Check
+func runDoctor(r Runner, disc *discoverer, cfg discoverConfig, mode Mode) []check {
+	var checks []check
 
 	// Docker check (only when --docker is used).
 	if cfg.docker {
@@ -32,28 +32,27 @@ func runDoctor(r Runner, disc *Discoverer, cfg discoverConfig, mode Mode) []Chec
 
 	verOut, _, verErr := r.Run("tailscale", "version")
 	if verErr != nil {
-		checks = append(checks, Check{
+		checks = append(checks, check{
 			Name: "tailscale installed", OK: false,
 			Detail: "`tailscale` not found on PATH",
 			Fix:    "Install Tailscale: " + linkTailscaleInstall,
 		})
 	} else {
-		checks = append(checks, Check{Name: "tailscale installed", OK: true, Detail: firstLine(verOut)})
+		checks = append(checks, check{Name: "tailscale installed", OK: true, Detail: firstLine(verOut)})
 
-		statusOut, _, statusErr := r.Run("tailscale", "status")
-		if statusErr != nil || strings.Contains(statusOut, "Logged out") {
-			checks = append(checks, Check{
+		if !loggedIn(r) {
+			checks = append(checks, check{
 				Name: "tailscale up", OK: false, Detail: "node is not logged in",
 				Fix: "Run: tailscale up   (https://tailscale.com/kb/1080/cli#up)",
 			})
 		} else {
-			checks = append(checks, Check{Name: "tailscale up", OK: true})
+			checks = append(checks, check{Name: "tailscale up", OK: true})
 		}
 
 		if mode == ModeFunnel {
 			_, fStderr, fErr := r.Run("tailscale", "funnel", "status")
 			if fErr != nil {
-				checks = append(checks, Check{
+				checks = append(checks, check{
 					Name: "funnel enabled", OK: false, Detail: strings.TrimSpace(fStderr),
 					Fix: "Enable Funnel for your tailnet:\n" +
 						"  - Overview: " + linkFunnelKB + "\n" +
@@ -61,7 +60,7 @@ func runDoctor(r Runner, disc *Discoverer, cfg discoverConfig, mode Mode) []Chec
 						"  - Grant the `funnel` node attribute in your tailnet policy file (admin console)",
 				})
 			} else {
-				checks = append(checks, Check{Name: "funnel enabled", OK: true})
+				checks = append(checks, check{Name: "funnel enabled", OK: true})
 			}
 
 			// Advisory: on a tailnet node with MagicDNS (accept-dns) on, *.ts.net
@@ -70,7 +69,7 @@ func runDoctor(r Runner, disc *Discoverer, cfg discoverConfig, mode Mode) []Chec
 			// failure, and not something tsp changes for you (it's a global, machine-
 			// wide setting that belongs on the consuming host).
 			if on, known := acceptDNSEnabled(r); known && on {
-				checks = append(checks, Check{
+				checks = append(checks, check{
 					Name: "magicdns", OK: true, Detail: "accept-dns on",
 					Note: "MagicDNS resolves *.ts.net to tailnet IPs, so the public funnel URL\n" +
 						"won't reach the public ingress when opened from a tailnet node.\n" +
@@ -82,9 +81,9 @@ func runDoctor(r Runner, disc *Discoverer, cfg discoverConfig, mode Mode) []Chec
 	}
 
 	// Discovery readiness.
-	svcs, _, derr := disc.Discover(cfg)
+	svcs, _, derr := disc.discover(cfg)
 	if derr != nil {
-		checks = append(checks, Check{
+		checks = append(checks, check{
 			Name: "service discovery", OK: false, Detail: derr.Error(),
 			Fix: "Ensure `lsof` is installed (macOS has it; Linux: `apt install lsof` / `dnf install lsof`)",
 		})
@@ -98,18 +97,18 @@ func runDoctor(r Runner, disc *Discoverer, cfg discoverConfig, mode Mode) []Chec
 			detail = fmt.Sprintf("none yet in %d-%d — watching, routes appear as servers start", cfg.rng.Lo, cfg.rng.Hi)
 			note = "Start a dev server in range, widen --ports, or pass --all to include non-web processes"
 		}
-		checks = append(checks, Check{Name: "service discovery", OK: true, Detail: detail, Note: note})
+		checks = append(checks, check{Name: "service discovery", OK: true, Detail: detail, Note: note})
 	}
 
 	return checks
 }
 
-// dockerCheck returns a Check for Docker socket availability.
-func dockerCheck() Check {
+// dockerCheck returns a check for Docker socket availability.
+func dockerCheck() check {
 	if dockerAvailable() {
-		return Check{Name: "docker available", OK: true, Detail: "socket accessible"}
+		return check{Name: "docker available", OK: true, Detail: "socket accessible"}
 	}
-	return Check{
+	return check{
 		Name:   "docker available",
 		OK:     false,
 		Detail: "Docker socket not accessible at /var/run/docker.sock",
@@ -126,7 +125,7 @@ func firstLine(s string) string {
 }
 
 // printChecks writes a ✓/✗ summary and returns true if every check passed.
-func printChecks(checks []Check) bool {
+func printChecks(checks []check) bool {
 	allOK := true
 	for _, c := range checks {
 		mark := "✓"

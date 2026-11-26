@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 )
@@ -49,14 +48,11 @@ type ServiceURL struct {
 type Status struct {
 	Running    bool
 	Mode       string // human label, e.g. "Tailscale Funnel (public)"
-	Private    bool
 	Node       string // MagicDNS name, "" if unknown
 	PublicBase string // https://node.ts.net[:port], "" if unknown
-	Bind       string
 	Port       int
 	HTTPSPort  int
 	Services   []ServiceURL
-	Duplicates []Duplicate
 	Err        string
 }
 
@@ -64,8 +60,9 @@ type Status struct {
 // exposing a small start/stop/status surface for embedding (the desktop app).
 // Safe for concurrent use.
 type Controller struct {
+	runner Runner // fixed at construction
+
 	mu       sync.Mutex
-	runner   Runner
 	onChange func()
 
 	running bool
@@ -75,7 +72,7 @@ type Controller struct {
 	lastErr string
 
 	srv    *http.Server
-	store  *RouteStore
+	store  *routeStore
 	cancel context.CancelFunc
 }
 
@@ -114,18 +111,14 @@ func (c *Controller) Start(o Options) error {
 		return err
 	}
 
-	c.mu.Lock()
-	if c.running {
-		c.mu.Unlock()
+	if c.Running() {
 		return fmt.Errorf("already running")
 	}
-	runner := c.runner
-	c.mu.Unlock()
 
 	mode := modeOf(o.Private)
-	disc := newDiscoverer(runner)
+	disc := newDiscoverer(c.runner)
 	dcfg := discoverConfig{rng: rng, all: o.All, runtimes: parseRuntimes(o.Runtimes), docker: o.Docker}
-	store := NewRouteStore(func() ([]Service, []Duplicate, error) { return disc.Discover(dcfg) }, o.DeregisterCycles, o.MatchSeparators)
+	store := newRouteStore(func() ([]Service, []duplicate, error) { return disc.discover(dcfg) }, o.DeregisterCycles, o.MatchSeparators)
 	_, _, _, _ = store.refresh()
 
 	srv := newServer(fmt.Sprintf("%s:%d", o.Bind, o.Port), newHandler(store, o.LogRequests, o.ForwardHost))
@@ -134,12 +127,12 @@ func (c *Controller) Start(o Options) error {
 		return fmt.Errorf("cannot listen on %s: %v", srv.Addr, err)
 	}
 	if !o.ProxyOnly {
-		if err := exposeStart(runner, mode, o.Port, o.HTTPSPort); err != nil {
+		if err := exposeStart(c.runner, mode, o.Port, o.HTTPSPort); err != nil {
 			_ = ln.Close()
 			return err
 		}
 	}
-	node, _ := nodeDNSName(runner)
+	node, _ := nodeDNSName(c.runner)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	c.mu.Lock()
@@ -166,7 +159,7 @@ func (c *Controller) Stop() error {
 		c.mu.Unlock()
 		return nil
 	}
-	srv, cancel, mode, runner, proxyOnly := c.srv, c.cancel, c.mode, c.runner, c.opts.ProxyOnly
+	srv, cancel, mode, proxyOnly := c.srv, c.cancel, c.mode, c.opts.ProxyOnly
 	c.running = false
 	c.srv, c.store, c.cancel = nil, nil, nil
 	c.mu.Unlock()
@@ -177,7 +170,7 @@ func (c *Controller) Stop() error {
 	_ = srv.Shutdown(ctx)
 	var err error
 	if !proxyOnly {
-		err = exposeReset(runner, mode)
+		err = exposeReset(c.runner, mode)
 	}
 	c.notify()
 	return err
@@ -206,10 +199,7 @@ func (c *Controller) Toggle(o Options) error {
 func (c *Controller) Status() Status {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	st := Status{
-		Running: c.running, Private: c.opts.Private, Node: c.node, Err: c.lastErr,
-		Bind: c.opts.Bind, Port: c.opts.Port, HTTPSPort: c.opts.HTTPSPort,
-	}
+	st := Status{Running: c.running, Node: c.node, Err: c.lastErr, Port: c.opts.Port, HTTPSPort: c.opts.HTTPSPort}
 	if !c.running {
 		return st
 	}
@@ -217,21 +207,18 @@ func (c *Controller) Status() Status {
 	if c.node != "" {
 		st.PublicBase = publicBase(c.node, c.opts.HTTPSPort)
 	}
-	if c.store != nil {
-		snap := c.store.snapshot()
-		for _, slug := range sortedSlugs(snap) {
-			url := ""
-			if st.PublicBase != "" {
-				url = st.PublicBase + "/" + slug + "/"
-			}
-			st.Services = append(st.Services, ServiceURL{Service: snap[slug], URL: url})
+	snap := c.store.snapshot()
+	for _, slug := range sortedSlugs(snap) {
+		url := ""
+		if st.PublicBase != "" {
+			url = st.PublicBase + "/" + slug + "/"
 		}
-		st.Duplicates = c.store.dupes()
+		st.Services = append(st.Services, ServiceURL{Service: snap[slug], URL: url})
 	}
 	return st
 }
 
-func (c *Controller) pollLoop(ctx context.Context, store *RouteStore, every time.Duration) {
+func (c *Controller) pollLoop(ctx context.Context, store *routeStore, every time.Duration) {
 	t := time.NewTicker(every)
 	defer t.Stop()
 	for {
@@ -252,45 +239,29 @@ func (c *Controller) notify() {
 	go f()
 }
 
+// withDefaults fills the unset options from defaultConfig.
 func withDefaults(o Options) Options {
+	d := defaultConfig()
 	if o.Ports == "" {
-		o.Ports = "3000-6000"
+		o.Ports = d.Ports
 	}
 	if o.Bind == "" {
-		o.Bind = "127.0.0.1"
+		o.Bind = d.Bind
 	}
 	if o.Port == 0 {
-		o.Port = defaultLocalPort
+		o.Port = d.Port
 	}
 	if o.Interval < 1 {
-		o.Interval = 20
+		o.Interval = d.Interval
 	}
 	if o.HTTPSPort == 0 {
-		o.HTTPSPort = defaultHTTPSPort()
+		o.HTTPSPort = d.HTTPSPort
 	}
 	if o.DeregisterCycles < 1 {
-		o.DeregisterCycles = 5
+		o.DeregisterCycles = d.DeregisterCycles
 	}
 	return o
 }
-
-// --- Exported helpers for embedders (the desktop app) -----------------------
-
-// LoadConfig loads the saved config (or built-in defaults if none).
-// Returns (config, path, existed, error).
-func LoadConfig() (Config, string, bool, error) { return loadConfig() }
-
-// SaveConfig persists cfg to the default path and returns the path written.
-func SaveConfig(c Config) (string, error) { return saveConfig(c) }
-
-// ConfigPath returns the config file path (~/.tailscale-proxy/config.json).
-func ConfigPath() (string, error) { return configPath() }
-
-// DefaultConfig returns the built-in defaults.
-func DefaultConfig() Config { return defaultConfig() }
-
-// KnownRuntimes returns the labels of the web runtimes discovery recognizes.
-func KnownRuntimes() []string { return knownRuntimeLabels() }
 
 // UpdateInfo reports the running version vs the latest GitHub release.
 type UpdateInfo struct {
@@ -326,21 +297,8 @@ func CheckTailscale() TailscaleHealth {
 	if _, _, err := r.Run("tailscale", "version"); err != nil {
 		return TailscaleHealth{Detail: "the tailscale CLI was not found on your PATH"}
 	}
-	out, _, err := r.Run("tailscale", "status")
-	if err != nil || strings.Contains(out, "Logged out") {
+	if !loggedIn(r) {
 		return TailscaleHealth{Installed: true, Detail: "Tailscale is installed but not logged in — run `tailscale up`"}
 	}
 	return TailscaleHealth{Installed: true, Up: true}
-}
-
-// Doctor runs the preflight checks for the given options.
-func Doctor(o Options) []Check {
-	o = withDefaults(o)
-	rng, err := parsePortRange(o.Ports)
-	if err != nil {
-		rng = PortRange{Lo: 3000, Hi: 5000}
-	}
-	r := execRunner{}
-	dcfg := discoverConfig{rng: rng, all: o.All, runtimes: parseRuntimes(o.Runtimes), docker: o.Docker}
-	return runDoctor(r, newDiscoverer(r), dcfg, modeOf(o.Private))
 }

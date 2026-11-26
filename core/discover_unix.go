@@ -11,7 +11,7 @@ import (
 // listeners lists listening TCP sockets in range via lsof, enriching each with
 // the full runtime (ps) and working directory (lsof -d cwd). Those two lookups
 // run only for processes not already known from the previous scan.
-func (d *Discoverer) listeners(rng PortRange) ([]listener, error) {
+func (d *discoverer) listeners(rng portRange) ([]listener, error) {
 	// -b/-w: skip kernel calls that can block (stat/readlink) and their warnings;
 	// -iTCP:<range>: only sockets in range, so lsof doesn't format every one.
 	out, stderr, err := d.run.Run("lsof", "-nP", "-b", "-w", "-iTCP:"+lsofPorts(rng), "-sTCP:LISTEN", "-Fpcn")
@@ -30,7 +30,7 @@ func (d *Discoverer) listeners(rng PortRange) ([]listener, error) {
 }
 
 // lsofPorts renders a range as an lsof port spec ("3000-6000", or "4000").
-func lsofPorts(rng PortRange) string {
+func lsofPorts(rng portRange) string {
 	if rng.Lo == rng.Hi {
 		return strconv.Itoa(rng.Lo)
 	}
@@ -40,7 +40,7 @@ func lsofPorts(rng PortRange) string {
 // resolveProcs fills each listener's PsComm, Cwd and Root from the process
 // cache, running ps and the cwd lsof once for all PIDs that are new (or reused
 // under another command). PIDs absent from ls are evicted.
-func (d *Discoverer) resolveProcs(ls []listener) {
+func (d *discoverer) resolveProcs(ls []listener) {
 	var fresh, needPs []string
 	seen := map[int]bool{}
 	for _, l := range ls {
@@ -95,7 +95,7 @@ func (d *Discoverer) resolveProcs(ls []listener) {
 }
 
 // parseLsofListeners parses `lsof -Fpcn` output, deduping per (pid,port).
-func parseLsofListeners(out string, rng PortRange) []listener {
+func parseLsofListeners(out string, rng portRange) []listener {
 	var res []listener
 	seen := map[string]bool{}
 	var pid int

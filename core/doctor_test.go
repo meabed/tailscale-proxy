@@ -29,7 +29,7 @@ func (e errString) Error() string { return string(e) }
 func TestDoctor_tailscaleMissing(t *testing.T) {
 	r := scriptRunner{responses: map[string][3]string{}}
 	disc := newDiscoverer(r)
-	cfg := discoverConfig{rng: PortRange{3000, 5000}}
+	cfg := discoverConfig{rng: portRange{3000, 5000}}
 	checks := runDoctor(r, disc, cfg, ModeFunnel)
 	c := findCheck(t, checks, "tailscale installed")
 	if c.OK || !strings.Contains(c.Fix, "tailscale.com/download") {
@@ -44,7 +44,7 @@ func TestDoctor_serveModeSkipsFunnelCheck(t *testing.T) {
 		"lsof -nP -b -w -iTCP:3000-5000 -sTCP:LISTEN -Fpcn": {"", "", ""},
 	}}
 	disc := newDiscoverer(r)
-	cfg := discoverConfig{rng: PortRange{3000, 5000}}
+	cfg := discoverConfig{rng: portRange{3000, 5000}}
 	checks := runDoctor(r, disc, cfg, ModeServe)
 	for _, c := range checks {
 		if c.Name == "funnel enabled" {
@@ -62,7 +62,7 @@ func TestDoctor_magicDNSAdvisoryWhenAcceptDNSOn(t *testing.T) {
 		"lsof -nP -b -w -iTCP:3000-5000 -sTCP:LISTEN -Fpcn": {"", "", ""},
 	}}
 	disc := newDiscoverer(r)
-	cfg := discoverConfig{rng: PortRange{3000, 5000}}
+	cfg := discoverConfig{rng: portRange{3000, 5000}}
 	checks := runDoctor(r, disc, cfg, ModeFunnel)
 	c := findCheck(t, checks, "magicdns")
 	if !c.OK {
@@ -82,7 +82,7 @@ func TestDoctor_noMagicDNSAdvisoryWhenAcceptDNSOff(t *testing.T) {
 		"lsof -nP -b -w -iTCP:3000-5000 -sTCP:LISTEN -Fpcn": {"", "", ""},
 	}}
 	disc := newDiscoverer(r)
-	cfg := discoverConfig{rng: PortRange{3000, 5000}}
+	cfg := discoverConfig{rng: portRange{3000, 5000}}
 	for _, c := range runDoctor(r, disc, cfg, ModeFunnel) {
 		if c.Name == "magicdns" {
 			t.Fatal("no advisory expected when accept-dns is off")
@@ -101,7 +101,7 @@ func TestDoctor_noServicesPassesAsAdvisory(t *testing.T) {
 		"netstat -ano -p TCP":                               {"", "", ""},
 	}}
 	disc := newDiscoverer(r)
-	cfg := discoverConfig{rng: PortRange{3000, 5000}}
+	cfg := discoverConfig{rng: portRange{3000, 5000}}
 	c := findCheck(t, runDoctor(r, disc, cfg, ModeFunnel), "service discovery")
 	if !c.OK {
 		t.Fatal("zero services must not fail preflight — the proxy watches for them")
@@ -111,7 +111,7 @@ func TestDoctor_noServicesPassesAsAdvisory(t *testing.T) {
 	}
 }
 
-func findCheck(t *testing.T, checks []Check, name string) Check {
+func findCheck(t *testing.T, checks []check, name string) check {
 	t.Helper()
 	for _, c := range checks {
 		if c.Name == name {
@@ -119,5 +119,5 @@ func findCheck(t *testing.T, checks []Check, name string) Check {
 		}
 	}
 	t.Fatalf("check %q not found", name)
-	return Check{}
+	return check{}
 }

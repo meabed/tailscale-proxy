@@ -30,8 +30,8 @@ const (
 	localPortMax = 4999
 )
 
-// LocalRoute is one registered local name.
-type LocalRoute struct {
+// localRoute is one registered local name.
+type localRoute struct {
 	Name string `json:"name"` // e.g. "workspace-api.help-ai" → https://workspace-api.help-ai.localhost
 	Port int    `json:"port"` // the app's port on 127.0.0.1
 	PID  int    `json:"pid"`  // the `tsp run` process that owns the route
@@ -39,7 +39,7 @@ type LocalRoute struct {
 }
 
 // URL is the route's HTTPS address behind `tsp proxy` on 443.
-func (r LocalRoute) URL() string { return "https://" + r.Name + "." + localTLD }
+func (r localRoute) URL() string { return "https://" + r.Name + "." + localTLD }
 
 var nameRe = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$`)
 
@@ -75,7 +75,7 @@ type localRegistry struct {
 
 	mu     sync.Mutex
 	mod    time.Time
-	routes map[string]LocalRoute
+	routes map[string]localRoute
 }
 
 func newLocalRegistry(dir string) *localRegistry { return &localRegistry{dir: dir} }
@@ -93,7 +93,7 @@ func (r *localRegistry) claim(name string) (release func(), ok bool, err error) 
 }
 
 // add writes the route atomically. The caller holds its claim.
-func (r *localRegistry) add(rt LocalRoute) error {
+func (r *localRegistry) add(rt localRoute) error {
 	data, err := json.Marshal(rt)
 	if err != nil {
 		return err
@@ -108,14 +108,14 @@ func (r *localRegistry) add(rt LocalRoute) error {
 func (r *localRegistry) remove(name string) { _ = os.Remove(r.file(name)) }
 
 // read parses name's route file; ok=false when it is missing or invalid.
-func (r *localRegistry) read(name string) (LocalRoute, bool) {
+func (r *localRegistry) read(name string) (localRoute, bool) {
 	data, err := os.ReadFile(r.file(name))
 	if err != nil {
-		return LocalRoute{}, false
+		return localRoute{}, false
 	}
-	var rt LocalRoute
+	var rt localRoute
 	if json.Unmarshal(data, &rt) != nil || validateName(rt.Name) != nil || rt.Port <= 0 {
-		return LocalRoute{}, false
+		return localRoute{}, false
 	}
 	return rt, true
 }
@@ -137,12 +137,12 @@ func (r *localRegistry) alive(name string) bool {
 }
 
 // list returns the live routes sorted by name, removing dead and unreadable ones.
-func (r *localRegistry) list() []LocalRoute {
+func (r *localRegistry) list() []localRoute {
 	entries, err := os.ReadDir(r.dir)
 	if err != nil {
 		return nil
 	}
-	var out []LocalRoute
+	var out []localRoute
 	for _, e := range entries {
 		name, isRoute := strings.CutSuffix(e.Name(), ".json")
 		if e.IsDir() || !isRoute || validateName(name) != nil {
@@ -162,17 +162,17 @@ func (r *localRegistry) list() []LocalRoute {
 // modification time moved (a run started, stopped, or a dead route was dropped).
 // The time is taken before the read: a route added during the read moves it
 // again, so the next lookup sees it.
-func (r *localRegistry) lookup(name string) (LocalRoute, bool) {
+func (r *localRegistry) lookup(name string) (localRoute, bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	fi, err := os.Stat(r.dir)
 	if err != nil {
 		r.routes, r.mod = nil, time.Time{}
-		return LocalRoute{}, false
+		return localRoute{}, false
 	}
 	if r.routes == nil || !fi.ModTime().Equal(r.mod) {
 		r.mod = fi.ModTime()
-		r.routes = map[string]LocalRoute{}
+		r.routes = map[string]localRoute{}
 		for _, rt := range r.list() {
 			r.routes[rt.Name] = rt
 		}
@@ -183,7 +183,7 @@ func (r *localRegistry) lookup(name string) (LocalRoute, bool) {
 
 // forget re-checks a cached route that stopped answering: if its run is gone,
 // the route is dropped and the cache re-read on the next lookup.
-func (r *localRegistry) forget(rt LocalRoute) {
+func (r *localRegistry) forget(rt localRoute) {
 	if r.alive(rt.Name) {
 		return
 	}

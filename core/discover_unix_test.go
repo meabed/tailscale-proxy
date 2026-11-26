@@ -16,7 +16,7 @@ func TestParseLsofListeners(t *testing.T) {
 	out := "p4231\ncbun\nn*:4295\nn[::1]:4295\n" +
 		"p630\ncControlCe\nn*:5000\n" +
 		"p999\ncnode\nn127.0.0.1:8080\n" // 8080 out of range
-	rng := PortRange{Lo: 3000, Hi: 5000}
+	rng := portRange{Lo: 3000, Hi: 5000}
 	ls := parseLsofListeners(out, rng)
 	// 4295 (deduped across v4/v6), 5000; not 8080
 	if len(ls) != 2 {
@@ -67,7 +67,7 @@ func TestParseDockerListeners_hostBoundAndInternalFallback(t *testing.T) {
 		}
 	]`)
 
-	ls := parseDockerListeners(body, PortRange{Lo: 3000, Hi: 50000})
+	ls := parseDockerListeners(body, portRange{Lo: 3000, Hi: 50000})
 	if len(ls) != 2 {
 		t.Fatalf("got %d listeners: %+v", len(ls), ls)
 	}
@@ -178,12 +178,12 @@ func fakeDevBox(t testing.TB, n int) *lsofRunner {
 func TestDiscover_cachesProcessLookups(t *testing.T) {
 	r := fakeDevBox(t, 3)
 	d := newDiscoverer(r)
-	cfg := discoverConfig{rng: PortRange{3000, 6000}}
-	first, _, err := d.Discover(cfg)
+	cfg := discoverConfig{rng: portRange{3000, 6000}}
+	first, _, err := d.discover(cfg)
 	if err != nil || len(first) != 3 || first[0].Slug != "proj-0" {
 		t.Fatalf("first scan: %+v, %v", first, err)
 	}
-	second, _, _ := d.Discover(cfg)
+	second, _, _ := d.discover(cfg)
 	if fmt.Sprint(first) != fmt.Sprint(second) {
 		t.Fatalf("re-scan changed services:\n%+v\n%+v", first, second)
 	}
@@ -203,8 +203,8 @@ func TestDiscover_psFallbackAndEviction(t *testing.T) {
 		ps:     "77 /var/folders/x/go-build1/b001/exe/main\n",
 	}
 	d := newDiscoverer(r)
-	cfg := discoverConfig{rng: PortRange{3000, 6000}}
-	svcs, _, _ := d.Discover(cfg)
+	cfg := discoverConfig{rng: portRange{3000, 6000}}
+	svcs, _, _ := d.discover(cfg)
 	if len(svcs) != 1 || svcs[0].Runtime != "go" || svcs[0].Slug != "gosvc" {
 		t.Fatalf("got %+v", svcs)
 	}
@@ -212,12 +212,12 @@ func TestDiscover_psFallbackAndEviction(t *testing.T) {
 		t.Fatalf("ps calls = %d, want 1", r.calls["ps"])
 	}
 	r.listen = ""
-	d.Discover(cfg)
+	d.discover(cfg)
 	if len(d.procs) != 0 {
 		t.Fatalf("gone PID not evicted: %+v", d.procs)
 	}
 	r.listen = "p77\ncnode\nn*:4000\n" // PID reused by another program
-	svcs, _, _ = d.Discover(cfg)
+	svcs, _, _ = d.discover(cfg)
 	if len(svcs) != 1 || svcs[0].Runtime != "node" || r.calls["lsof-cwd"] != 2 {
 		t.Fatalf("reused PID not re-resolved: %+v, calls %v", svcs, r.calls)
 	}
@@ -228,17 +228,17 @@ func TestDiscover_psFallbackAndEviction(t *testing.T) {
 func TestDiscover_usesPartialCwdOutput(t *testing.T) {
 	r := fakeDevBox(t, 2)
 	r.cwdErr = errString("exit status 1")
-	svcs, _, _ := newDiscoverer(r).Discover(discoverConfig{rng: PortRange{3000, 6000}})
+	svcs, _, _ := newDiscoverer(r).discover(discoverConfig{rng: portRange{3000, 6000}})
 	if len(svcs) != 2 || svcs[0].Slug != "proj-0" || svcs[1].Slug != "proj-1" {
 		t.Fatalf("got %+v", svcs)
 	}
 }
 
 func TestLsofPorts(t *testing.T) {
-	if got := lsofPorts(PortRange{3000, 6000}); got != "3000-6000" {
+	if got := lsofPorts(portRange{3000, 6000}); got != "3000-6000" {
 		t.Errorf("range = %q", got)
 	}
-	if got := lsofPorts(PortRange{4000, 4000}); got != "4000" {
+	if got := lsofPorts(portRange{4000, 4000}); got != "4000" {
 		t.Errorf("single = %q", got)
 	}
 }
@@ -247,12 +247,12 @@ func TestLsofPorts(t *testing.T) {
 // (the 20s poll), excluding the cost of the spawned commands themselves.
 func BenchmarkDiscover_steadyState(b *testing.B) {
 	d := newDiscoverer(fakeDevBox(b, 20))
-	cfg := discoverConfig{rng: PortRange{3000, 6000}}
-	if _, _, err := d.Discover(cfg); err != nil {
+	cfg := discoverConfig{rng: portRange{3000, 6000}}
+	if _, _, err := d.discover(cfg); err != nil {
 		b.Fatal(err)
 	}
 	b.ReportAllocs()
 	for b.Loop() {
-		d.Discover(cfg)
+		d.discover(cfg)
 	}
 }

@@ -104,6 +104,15 @@ func nodeDNSName(r Runner) (string, error) {
 	return name, nil
 }
 
+// loggedIn reports whether `tailscale status` shows this node logged in.
+func loggedIn(r Runner) bool {
+	out, _, err := r.Run("tailscale", "status")
+	return err == nil && !strings.Contains(out, "Logged out")
+}
+
+// validAcceptDNS reports whether v is a valid --accept-dns value ("" = unset).
+func validAcceptDNS(v string) bool { return v == "" || v == "true" || v == "false" }
+
 // acceptDNSEnabled reports whether this node accepts Tailscale DNS (MagicDNS).
 // `tailscale debug prefs` exposes the pref as "CorpDNS". The second return is
 // false when the state can't be determined (tailscale missing, parse failure).

@@ -8,7 +8,7 @@ import (
 )
 
 // printStartHeader shows which config is in effect and the resolved parameters.
-func printStartHeader(o startOpts, mode Mode, rng PortRange, cfgPath string, existed bool) {
+func printStartHeader(o startOpts, mode Mode, rng portRange, cfgPath string, existed bool) {
 	if existed {
 		fmt.Printf("Using config: %s\n", cfgPath)
 	} else {
@@ -18,7 +18,7 @@ func printStartHeader(o startOpts, mode Mode, rng PortRange, cfgPath string, exi
 	if rng.Lo == rng.Hi {
 		ports = strconv.Itoa(rng.Lo)
 	}
-	runtimes := "default (" + strings.Join(knownRuntimeLabels(), ", ") + ")"
+	runtimes := "default (" + strings.Join(KnownRuntimes(), ", ") + ")"
 	switch {
 	case o.all:
 		runtimes = "all (--all)"
@@ -50,7 +50,7 @@ func printServiceURLs(snap map[string]Service, node string, httpsPort int) {
 // printDiscovered lists discovered services with their public URLs (for
 // `tsp list` / `tsp status`). Returns a process exit code.
 func printDiscovered(dcfg discoverConfig, mode Mode, httpsPort int) int {
-	svcs, dups, err := newDiscoverer(execRunner{}).Discover(dcfg)
+	svcs, dups, err := newDiscoverer(execRunner{}).discover(dcfg)
 	if err != nil {
 		fmt.Println("discovery failed:", err)
 		return 1
@@ -77,7 +77,7 @@ func printDiscovered(dcfg discoverConfig, mode Mode, httpsPort int) int {
 
 // printDuplicateNotes explains projects that expose more than one service (the
 // main process gets the clean slug; others are suffixed), so it's transparent.
-func printDuplicateNotes(dups []Duplicate) {
+func printDuplicateNotes(dups []duplicate) {
 	if len(dups) == 0 {
 		return
 	}
@@ -122,7 +122,7 @@ func targetDisplay(s Service) string {
 }
 
 // portList renders a project's services on one line: "/slug/ :port(runtime)".
-func portList(d Duplicate) string {
+func portList(d duplicate) string {
 	parts := make([]string, 0, len(d.Members))
 	for _, m := range d.Members {
 		parts = append(parts, "/"+m.Slug+"/ "+targetDisplay(m)+"("+runtimeOr(m.Runtime)+")")
@@ -131,7 +131,7 @@ func portList(d Duplicate) string {
 }
 
 // dupKey is a stable fingerprint of the duplicate set, for change detection.
-func dupKey(dups []Duplicate) string {
+func dupKey(dups []duplicate) string {
 	var b strings.Builder
 	for _, d := range dups {
 		b.WriteString(d.Slug)

@@ -6,27 +6,27 @@ import (
 	"sync"
 )
 
-// RouteStore holds the current slug→Service map with a de-register debounce:
+// routeStore holds the current slug→Service map with a de-register debounce:
 // a service missing from discovery is kept until it has been absent for
 // deregisterCycles consecutive refreshes. Fed by an injectable discover func.
-type RouteStore struct {
+type routeStore struct {
 	mu               sync.RWMutex
 	services         map[string]Service
 	missing          map[string]int // slug → consecutive missing refreshes
-	duplicates       []Duplicate    // latest same-project multi-port info
+	duplicates       []duplicate    // latest same-project multi-port info
 	deregisterCycles int
 	matchSeparators  bool // treat '-' and '_' as interchangeable in path slugs
-	discover         func() ([]Service, []Duplicate, error)
+	discover         func() ([]Service, []duplicate, error)
 }
 
-// NewRouteStore creates an empty store. deregisterCycles < 1 is clamped to 1.
+// newRouteStore creates an empty store. deregisterCycles < 1 is clamped to 1.
 // When matchSeparators is true, lookups treat '-' and '_' as interchangeable so
 // a route registered as "module-api" is also reachable as "module_api".
-func NewRouteStore(discover func() ([]Service, []Duplicate, error), deregisterCycles int, matchSeparators bool) *RouteStore {
+func newRouteStore(discover func() ([]Service, []duplicate, error), deregisterCycles int, matchSeparators bool) *routeStore {
 	if deregisterCycles < 1 {
 		deregisterCycles = 1
 	}
-	return &RouteStore{
+	return &routeStore{
 		services:         map[string]Service{},
 		missing:          map[string]int{},
 		deregisterCycles: deregisterCycles,
@@ -39,7 +39,7 @@ func NewRouteStore(discover func() ([]Service, []Duplicate, error), deregisterCy
 // dash-separated (see slugify), so when matchSeparators is on we retry an exact
 // miss with underscores folded to dashes — letting "/module_api/" reach the
 // route registered as "module-api".
-func (s *RouteStore) lookup(slug string) (Service, bool) {
+func (s *routeStore) lookup(slug string) (Service, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if svc, ok := s.services[slug]; ok {
@@ -55,7 +55,7 @@ func (s *RouteStore) lookup(slug string) (Service, bool) {
 	return Service{}, false
 }
 
-func (s *RouteStore) snapshot() map[string]Service {
+func (s *routeStore) snapshot() map[string]Service {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	out := make(map[string]Service, len(s.services))
@@ -66,17 +66,17 @@ func (s *RouteStore) snapshot() map[string]Service {
 }
 
 // dupes returns the latest duplicate-instance info (same project, many ports).
-func (s *RouteStore) dupes() []Duplicate {
+func (s *routeStore) dupes() []duplicate {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return append([]Duplicate(nil), s.duplicates...)
+	return append([]duplicate(nil), s.duplicates...)
 }
 
 // refresh re-discovers services. Newly-seen slugs are returned in `added`
 // (and registered); slugs whose served port changed (e.g. the most-recent
 // instance switched) are in `repointed`; slugs missing for deregisterCycles
 // consecutive refreshes are removed and returned in `removed`.
-func (s *RouteStore) refresh() (added, repointed []Service, removed []string, err error) {
+func (s *routeStore) refresh() (added, repointed []Service, removed []string, err error) {
 	svcs, dups, err := s.discover()
 	if err != nil {
 		return nil, nil, nil, err

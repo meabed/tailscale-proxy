@@ -175,7 +175,7 @@ func TestHelperHoldName(t *testing.T) {
 	if err != nil || !ok {
 		os.Exit(3)
 	}
-	_ = reg.add(LocalRoute{Name: "api", Port: 4555, PID: os.Getpid(), Dir: "/elsewhere"})
+	_ = reg.add(localRoute{Name: "api", Port: 4555, PID: os.Getpid(), Dir: "/elsewhere"})
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGTERM)
 	os.Stdout.WriteString("ready\n")

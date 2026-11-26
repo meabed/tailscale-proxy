@@ -50,7 +50,7 @@ type dockerContainerInfo struct {
 
 // dockerListeners queries the Docker API for running containers and returns a
 // listener for each published port in rng; nil when Docker is unavailable.
-func dockerListeners(rng PortRange) []listener {
+func dockerListeners(rng portRange) []listener {
 	if _, err := os.Stat(dockerSocketPath); err != nil {
 		return nil
 	}
@@ -69,7 +69,7 @@ func dockerListeners(rng PortRange) []listener {
 	return parseDockerListeners(body, rng)
 }
 
-func parseDockerListeners(body []byte, rng PortRange) []listener {
+func parseDockerListeners(body []byte, rng portRange) []listener {
 	var containers []dockerContainerInfo
 	if err := json.Unmarshal(body, &containers); err != nil {
 		return nil

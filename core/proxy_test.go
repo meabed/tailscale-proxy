@@ -16,9 +16,9 @@ import (
 	"testing"
 )
 
-// storeWith builds a RouteStore whose discovery returns fixed services.
-func storeWith(svcs ...Service) *RouteStore {
-	s := NewRouteStore(func() ([]Service, []Duplicate, error) { return svcs, nil, nil }, 5, true)
+// storeWith builds a routeStore whose discovery returns fixed services.
+func storeWith(svcs ...Service) *routeStore {
+	s := newRouteStore(func() ([]Service, []duplicate, error) { return svcs, nil, nil }, 5, true)
 	s.refresh()
 	return s
 }

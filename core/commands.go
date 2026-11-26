@@ -9,7 +9,7 @@ import (
 )
 
 func cmdConfigure(argv []string) int {
-	cfg, _, _, _ := loadConfig()
+	cfg, _, _, _ := LoadConfig()
 	fs := flag.NewFlagSet("configure", flag.ContinueOnError)
 	fs.StringVar(&cfg.Ports, "ports", cfg.Ports, "port range or single port to scan")
 	fs.BoolVar(&cfg.All, "all", cfg.All, "include all listeners")
@@ -35,11 +35,11 @@ func cmdConfigure(argv []string) int {
 		fmt.Fprintln(os.Stderr, err)
 		return 2
 	}
-	if cfg.AcceptDNS != "" && cfg.AcceptDNS != "true" && cfg.AcceptDNS != "false" {
+	if !validAcceptDNS(cfg.AcceptDNS) {
 		fmt.Fprintf(os.Stderr, "invalid --accept-dns %q: use true or false\n", cfg.AcceptDNS)
 		return 2
 	}
-	path, err := saveConfig(cfg)
+	path, err := SaveConfig(cfg)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "could not save config:", err)
 		return 1
@@ -50,7 +50,7 @@ func cmdConfigure(argv []string) int {
 }
 
 func cmdReset(argv []string) int {
-	cfg, _, _, _ := loadConfig()
+	cfg, _, _, _ := LoadConfig()
 	fs := flag.NewFlagSet("reset", flag.ContinueOnError)
 	private := fs.Bool("private", cfg.Private, "reset the Serve entry instead of Funnel")
 	_ = fs.Parse(argv)
@@ -90,7 +90,7 @@ func cmdDoctor(argv []string) int {
 // queryConfig parses the shared discovery/mode flags (seeded from saved config)
 // for list/status/doctor, returning the mode, discovery config, and HTTPS port.
 func queryConfig(argv []string) (Mode, discoverConfig, int) {
-	cfg, _, _, _ := loadConfig()
+	cfg, _, _, _ := LoadConfig()
 	fs := flag.NewFlagSet("query", flag.ContinueOnError)
 	portsRaw := fs.String("ports", cfg.Ports, "port range or single port")
 	all := fs.Bool("all", cfg.All, "include all listeners")
@@ -101,7 +101,7 @@ func queryConfig(argv []string) (Mode, discoverConfig, int) {
 	_ = fs.Parse(argv)
 	rng, err := parsePortRange(*portsRaw)
 	if err != nil {
-		rng = PortRange{Lo: 3000, Hi: 5000}
+		rng = portRange{Lo: 3000, Hi: 5000}
 	}
 	return modeOf(*private), discoverConfig{rng: rng, all: *all, runtimes: parseRuntimes(*runtimesRaw), docker: *docker}, *httpsPort
 }
@@ -124,7 +124,7 @@ func cmdRoutes(argv []string) int {
 	routes := newLocalRegistry(filepath.Join(dir, "routes")).list()
 	if *asJSON {
 		if routes == nil {
-			routes = []LocalRoute{}
+			routes = []localRoute{}
 		}
 		out, _ := json.MarshalIndent(routes, "", "  ")
 		fmt.Println(string(out))

@@ -33,7 +33,7 @@ func backend(t *testing.T) (port int) {
 
 func TestLocalHandler_routesByHost(t *testing.T) {
 	reg := testRegistry(t)
-	running(t, reg, LocalRoute{Name: "api.acme", Port: backend(t), PID: 1, Dir: "/src/api"})
+	running(t, reg, localRoute{Name: "api.acme", Port: backend(t), PID: 1, Dir: "/src/api"})
 	h := newLocalHandler(reg)
 
 	req := httptest.NewRequest("GET", "https://api.acme.localhost/v1/items?q=1", nil)
@@ -57,7 +57,7 @@ func TestLocalHandler_routesByHost(t *testing.T) {
 
 func TestLocalHandler_subdomainsReachTheirParent(t *testing.T) {
 	reg := testRegistry(t)
-	running(t, reg, LocalRoute{Name: "help-chat", Port: backend(t), PID: 1})
+	running(t, reg, localRoute{Name: "help-chat", Port: backend(t), PID: 1})
 	h := newLocalHandler(reg)
 	for host, want := range map[string]int{"acme.help-chat.localhost": 200, "a.b.help-chat.localhost": 200, "help-chat.localhost": 200, "other.localhost": 404, "chat.localhost": 404} {
 		req := httptest.NewRequest("GET", "/", nil)
@@ -75,7 +75,7 @@ func TestLocalHandler_subdomainsReachTheirParent(t *testing.T) {
 
 func TestLocalHandler_unknownNameLists(t *testing.T) {
 	reg := testRegistry(t)
-	running(t, reg, LocalRoute{Name: "web", Port: 4100, PID: 1, Dir: "/src/web"})
+	running(t, reg, localRoute{Name: "web", Port: 4100, PID: 1, Dir: "/src/web"})
 	h := newLocalHandler(reg)
 
 	for host, want := range map[string]string{
@@ -107,7 +107,7 @@ func TestLocalHandler_deadAppIs502AndForgotten(t *testing.T) {
 	_ = ln.Close() // nothing listens there now
 
 	reg := testRegistry(t)
-	stop := running(t, reg, LocalRoute{Name: "gone", Port: port, PID: 7, Dir: "/src/gone"})
+	stop := running(t, reg, localRoute{Name: "gone", Port: port, PID: 7, Dir: "/src/gone"})
 	h := newLocalHandler(reg)
 	req := httptest.NewRequest("GET", "/", nil)
 	req.Host = "gone.localhost"
@@ -147,7 +147,7 @@ func TestLocalHandler_websocketUpgrade(t *testing.T) {
 	}()
 
 	reg := testRegistry(t)
-	running(t, reg, LocalRoute{Name: "hmr", Port: app.Addr().(*net.TCPAddr).Port, PID: 1})
+	running(t, reg, localRoute{Name: "hmr", Port: app.Addr().(*net.TCPAddr).Port, PID: 1})
 	front := httptest.NewServer(newLocalHandler(reg))
 	t.Cleanup(front.Close)
 
@@ -175,7 +175,7 @@ func TestServeLocal_endToEnd(t *testing.T) {
 	t.Setenv("USERPROFILE", home)
 	dir := filepath.Join(home, ".tailscale-proxy")
 	reg := newLocalRegistry(filepath.Join(dir, "routes"))
-	running(t, reg, LocalRoute{Name: "api", Port: backend(t), PID: os.Getpid(), Dir: "/src/api"})
+	running(t, reg, localRoute{Name: "api", Port: backend(t), PID: os.Getpid(), Dir: "/src/api"})
 
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {

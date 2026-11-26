@@ -28,7 +28,7 @@ func splitFirstSegment(p string) (seg, rest string) {
 }
 
 // writeIndex answers an unknown path with 404 and the registered services.
-func writeIndex(w http.ResponseWriter, store *RouteStore) {
+func writeIndex(w http.ResponseWriter, store *routeStore) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(http.StatusNotFound)
 	snap := store.snapshot()
@@ -103,7 +103,7 @@ func newUpstreamTransport() *http.Transport {
 // target, and duration. When forwardHost is true, the external (funnel/serve)
 // host is forwarded to the app via X-Forwarded-Host + X-Forwarded-Proto=https;
 // otherwise the app only ever sees the local host (so it behaves like localhost).
-func newHandler(store *RouteStore, logRequests, forwardHost bool) http.Handler {
+func newHandler(store *routeStore, logRequests, forwardHost bool) http.Handler {
 	proxy := &httputil.ReverseProxy{
 		Transport:     newUpstreamTransport(),
 		BufferPool:    copyBuffers,
@@ -178,7 +178,7 @@ const routeCookie = "tsp_route"
 // First path segment matching a slug wins (prefix stripped, affinity cookie set).
 // Otherwise it falls back to the affinity cookie and forwards the full path.
 // Returns (service, path, ok).
-func resolveRoute(store *RouteStore, r *http.Request, w http.ResponseWriter) (Service, string, bool) {
+func resolveRoute(store *routeStore, r *http.Request, w http.ResponseWriter) (Service, string, bool) {
 	seg, rest := splitFirstSegment(r.URL.Path)
 	if seg != "" {
 		if svc, ok := store.lookup(seg); ok {

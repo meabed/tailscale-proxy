@@ -61,8 +61,8 @@ func defaultConfig() Config {
 	}
 }
 
-// configPath returns ~/.tailscale-proxy/config.json.
-func configPath() (string, error) {
+// ConfigPath returns the config file path, ~/.tailscale-proxy/config.json.
+func ConfigPath() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
@@ -72,7 +72,7 @@ func configPath() (string, error) {
 
 // stateDir is ~/.tailscale-proxy (beside config.json).
 func stateDir() (string, error) {
-	p, err := configPath()
+	p, err := ConfigPath()
 	if err != nil {
 		return "", err
 	}
@@ -126,9 +126,10 @@ func saveConfigTo(path string, cfg Config) error {
 	return writeFileAtomic(path, append(data, '\n'), 0o644)
 }
 
-// loadConfig loads the config at the default path. Returns (config, path, existed, error).
-func loadConfig() (Config, string, bool, error) {
-	path, err := configPath()
+// LoadConfig loads the saved config overlaid on the defaults (the defaults alone
+// when there is none). Returns (config, path, existed, error).
+func LoadConfig() (Config, string, bool, error) {
+	path, err := ConfigPath()
 	if err != nil {
 		return defaultConfig(), "", false, err
 	}
@@ -136,9 +137,9 @@ func loadConfig() (Config, string, bool, error) {
 	return cfg, path, existed, err
 }
 
-// saveConfig writes cfg to the default path and returns it.
-func saveConfig(cfg Config) (string, error) {
-	path, err := configPath()
+// SaveConfig writes cfg to the default path and returns that path.
+func SaveConfig(cfg Config) (string, error) {
+	path, err := ConfigPath()
 	if err != nil {
 		return "", err
 	}
