@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -113,7 +114,13 @@ func createCA(certPath, keyPath string) (*localCA, error) {
 		BasicConstraintsValid: true,
 		MaxPathLenZero:        true,
 		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
-		PermittedDNSDomains:   []string{localTLD},
+		// Every name type is limited, and the constraint is critical: a verifier that
+		// cannot enforce it must reject the CA rather than trust it unconstrained.
+		PermittedDNSDomainsCritical: true,
+		PermittedDNSDomains:         []string{localTLD},
+		PermittedIPRanges:           []*net.IPNet{{IP: net.IPv4(127, 0, 0, 0).To4(), Mask: net.CIDRMask(8, 32)}, {IP: net.IPv6loopback, Mask: net.CIDRMask(128, 128)}},
+		PermittedEmailAddresses:     []string{localTLD},
+		PermittedURIDomains:         []string{localTLD},
 	}
 	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
 	if err != nil {

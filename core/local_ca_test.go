@@ -7,6 +7,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"net"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -141,6 +142,29 @@ func TestCertIssuer_cacheRenewAndBound(t *testing.T) {
 	}
 	if len(iss.cache) > leafCacheMax {
 		t.Errorf("cache holds %d certificates, more than %d", len(iss.cache), leafCacheMax)
+	}
+}
+
+func TestCA_constraintsCoverEveryNameType(t *testing.T) {
+	ca, _ := testCA(t)
+	c := ca.cert
+	if !c.PermittedDNSDomainsCritical || len(c.PermittedIPRanges) != 2 || len(c.PermittedEmailAddresses) != 1 || len(c.PermittedURIDomains) != 1 {
+		t.Fatalf("constraints: critical=%v ip=%v email=%v uri=%v", c.PermittedDNSDomainsCritical, c.PermittedIPRanges, c.PermittedEmailAddresses, c.PermittedURIDomains)
+	}
+	// A certificate the CA key signs for a public IP is rejected.
+	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	tmpl := &x509.Certificate{
+		SerialNumber: randomSerial(), Subject: pkix.Name{CommonName: "ip"},
+		IPAddresses: []net.IP{net.ParseIP("8.8.8.8")}, NotBefore: time.Now().Add(-time.Hour), NotAfter: time.Now().Add(time.Hour),
+		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+	}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, ca.cert, &key.PublicKey, ca.key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	leaf, _ := x509.ParseCertificate(der)
+	if _, err := leaf.Verify(x509.VerifyOptions{Roots: pool(ca)}); err == nil {
+		t.Fatal("a certificate for 8.8.8.8 verified under the localhost-only CA")
 	}
 }
 
