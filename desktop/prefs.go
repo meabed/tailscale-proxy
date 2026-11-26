@@ -11,8 +11,6 @@ type prefs struct {
 	HideDock bool `json:"hideDock"`
 }
 
-func defaultPrefs() prefs { return prefs{HideDock: true} } // tray-first by default
-
 func prefsPath() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -22,7 +20,7 @@ func prefsPath() (string, error) {
 }
 
 func loadPrefs() prefs {
-	p := defaultPrefs()
+	p := prefs{HideDock: true} // tray-first by default
 	path, err := prefsPath()
 	if err != nil {
 		return p

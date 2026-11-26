@@ -31,7 +31,6 @@ type ui struct {
 
 	mu          sync.Mutex
 	cfg         core.Config
-	token       string
 	settingsURL string
 
 	dmu      sync.Mutex // guards the status caches below
@@ -141,13 +140,10 @@ func (u *ui) toggle() {
 
 func (u *ui) setPrivate(private bool) {
 	u.mu.Lock()
-	u.cfg.Private = private
 	cfg := u.cfg
 	u.mu.Unlock()
-	if _, err := core.SaveConfig(cfg); err != nil {
-		log.Printf("save config: %v", err)
-	}
-	u.restartIfRunning()
+	cfg.Private = private
+	u.applyConfig(cfg)
 }
 
 // applyConfig persists a new config from the settings window and re-exposes if running.

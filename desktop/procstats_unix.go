@@ -9,12 +9,6 @@ import (
 	"strings"
 )
 
-type procStat struct {
-	CPU    float64 // percent
-	MemMB  int     // resident set, MB
-	Uptime string  // compact process age, e.g. "2h13m"
-}
-
 // procStats batches one `ps` call for the given pids (macOS/Linux).
 func procStats(pids []int) map[int]procStat {
 	out := map[int]procStat{}

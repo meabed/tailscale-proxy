@@ -20,6 +20,13 @@ var panelHTML string
 //go:embed assets/settings.html
 var settingsHTML string
 
+// procStat is one process's resource use (procstats_*.go).
+type procStat struct {
+	CPU    float64 // percent
+	MemMB  int     // resident set, MB
+	Uptime string  // compact process age, e.g. "2h13m"
+}
+
 type svcJSON struct {
 	Slug         string  `json:"slug"`
 	Runtime      string  `json:"runtime"`
@@ -178,147 +185,115 @@ func (u *ui) startDashboard() (string, error) {
 	if _, err := rand.Read(buf); err != nil {
 		return "", err
 	}
-	u.token = hex.EncodeToString(buf)
-	page := func(html string) []byte { return []byte(strings.ReplaceAll(html, "__TOKEN__", u.token)) }
-	panel, settings := page(panelHTML), page(settingsHTML)
+	token := hex.EncodeToString(buf)
 
+	html := func(page string) http.HandlerFunc {
+		body := []byte(strings.ReplaceAll(page, "__TOKEN__", token))
+		return func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			_, _ = w.Write(body)
+		}
+	}
 	auth := func(h http.HandlerFunc) http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {
-			if r.Header.Get("X-TSP-Token") != u.token {
+			if r.Header.Get("X-TSP-Token") != token {
 				http.Error(w, "forbidden", http.StatusForbidden)
 				return
 			}
 			h(w, r)
 		}
 	}
-	html := func(body []byte) http.HandlerFunc {
-		return func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			_, _ = w.Write(body)
-		}
+	// act runs a token-gated action and answers 204.
+	act := func(f func(*http.Request)) http.HandlerFunc {
+		return auth(func(w http.ResponseWriter, r *http.Request) {
+			f(r)
+			w.WriteHeader(http.StatusNoContent)
+		})
 	}
+	decode := func(r *http.Request, v any) { _ = json.NewDecoder(r.Body).Decode(v) }
 	writeJSON := func(w http.ResponseWriter, v any) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(v)
 	}
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/" {
-			http.NotFound(w, r)
-			return
-		}
-		html(panel)(w, r)
-	})
-	mux.HandleFunc("/settings", html(settings))
+	mux.HandleFunc("/{$}", html(panelHTML))
+	mux.HandleFunc("/settings", html(settingsHTML))
 
 	mux.HandleFunc("/api/status", auth(func(w http.ResponseWriter, r *http.Request) { writeJSON(w, u.status()) }))
-	mux.HandleFunc("/api/config", auth(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPost {
-			var cfg core.Config
-			if json.NewDecoder(r.Body).Decode(&cfg) == nil {
-				go u.applyConfig(cfg)
-			}
-			w.WriteHeader(http.StatusNoContent)
-			return
+	mux.HandleFunc("/api/checkupdate", auth(func(w http.ResponseWriter, r *http.Request) { writeJSON(w, core.CheckUpdate()) }))
+	mux.HandleFunc("GET /api/config", auth(func(w http.ResponseWriter, r *http.Request) { writeJSON(w, u.configState()) }))
+	mux.HandleFunc("POST /api/config", act(func(r *http.Request) {
+		var cfg core.Config
+		if json.NewDecoder(r.Body).Decode(&cfg) == nil {
+			go u.applyConfig(cfg)
 		}
-		writeJSON(w, u.configState())
 	}))
-	mux.HandleFunc("/api/toggle", auth(func(w http.ResponseWriter, r *http.Request) {
-		go u.toggle()
-		w.WriteHeader(http.StatusNoContent)
-	}))
-	mux.HandleFunc("/api/mode", auth(func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/toggle", act(func(*http.Request) { go u.toggle() }))
+	mux.HandleFunc("/api/refresh", act(func(*http.Request) { u.ctl.Refresh() }))
+	mux.HandleFunc("/api/settings", act(func(*http.Request) { u.showSettings() }))
+	mux.HandleFunc("/api/hidepanel", act(func(*http.Request) { u.hidePanel() }))
+	mux.HandleFunc("/api/quit", act(func(*http.Request) { go u.quit() }))
+	mux.HandleFunc("/api/mode", act(func(r *http.Request) {
 		var b struct {
 			Private bool `json:"private"`
 		}
-		_ = json.NewDecoder(r.Body).Decode(&b)
+		decode(r, &b)
 		go u.setPrivate(b.Private)
-		w.WriteHeader(http.StatusNoContent)
 	}))
-	mux.HandleFunc("/api/refresh", auth(func(w http.ResponseWriter, r *http.Request) {
-		u.ctl.Refresh()
-		w.WriteHeader(http.StatusNoContent)
-	}))
-	mux.HandleFunc("/api/autostart", auth(func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/autostart", act(func(r *http.Request) {
 		var b struct {
 			On bool `json:"on"`
 		}
-		_ = json.NewDecoder(r.Body).Decode(&b)
+		decode(r, &b)
 		go u.setAutostart(b.On)
-		w.WriteHeader(http.StatusNoContent)
 	}))
-	mux.HandleFunc("/api/prefs", auth(func(w http.ResponseWriter, r *http.Request) {
-		var b struct {
-			HideDock bool `json:"hideDock"`
-		}
-		_ = json.NewDecoder(r.Body).Decode(&b)
-		_ = savePrefs(prefs{HideDock: b.HideDock})
-		w.WriteHeader(http.StatusNoContent)
+	mux.HandleFunc("/api/prefs", act(func(r *http.Request) {
+		var b prefs
+		decode(r, &b)
+		_ = savePrefs(b)
 	}))
-	mux.HandleFunc("/api/open", auth(func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/open", act(func(r *http.Request) {
 		var b struct {
 			URL string `json:"url"`
 		}
-		_ = json.NewDecoder(r.Body).Decode(&b)
+		decode(r, &b)
 		if p, err := url.Parse(b.URL); err == nil && (p.Scheme == "http" || p.Scheme == "https") {
 			openExternal(b.URL)
 		}
-		w.WriteHeader(http.StatusNoContent)
 	}))
-	mux.HandleFunc("/api/openconfig", auth(func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/openconfig", act(func(*http.Request) {
 		if p, err := core.ConfigPath(); err == nil {
 			openExternal(p)
 		}
-		w.WriteHeader(http.StatusNoContent)
 	}))
-	mux.HandleFunc("/api/openfolder", auth(func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/openfolder", act(func(r *http.Request) {
 		var b struct {
 			Path string `json:"path"`
 		}
-		_ = json.NewDecoder(r.Body).Decode(&b)
-		// Only open a folder that belongs to a currently-discovered service.
-		if b.Path != "" && u.serviceHasDir(b.Path) {
+		decode(r, &b)
+		if b.Path != "" && u.serviceHasDir(b.Path) { // only a discovered service's folder
 			openExternal(b.Path)
 		}
-		w.WriteHeader(http.StatusNoContent)
 	}))
-	mux.HandleFunc("/api/copy", auth(func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/copy", act(func(r *http.Request) {
 		var b struct {
 			Text string `json:"text"`
 		}
-		_ = json.NewDecoder(r.Body).Decode(&b)
+		decode(r, &b)
 		if b.Text != "" {
 			_ = copyToClipboard(b.Text)
 		}
-		w.WriteHeader(http.StatusNoContent)
 	}))
-	mux.HandleFunc("/api/kill", auth(func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/kill", act(func(r *http.Request) {
 		var b struct {
 			PID int `json:"pid"`
 		}
-		_ = json.NewDecoder(r.Body).Decode(&b)
-		// Only kill a pid that belongs to a currently-discovered service.
-		if u.serviceHasPID(b.PID) {
+		decode(r, &b)
+		if u.serviceHasPID(b.PID) { // only a discovered service's process
 			_ = killPID(b.PID)
 			u.ctl.Refresh()
 		}
-		w.WriteHeader(http.StatusNoContent)
-	}))
-	mux.HandleFunc("/api/checkupdate", auth(func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, core.CheckUpdate())
-	}))
-	mux.HandleFunc("/api/settings", auth(func(w http.ResponseWriter, r *http.Request) {
-		u.showSettings()
-		w.WriteHeader(http.StatusNoContent)
-	}))
-	mux.HandleFunc("/api/hidepanel", auth(func(w http.ResponseWriter, r *http.Request) {
-		u.hidePanel()
-		w.WriteHeader(http.StatusNoContent)
-	}))
-	mux.HandleFunc("/api/quit", auth(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusNoContent)
-		go u.quit()
 	}))
 
 	srv := &http.Server{Handler: mux}
