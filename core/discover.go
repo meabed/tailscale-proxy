@@ -348,8 +348,38 @@ func (d *Discoverer) Discover(cfg discoverConfig) ([]Service, []Duplicate, error
 		return nil, nil, err
 	}
 	if cfg.docker {
-		ls = d.mergeDockerListeners(ls, cfg.rng)
+		ls = mergeListeners(ls, dockerListeners(cfg.rng))
 	}
 	svcs, dups := buildServices(ls, cfg.all, cfg.runtimes)
 	return svcs, dups, nil
+}
+
+// mergeListeners appends the Docker listeners on ports the host listing does not
+// already cover (the host's listener wins).
+func mergeListeners(host, docker []listener) []listener {
+	covered := make(map[int]bool, len(host))
+	for _, l := range host {
+		covered[l.Port] = true
+	}
+	for _, l := range docker {
+		if !covered[l.Port] {
+			host = append(host, l)
+			covered[l.Port] = true
+		}
+	}
+	return host
+}
+
+// portFromAddr extracts the port from a listener address ("*:4764",
+// "127.0.0.1:3000", "[::1]:3000"); 0 if there is none.
+func portFromAddr(addr string) int {
+	i := strings.LastIndexByte(addr, ':')
+	if i < 0 {
+		return 0
+	}
+	p, err := strconv.Atoi(addr[i+1:])
+	if err != nil {
+		return 0
+	}
+	return p
 }

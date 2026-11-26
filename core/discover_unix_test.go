@@ -34,15 +34,6 @@ func TestParseLsofListeners(t *testing.T) {
 	}
 }
 
-func TestPortFromAddr(t *testing.T) {
-	cases := map[string]int{"*:4764": 4764, "127.0.0.1:3000": 3000, "[::1]:3000": 3000, "[::]:5000": 5000, "bad": 0}
-	for in, want := range cases {
-		if got := portFromAddr(in); got != want {
-			t.Errorf("portFromAddr(%q) = %d, want %d", in, got, want)
-		}
-	}
-}
-
 func TestParsePsComm(t *testing.T) {
 	out := "  4231 /opt/homebrew/bin/bun\n  630 /System/.../ControlCenter\n"
 	m := parsePsComm(out)

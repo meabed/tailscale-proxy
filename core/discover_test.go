@@ -251,3 +251,24 @@ func keysOf(m map[string]Service) []string {
 	}
 	return out
 }
+
+func TestPortFromAddr(t *testing.T) {
+	cases := map[string]int{"*:4764": 4764, "127.0.0.1:3000": 3000, "[::1]:3000": 3000, "[::]:5000": 5000, "bad": 0}
+	for in, want := range cases {
+		if got := portFromAddr(in); got != want {
+			t.Errorf("portFromAddr(%q) = %d, want %d", in, got, want)
+		}
+	}
+}
+
+func TestMergeListeners(t *testing.T) {
+	host := []listener{{Port: 3000, PID: 1}}
+	docker := []listener{{Port: 3000, PID: -1}, {Port: 3001, PID: -2}, {Port: 3001, PID: -3}}
+	got := mergeListeners(host, docker)
+	if len(got) != 2 || got[0].PID != 1 || got[1].PID != -2 {
+		t.Errorf("mergeListeners = %+v, want the host's 3000 then docker's first 3001", got)
+	}
+	if got := mergeListeners(host, nil); len(got) != 1 {
+		t.Errorf("mergeListeners without docker = %+v", got)
+	}
+}

@@ -33,11 +33,7 @@ func printStartHeader(o startOpts, mode Mode, rng PortRange, cfgPath string, exi
 	if o.forwardHost {
 		hostMode = "forwarded (public host via X-Forwarded-*)"
 	}
-	bind := o.bind
-	if bind == "" {
-		bind = "127.0.0.1"
-	}
-	fmt.Printf("  ports=%s  mode=%s  proxy=%s:%d  https=%d\n", ports, kind, bind, o.port, o.httpsPort)
+	fmt.Printf("  ports=%s  mode=%s  proxy=%s:%d  https=%d\n", ports, kind, o.bind, o.port, o.httpsPort)
 	fmt.Printf("  interval=%ds  runtimes=%s  deregister-after=%d scans  log-requests=%t\n",
 		o.interval, runtimes, o.deregisterCycles, o.logRequests)
 	fmt.Printf("  host=%s\n\n", hostMode)
@@ -69,15 +65,10 @@ func printDiscovered(dcfg discoverConfig, mode Mode, httpsPort int) int {
 	}
 	fmt.Printf("Discovered services (ports %d-%d, %s):\n", dcfg.rng.Lo, dcfg.rng.Hi, kind)
 	node, nerr := nodeDNSName(execRunner{})
-	snap := make(map[string]Service, len(svcs))
-	for _, s := range svcs {
-		snap[s.Slug] = s
-	}
-	for _, slug := range sortedSlugs(snap) {
-		s := snap[slug]
-		fmt.Printf("  %-26s %-6s %-21s pid %d  %s\n", slug, runtimeOr(s.Runtime), targetDisplay(s), s.PID, dirOr(s.Dir))
+	for _, s := range svcs { // sorted by slug
+		fmt.Printf("  %-26s %-6s %-21s pid %d  %s\n", s.Slug, runtimeOr(s.Runtime), targetDisplay(s), s.PID, dirOr(s.Dir))
 		if nerr == nil {
-			fmt.Printf("    %s/%s/\n", publicBase(node, httpsPort), slug)
+			fmt.Printf("    %s/%s/\n", publicBase(node, httpsPort), s.Slug)
 		}
 	}
 	printDuplicateNotes(dups)

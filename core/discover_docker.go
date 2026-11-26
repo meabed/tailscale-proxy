@@ -48,11 +48,9 @@ type dockerContainerInfo struct {
 	} `json:"NetworkSettings"`
 }
 
-// dockerListeners queries the Docker API for running containers and returns
-// listeners for each port found. Returns nil (not an error) if Docker is
-// unavailable — the caller (discover_unix.go) treats this as "no docker
-// listeners" rather than a failure.
-func (d *Discoverer) dockerListeners(rng PortRange) []listener {
+// dockerListeners queries the Docker API for running containers and returns a
+// listener for each published port in rng; nil when Docker is unavailable.
+func dockerListeners(rng PortRange) []listener {
 	if _, err := os.Stat(dockerSocketPath); err != nil {
 		return nil
 	}

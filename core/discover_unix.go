@@ -94,30 +94,6 @@ func (d *Discoverer) resolveProcs(ls []listener) {
 	d.procs = next
 }
 
-// mergeDockerListeners appends Docker-discovered listeners to lsof results,
-// deduplicating by port (lsof takes priority).
-func (d *Discoverer) mergeDockerListeners(lsofListeners []listener, rng PortRange) []listener {
-	dockerLs := d.dockerListeners(rng)
-	if len(dockerLs) == 0 {
-		return lsofListeners
-	}
-
-	// Build a set of ports already covered by lsof.
-	covered := make(map[int]bool, len(lsofListeners))
-	for _, l := range lsofListeners {
-		covered[l.Port] = true
-	}
-
-	for _, dl := range dockerLs {
-		if !covered[dl.Port] {
-			lsofListeners = append(lsofListeners, dl)
-			covered[dl.Port] = true
-		}
-	}
-
-	return lsofListeners
-}
-
 // parseLsofListeners parses `lsof -Fpcn` output, deduping per (pid,port).
 func parseLsofListeners(out string, rng PortRange) []listener {
 	var res []listener
@@ -148,19 +124,6 @@ func parseLsofListeners(out string, rng PortRange) []listener {
 		}
 	}
 	return res
-}
-
-// portFromAddr extracts the port from an lsof name like "*:4764" or "[::1]:3000".
-func portFromAddr(addr string) int {
-	i := strings.LastIndexByte(addr, ':')
-	if i < 0 {
-		return 0
-	}
-	p, err := strconv.Atoi(addr[i+1:])
-	if err != nil {
-		return 0
-	}
-	return p
 }
 
 // parsePsComm parses `ps -o pid=,comm=` output into pid -> executable path.
@@ -198,17 +161,4 @@ func parseLsofCwd(out string) map[int]string {
 		}
 	}
 	return m
-}
-
-// uniquePIDs returns the distinct PIDs of a listener slice as strings.
-func uniquePIDs(ls []listener) []string {
-	seen := map[int]bool{}
-	var out []string
-	for _, l := range ls {
-		if !seen[l.PID] {
-			seen[l.PID] = true
-			out = append(out, strconv.Itoa(l.PID))
-		}
-	}
-	return out
 }

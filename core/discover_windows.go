@@ -56,19 +56,6 @@ func parseNetstat(out string, rng PortRange) []listener {
 	return res
 }
 
-// portFromAddr extracts the port from "0.0.0.0:3000" or "[::]:4983".
-func portFromAddr(addr string) int {
-	i := strings.LastIndexByte(addr, ':')
-	if i < 0 {
-		return 0
-	}
-	p, err := strconv.Atoi(addr[i+1:])
-	if err != nil {
-		return 0
-	}
-	return p
-}
-
 // parseTasklist parses `tasklist /FO CSV /NH` into pid -> image name.
 func parseTasklist(out string) map[int]string {
 	m := map[int]string{}
