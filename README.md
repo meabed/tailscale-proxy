@@ -248,9 +248,9 @@ flowchart LR
 ```
 
 1. Every `--interval` seconds, `tsp` lists listening TCP sockets in the range
-   (macOS/Linux via `lsof`+`ps`, Windows via `netstat`+`tasklist`; process details
-   are cached per PID, so an idle re-scan is one `lsof`), classifies the runtime,
-   and derives a slug from the nearest project-root folder
+   (macOS/Linux via `lsof`+`ps`, Windows via `netstat`+`tasklist`; on macOS/Linux
+   process details are cached per PID, so an idle re-scan is one `lsof`),
+   classifies the runtime, and derives a slug from the nearest project-root folder
    (`package.json`/`.git`/…), de-duplicating collisions.
 2. A `net/http` reverse proxy matches the first path segment to a service, strips
    it, rewrites `Host`, and forwards to `127.0.0.1:<port>` (streaming + WebSocket

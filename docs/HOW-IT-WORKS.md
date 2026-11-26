@@ -55,10 +55,11 @@ flowchart TD
      `ps -o comm` (full runtime path, only when lsof's command isn't a known
      runtime) and `lsof -d cwd` (working directory).
    - Windows: `netstat -ano` + `tasklist` (no working directory available).
-   - The enrichment is cached per PID (its working directory and project root are
-     resolved once per process), so a steady-state re-scan spawns a single
-     `lsof`/`netstat`. PIDs that stop listening are dropped from the cache every
-     scan; a PID reused by another program is resolved again.
+   - On macOS/Linux the enrichment is cached per PID + command (working directory
+     and project root are resolved once per process), so a steady-state re-scan
+     spawns a single `lsof`. PIDs that stop listening are dropped from the cache
+     every scan; a PID that comes back under another command is resolved again.
+     Windows resolves names every scan (it reuses PIDs quickly).
 2. **Classify runtime** from the executable basename — known web runtimes are
    `node`, `bun`, `deno`, `python` (incl. `uvicorn`/`gunicorn`), `ruby` (incl.
    `puma`), `php` (incl. `php-fpm`), `go`, `java`, `dotnet`, `elixir`, `perl`, and
