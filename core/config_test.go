@@ -7,15 +7,7 @@ import (
 	"testing"
 )
 
-func pinLocalProxy(t *testing.T, present bool) {
-	t.Helper()
-	orig := localProxyPresent
-	localProxyPresent = func() bool { return present }
-	t.Cleanup(func() { localProxyPresent = orig })
-}
-
 func TestDefaultConfig(t *testing.T) {
-	pinLocalProxy(t, false)
 	cfg := defaultConfig()
 	if cfg.Ports != "3000-6000" {
 		t.Errorf("Ports = %q, want %q", cfg.Ports, "3000-6000")
@@ -43,13 +35,6 @@ func TestDefaultConfig(t *testing.T) {
 	}
 	if cfg.Docker {
 		t.Error("Docker = true, want false")
-	}
-}
-
-func TestDefaultConfigWithLocalProxy(t *testing.T) {
-	pinLocalProxy(t, true)
-	if got := defaultConfig().HTTPSPort; got != 8443 {
-		t.Errorf("HTTPSPort with tsp proxy = %d, want 8443", got)
 	}
 }
 

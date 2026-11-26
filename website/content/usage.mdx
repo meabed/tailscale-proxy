@@ -38,7 +38,7 @@ Defaults come from your config file (see [Configuration](/configuration)).
 | `--bind <addr>` | `127.0.0.1` | Listen address; `0.0.0.0` to reach from containers/LAN |
 | `--port <n>` | `18443` | Local proxy HTTP port (never a Funnel port: Tailscale.app's Serve binds that port on every address) |
 | `--interval <sec>` | `20` | Re-scan period |
-| `--https-port <n>` | `443` (`8443` when `tsp proxy` is set up) | Public/tailnet HTTPS port (Funnel: `443`/`8443`/`10000`) |
+| `--https-port <n>` | `443` | Public/tailnet HTTPS port (Funnel: `443`/`8443`/`10000`) |
 | `--deregister-cycles <n>` | `5` | Missing scans before a gone service is removed |
 | `--forward-host` | off | Forward the public host to apps via `X-Forwarded-Host/Proto` (default: local) |
 | `--match-separators` | on | Route `/a-b/` and `/a_b/` alike; `--match-separators=false` for exact-dash |

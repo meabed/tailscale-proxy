@@ -167,7 +167,7 @@ Run `tsp start --help` for all flags. Global: `-h/--help`, `-v/--version`.
 | `--bind <addr>` | `127.0.0.1` | Proxy listen address. Use `0.0.0.0` to reach the proxy from **Docker containers / the LAN** without MagicDNS |
 | `--port <n>` | `18443` | Local proxy HTTP port (never a Funnel port: Tailscale.app's Serve binds that port on every address) |
 | `--interval <sec>` | `20` | Re-scan period |
-| `--https-port <n>` | `443` (`8443` when `tsp proxy` is set up) | Public/tailnet HTTPS port (Funnel: `443`/`8443`/`10000`) |
+| `--https-port <n>` | `443` | Public/tailnet HTTPS port (Funnel: `443`/`8443`/`10000`) |
 | `--deregister-cycles <n>` | `5` | Missing scans before a gone service is removed |
 | `--forward-host` | off | Forward the public host to apps via `X-Forwarded-Host/Proto`. Default presents a **local** request so apps behave exactly like `localhost` |
 | `--match-separators` | on | Treat `-` and `_` as interchangeable in the path slug, so `/module-api/` and `/module_api/` both route. Pass `--match-separators=false` for exact-dash routing |

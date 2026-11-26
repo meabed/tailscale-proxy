@@ -224,14 +224,17 @@ tailscale serve status   # should print "No serve config"
 `tsp start --bg` detaches and logs to `./tsp.log`. Stop it by `kill`-ing the printed
 pid (or `pgrep -f "tsp"`), then `tsp reset` to be sure the Serve/Funnel entry is down.
 
-## `https://*.localhost` hangs while tsp runs (macOS)
+## Funnel on 443 next to `tsp proxy` (macOS)
 
-Tailscale.app's Serve listens on its public port on **every** address, so a Serve or
-Funnel on `443` takes the port the local HTTPS proxy (`tsp proxy`, see
-[Local HTTPS names](LOCAL-HTTPS.md)) needs: every `https://<app>.localhost` hangs. Once `tsp proxy` is set up
-(its CA exists), tsp defaults to `--https-port 8443` (public URLs become
-`https://<node>.ts.net:8443/<project>/`); a saved config that pins `443` gets a
-warning on start. Fix an existing setup with:
+Tailscale.app's Serve/Funnel on `443` listens on every address (`*:443`); `tsp proxy`
+listens on `127.0.0.1:443` and `[::1]:443`. macOS hands local connections to the more
+specific listener, so both run side by side in either start order (`tsp proxy` binds as
+root, before it drops to your user): `https://*.localhost` goes to `tsp proxy`, the
+public `https://<node>.ts.net/<project>/` to the Funnel.
+
+Another local HTTPS proxy that listens on `*:443` itself cannot share the port. If every
+`https://*.localhost` hangs while tsp runs, `lsof -nP -iTCP:443 -sTCP:LISTEN` shows who
+holds it; move the Funnel off 443 with:
 
 ```bash
 tsp reset                          # remove the Serve/Funnel entry on 443

@@ -70,7 +70,7 @@ Flags (defaults come from ~/.tailscale-proxy/config.json if present):
                          reach the proxy from containers / the LAN — no MagicDNS)
   --port <n>             Local proxy HTTP port                (default 18443)
   --interval <sec>       Re-scan period in seconds            (default 20)
-  --https-port <n>       Public/tailnet HTTPS port            (default 443; 8443 with tsp proxy)
+  --https-port <n>       Public/tailnet HTTPS port            (default 443)
   --deregister-cycles <n> Missing scans before a gone service is removed (default 5)
   --bg                   Run tsp detached in the background (logs → ./tsp.log)
   --proxy-only           Run the proxy only; print the tailscale command
@@ -160,9 +160,6 @@ func cmdStart(argv []string) int {
 	if o.port == o.httpsPort {
 		fmt.Fprintf(os.Stderr, "--port %d is also the public --https-port: Tailscale's Serve listens there, pick another local port (default %d)\n", o.port, defaultLocalPort)
 		return 2
-	}
-	if o.httpsPort == 443 && localProxyPresent() {
-		fmt.Println("⚠ tsp proxy serves https://*.localhost on 443 here: a Serve/Funnel on 443 takes that port on macOS (every *.localhost name hangs).\n  Use: tsp configure --https-port 8443")
 	}
 	rng, err := parsePortRange(o.portsRaw)
 	if err != nil {

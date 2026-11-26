@@ -31,33 +31,11 @@ type Config struct {
 // address, so a local proxy there could not bind it.
 const defaultLocalPort = 18443
 
-// defaultHTTPSPort is the public Serve/Funnel port: 8443 when this machine
-// serves https://*.localhost on 443 (tsp proxy), since a Serve on 443 takes that
-// port on macOS and every *.localhost name would hang; else 443.
-func defaultHTTPSPort() int {
-	if localProxyPresent() {
-		return 8443
-	}
-	return 443
-}
-
-// localProxyPresent reports whether the local HTTPS proxy is set up here (its
-// CA exists). A variable so tests can pin it.
-var localProxyPresent = func() bool {
-	dir, err := stateDir()
-	if err != nil {
-		return false
-	}
-	certPath, _ := caFiles(dir)
-	_, err = os.Stat(certPath)
-	return err == nil
-}
-
 // defaultConfig returns the built-in defaults.
 func defaultConfig() Config {
 	return Config{
 		Ports: "3000-6000", Bind: "127.0.0.1", Port: defaultLocalPort, Interval: 20,
-		HTTPSPort: defaultHTTPSPort(), LogRequests: true, DeregisterCycles: 5, MatchSeparators: true,
+		HTTPSPort: 443, LogRequests: true, DeregisterCycles: 5, MatchSeparators: true,
 	}
 }
 

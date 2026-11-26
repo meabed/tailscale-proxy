@@ -11,7 +11,7 @@ browser / curl / Bun ──► https://api.acme.localhost ──► tsp proxy (1
 ```
 
 It is independent of `tsp start` (the Tailscale Funnel/Serve side). When both run, the
-Funnel uses `8443` (see [Troubleshooting](/troubleshooting)), and a `tsp run` app is
+Funnel keeps 443 too (they share it: see [Troubleshooting](/troubleshooting)), and a `tsp run` app is
 also discovered by `tsp start` like any other dev server.
 
 ## Set up a machine (once)
@@ -102,7 +102,7 @@ tsp proxy [--port n]                     the proxy in the foreground (what the s
 | `https://<name>.localhost` → 404 "nothing runs at" | start it: `bun dev` / `tsp run` in its folder; `tsp routes` lists what runs |
 | → 502 "not answering" | the app is still starting, or does not listen on `$PORT`/`$HOST` |
 | "already runs (pid …)" | stop the other terminal's run, or `tsp run --force` |
-| every `*.localhost` hangs | a Tailscale Serve/Funnel on 443: `tsp reset`, then `tsp configure --https-port 8443` |
+| every `*.localhost` hangs | another proxy holds `*:443`: `lsof -nP -iTCP:443 -sTCP:LISTEN` (or move the Funnel: `tsp configure --https-port 8443`) |
 
 Remove everything: `tsp service uninstall`, then delete `~/.tailscale-proxy/ca` and remove
 the "tailscale-proxy local CA" certificate from the OS trust store (Keychain Access on macOS).
