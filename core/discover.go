@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 // Service is one discovered listening dev server.
@@ -43,6 +44,7 @@ type listener struct {
 	Comm   string
 	PsComm string
 	Cwd    string
+	Root   string // project root dir of Cwd (cached per process); "" = resolve from Cwd
 }
 
 // knownRuntimes maps a process's executable basename to a runtime label. These
@@ -157,15 +159,6 @@ func projectRootDir(dir string) string {
 	return dir
 }
 
-// projectRoot returns the basename of the project root for dir (or "").
-func projectRoot(dir string) string {
-	rd := projectRootDir(dir)
-	if rd == "" {
-		return ""
-	}
-	return filepath.Base(rd)
-}
-
 var slugUnsafe = regexp.MustCompile(`[^a-z0-9]+`)
 
 // slugify normalizes a name into a URL path segment.
@@ -191,12 +184,13 @@ func serviceOf(l listener, slug string) Service {
 	return Service{Slug: slug, Port: l.Port, Host: host, Runtime: runtimeOf(l), Dir: l.Cwd, PID: l.PID}
 }
 
-// projectBaseSlug derives the clean project slug from a working directory, or
+// projectBaseSlug derives the clean project slug from the project root, or
 // "<runtime>-<port>" / "port-<port>" when there's no discoverable project.
 func projectBaseSlug(l listener) string {
-	slug := slugify(projectRoot(l.Cwd))
-	if slug != "" {
-		return slug
+	if l.Root != "" {
+		if slug := slugify(filepath.Base(l.Root)); slug != "" {
+			return slug
+		}
 	}
 	if rt := classifyRuntime(l.Comm); rt != "" {
 		return rt + "-" + strconv.Itoa(l.Port)
@@ -225,7 +219,10 @@ func buildServices(listeners []listener, includeAll bool, runtimes map[string]bo
 		if !includeAll && (rt == "" || (runtimes != nil && !runtimes[rt])) {
 			continue
 		}
-		key := projectRootDir(l.Cwd)
+		if l.Root == "" {
+			l.Root = projectRootDir(l.Cwd)
+		}
+		key := l.Root
 		if key == "" {
 			key = "\x00port:" + strconv.Itoa(l.Port)
 		}
@@ -325,13 +322,27 @@ func parseRuntimes(s string) map[string]bool {
 }
 
 // Discoverer lists services using an injected command Runner (for exec parsers).
-type Discoverer struct{ run Runner }
+// It remembers what it learned about each listening process by PID, so a
+// steady-state re-scan spawns only the listener listing; PIDs that stop
+// listening are evicted every scan, so the cache never outgrows the live set.
+type Discoverer struct {
+	run   Runner
+	mu    sync.Mutex // one scan at a time: guards procs, no overlapping lsof runs
+	procs map[int]procInfo
+}
 
-func newDiscoverer(r Runner) *Discoverer { return &Discoverer{run: r} }
+// procInfo is what discovery resolved for one listening process. comm is the
+// command the listener listing reported; a PID that comes back under another
+// command was reused and is resolved again.
+type procInfo struct{ comm, psComm, cwd, root string }
+
+func newDiscoverer(r Runner) *Discoverer { return &Discoverer{run: r, procs: map[int]procInfo{}} }
 
 // Discover returns the filtered services in the configured range, plus any
 // duplicate-instance info (same project on multiple ports).
 func (d *Discoverer) Discover(cfg discoverConfig) ([]Service, []Duplicate, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
 	ls, err := d.listeners(cfg.rng)
 	if err != nil {
 		return nil, nil, err

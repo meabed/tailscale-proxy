@@ -48,17 +48,17 @@ func TestProjectRoot(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(root, "proj", ".git"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if got := projectRoot(web); got != "proj" {
-		t.Errorf("projectRoot = %q, want proj", got)
+	if got := filepath.Base(projectRootDir(web)); got != "proj" {
+		t.Errorf("projectRootDir = %q, want proj", got)
 	}
 	// no markers -> basename of cwd
 	plain := filepath.Join(root, "loose", "thing")
 	os.MkdirAll(plain, 0o755)
-	if got := projectRoot(plain); got != "thing" {
-		t.Errorf("projectRoot(no markers) = %q, want thing", got)
+	if got := projectRootDir(plain); got != plain {
+		t.Errorf("projectRootDir(no markers) = %q, want %q", got, plain)
 	}
-	if got := projectRoot(""); got != "" {
-		t.Errorf("projectRoot(empty) = %q, want empty", got)
+	if got := projectRootDir(""); got != "" {
+		t.Errorf("projectRootDir(empty) = %q, want empty", got)
 	}
 }
 

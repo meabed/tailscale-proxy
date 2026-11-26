@@ -51,9 +51,14 @@ flowchart TD
 ```
 
 1. **List listeners** — sockets in `LISTEN` within the port range, with PID:
-   - macOS/Linux: `lsof -nP -iTCP -sTCP:LISTEN -Fpcn`, enriched with `ps -o comm`
-     (full runtime path) and `lsof -d cwd` (working directory).
+   - macOS/Linux: `lsof -nP -b -w -iTCP:<lo-hi> -sTCP:LISTEN -Fpcn`, enriched with
+     `ps -o comm` (full runtime path, only when lsof's command isn't a known
+     runtime) and `lsof -d cwd` (working directory).
    - Windows: `netstat -ano` + `tasklist` (no working directory available).
+   - The enrichment is cached per PID (its working directory and project root are
+     resolved once per process), so a steady-state re-scan spawns a single
+     `lsof`/`netstat`. PIDs that stop listening are dropped from the cache every
+     scan; a PID reused by another program is resolved again.
 2. **Classify runtime** from the executable basename — known web runtimes are
    `node`, `bun`, `deno`, `python` (incl. `uvicorn`/`gunicorn`), `ruby` (incl.
    `puma`), `php` (incl. `php-fpm`), `go`, `java`, `dotnet`, `elixir`, `perl`, and

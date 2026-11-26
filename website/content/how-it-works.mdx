@@ -46,7 +46,9 @@ flowchart TD
 Every `--interval` seconds:
 
 1. **List listeners** — TCP sockets in `LISTEN` within the port range, with PID
-   (macOS/Linux via `lsof`+`ps`, Windows via `netstat`+`tasklist`).
+   (macOS/Linux via `lsof`+`ps`, Windows via `netstat`+`tasklist`). Process
+   details (runtime path, working directory, project root) are cached per PID, so
+   an idle re-scan spawns a single `lsof`/`netstat`.
 2. **Classify runtime** from the executable name (`node`, `bun`, `deno`,
    `python`/`uvicorn`/`gunicorn`, `ruby`/`puma`, `php`, `go run`, `java`,
    `dotnet`, `elixir`, `docker-proxy`, …).

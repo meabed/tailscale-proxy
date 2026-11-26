@@ -9,46 +9,89 @@ import (
 )
 
 // listeners lists listening TCP sockets in range via lsof, enriching each with
-// the full runtime (ps) and working directory (lsof -d cwd).
+// the full runtime (ps) and working directory (lsof -d cwd). Those two lookups
+// run only for processes not already known from the previous scan.
 func (d *Discoverer) listeners(rng PortRange) ([]listener, error) {
-	out, stderr, err := d.run.Run("lsof", "-nP", "-iTCP", "-sTCP:LISTEN", "-Fpcn")
+	// -b/-w: skip kernel calls that can block (stat/readlink) and their warnings;
+	// -iTCP:<range>: only sockets in range, so lsof doesn't format every one.
+	out, stderr, err := d.run.Run("lsof", "-nP", "-b", "-w", "-iTCP:"+lsofPorts(rng), "-sTCP:LISTEN", "-Fpcn")
 	if err != nil {
 		// Distinguish "lsof not installed" from "lsof found nothing" (lsof exits
 		// non-zero with empty output when no sockets match — not an error for us).
+		// A non-zero exit with output is parsed as-is.
 		if strings.Contains(err.Error(), "executable file not found") ||
 			strings.Contains(stderr, "not found") {
 			return nil, fmt.Errorf("lsof not found — install it (macOS ships it; Linux: apt/dnf install lsof)")
 		}
-		if strings.TrimSpace(out) == "" {
-			return []listener{}, nil
-		}
-		// Non-zero exit but we still got output — parse what we have.
 	}
 	ls := parseLsofListeners(out, rng)
-	if len(ls) == 0 {
-		return ls, nil
-	}
-
-	pids := uniquePIDs(ls)
-	if psOut, _, err := d.run.Run("ps", "-o", "pid=,comm=", "-p", strings.Join(pids, ",")); err == nil {
-		comm := parsePsComm(psOut)
-		for i := range ls {
-			if c, ok := comm[ls[i].PID]; ok {
-				ls[i].PsComm = c // keep the lsof Comm; ps is a secondary signal
-			}
-		}
-	}
-
-	cwdArgs := []string{"-a", "-d", "cwd", "-Fpn", "-p", strings.Join(pids, ",")}
-	if cwdOut, _, err := d.run.Run("lsof", cwdArgs...); err == nil {
-		cwd := parseLsofCwd(cwdOut)
-		for i := range ls {
-			if c, ok := cwd[ls[i].PID]; ok {
-				ls[i].Cwd = c
-			}
-		}
-	}
+	d.resolveProcs(ls)
 	return ls, nil
+}
+
+// lsofPorts renders a range as an lsof port spec ("3000-6000", or "4000").
+func lsofPorts(rng PortRange) string {
+	if rng.Lo == rng.Hi {
+		return strconv.Itoa(rng.Lo)
+	}
+	return strconv.Itoa(rng.Lo) + "-" + strconv.Itoa(rng.Hi)
+}
+
+// resolveProcs fills each listener's PsComm, Cwd and Root from the process
+// cache, running ps and the cwd lsof once for all PIDs that are new (or reused
+// under another command). PIDs absent from ls are evicted.
+func (d *Discoverer) resolveProcs(ls []listener) {
+	var fresh, needPs []string
+	seen := map[int]bool{}
+	for _, l := range ls {
+		if seen[l.PID] {
+			continue
+		}
+		seen[l.PID] = true
+		if p, ok := d.procs[l.PID]; ok && p.comm == l.Comm {
+			continue
+		}
+		pid := strconv.Itoa(l.PID)
+		fresh = append(fresh, pid)
+		// The ps name only classifies processes lsof's command doesn't (runtimeOf).
+		if classifyRuntime(l.Comm) == "" {
+			needPs = append(needPs, pid)
+		}
+	}
+
+	// lsof/ps exit non-zero when any PID is gone or unreadable, but still print
+	// the rest — use what they print. Only an empty failed run is retried.
+	cacheable := true
+	var psComm, cwd map[int]string
+	if len(needPs) > 0 {
+		out, _, err := d.run.Run("ps", "-o", "pid=,comm=", "-p", strings.Join(needPs, ","))
+		psComm = parsePsComm(out)
+		cacheable = err == nil || strings.TrimSpace(out) != ""
+	}
+	if len(fresh) > 0 {
+		out, _, err := d.run.Run("lsof", "-nP", "-b", "-w", "-a", "-d", "cwd", "-Fpn", "-p", strings.Join(fresh, ","))
+		cwd = parseLsofCwd(out)
+		cacheable = cacheable && (err == nil || strings.TrimSpace(out) != "")
+	}
+
+	next := make(map[int]procInfo, len(seen))
+	for i := range ls {
+		l := &ls[i]
+		p, ok := next[l.PID]
+		if !ok {
+			p, ok = d.procs[l.PID]
+			if !ok || p.comm != l.Comm {
+				p = procInfo{comm: l.Comm, psComm: psComm[l.PID], cwd: cwd[l.PID]}
+				p.root = projectRootDir(p.cwd)
+				ok = cacheable
+			}
+			if ok {
+				next[l.PID] = p
+			}
+		}
+		l.PsComm, l.Cwd, l.Root = p.psComm, p.cwd, p.root
+	}
+	d.procs = next
 }
 
 // mergeDockerListeners appends Docker-discovered listeners to lsof results,

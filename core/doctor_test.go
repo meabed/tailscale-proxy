@@ -39,9 +39,9 @@ func TestDoctor_tailscaleMissing(t *testing.T) {
 
 func TestDoctor_serveModeSkipsFunnelCheck(t *testing.T) {
 	r := scriptRunner{responses: map[string][3]string{
-		"tailscale version":                 {"1.98.2", "", ""},
-		"tailscale status":                  {"100.1.1.1 node user macOS -", "", ""},
-		"lsof -nP -iTCP -sTCP:LISTEN -Fpcn": {"", "", ""},
+		"tailscale version": {"1.98.2", "", ""},
+		"tailscale status":  {"100.1.1.1 node user macOS -", "", ""},
+		"lsof -nP -b -w -iTCP:3000-5000 -sTCP:LISTEN -Fpcn": {"", "", ""},
 	}}
 	disc := newDiscoverer(r)
 	cfg := discoverConfig{rng: PortRange{3000, 5000}}
@@ -55,11 +55,11 @@ func TestDoctor_serveModeSkipsFunnelCheck(t *testing.T) {
 
 func TestDoctor_magicDNSAdvisoryWhenAcceptDNSOn(t *testing.T) {
 	r := scriptRunner{responses: map[string][3]string{
-		"tailscale version":                 {"1.98.2", "", ""},
-		"tailscale status":                  {"100.1.1.1 node user macOS -", "", ""},
-		"tailscale funnel status":           {"Funnel on", "", ""},
-		"tailscale debug prefs":             {`{"CorpDNS":true}`, "", ""},
-		"lsof -nP -iTCP -sTCP:LISTEN -Fpcn": {"", "", ""},
+		"tailscale version":                                 {"1.98.2", "", ""},
+		"tailscale status":                                  {"100.1.1.1 node user macOS -", "", ""},
+		"tailscale funnel status":                           {"Funnel on", "", ""},
+		"tailscale debug prefs":                             {`{"CorpDNS":true}`, "", ""},
+		"lsof -nP -b -w -iTCP:3000-5000 -sTCP:LISTEN -Fpcn": {"", "", ""},
 	}}
 	disc := newDiscoverer(r)
 	cfg := discoverConfig{rng: PortRange{3000, 5000}}
@@ -75,11 +75,11 @@ func TestDoctor_magicDNSAdvisoryWhenAcceptDNSOn(t *testing.T) {
 
 func TestDoctor_noMagicDNSAdvisoryWhenAcceptDNSOff(t *testing.T) {
 	r := scriptRunner{responses: map[string][3]string{
-		"tailscale version":                 {"1.98.2", "", ""},
-		"tailscale status":                  {"100.1.1.1 node user macOS -", "", ""},
-		"tailscale funnel status":           {"Funnel on", "", ""},
-		"tailscale debug prefs":             {`{"CorpDNS":false}`, "", ""},
-		"lsof -nP -iTCP -sTCP:LISTEN -Fpcn": {"", "", ""},
+		"tailscale version":                                 {"1.98.2", "", ""},
+		"tailscale status":                                  {"100.1.1.1 node user macOS -", "", ""},
+		"tailscale funnel status":                           {"Funnel on", "", ""},
+		"tailscale debug prefs":                             {`{"CorpDNS":false}`, "", ""},
+		"lsof -nP -b -w -iTCP:3000-5000 -sTCP:LISTEN -Fpcn": {"", "", ""},
 	}}
 	disc := newDiscoverer(r)
 	cfg := discoverConfig{rng: PortRange{3000, 5000}}
@@ -97,8 +97,8 @@ func TestDoctor_noServicesPassesAsAdvisory(t *testing.T) {
 		"tailscale funnel status": {"Funnel on", "", ""},
 		// Discovery command per platform — both stubbed empty so discovery
 		// yields zero services with no error on Unix (lsof) and Windows (netstat).
-		"lsof -nP -iTCP -sTCP:LISTEN -Fpcn": {"", "", ""},
-		"netstat -ano -p TCP":               {"", "", ""},
+		"lsof -nP -b -w -iTCP:3000-5000 -sTCP:LISTEN -Fpcn": {"", "", ""},
+		"netstat -ano -p TCP":                               {"", "", ""},
 	}}
 	disc := newDiscoverer(r)
 	cfg := discoverConfig{rng: PortRange{3000, 5000}}

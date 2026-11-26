@@ -9,24 +9,32 @@ import (
 )
 
 // listeners lists listening TCP sockets via netstat, with process names from
-// tasklist. Working directory is not available on Windows.
+// tasklist. Working directory is not available on Windows. tasklist lists every
+// process on the machine, so it runs only when a PID is new since the last scan.
 func (d *Discoverer) listeners(rng PortRange) ([]listener, error) {
 	out, stderr, err := d.run.Run("netstat", "-ano", "-p", "TCP")
 	if err != nil {
 		return nil, fmt.Errorf("netstat failed: %v\n%s", err, stderr)
 	}
 	ls := parseNetstat(out, rng)
-	if len(ls) == 0 {
-		return ls, nil
-	}
-	if tlOut, _, err := d.run.Run("tasklist", "/FO", "CSV", "/NH"); err == nil {
-		names := parseTasklist(tlOut)
-		for i := range ls {
-			if n, ok := names[ls[i].PID]; ok {
-				ls[i].Comm = n
+	next := make(map[int]procInfo, len(ls))
+	var names map[int]string
+	cacheable := true
+	for i := range ls {
+		p, ok := d.procs[ls[i].PID]
+		if !ok {
+			if names == nil {
+				tlOut, _, err := d.run.Run("tasklist", "/FO", "CSV", "/NH")
+				names, cacheable = parseTasklist(tlOut), err == nil
 			}
+			p, ok = procInfo{comm: names[ls[i].PID]}, cacheable
 		}
+		if ok {
+			next[ls[i].PID] = p
+		}
+		ls[i].Comm = p.comm
 	}
+	d.procs = next
 	return ls, nil
 }
 

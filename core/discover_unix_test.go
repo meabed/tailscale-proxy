@@ -138,6 +138,7 @@ func TestDockerListenerContainerNamesRemainDistinctProjects(t *testing.T) {
 // lsof, and ps. It counts calls so tests can assert what a scan spawns.
 type lsofRunner struct {
 	listen, cwd, ps string
+	cwdErr          error
 	calls           map[string]int
 }
 
@@ -154,7 +155,7 @@ func (r *lsofRunner) Run(name string, args ...string) (string, string, error) {
 	case "lsof":
 		return r.listen, "", nil
 	case "lsof-cwd":
-		return r.cwd, "", nil
+		return r.cwd, "", r.cwdErr
 	case "ps":
 		return r.ps, "", nil
 	}
@@ -179,6 +180,76 @@ func fakeDevBox(t testing.TB, n int) *lsofRunner {
 		fmt.Fprintf(&ps, "%d /opt/homebrew/bin/node\n", pid)
 	}
 	return &lsofRunner{listen: listen.String(), cwd: cwd.String(), ps: ps.String()}
+}
+
+// A re-scan of unchanged servers spawns only the listener lsof: ps and the cwd
+// lookup ran once, and node is classified by lsof's command so ps never runs.
+func TestDiscover_cachesProcessLookups(t *testing.T) {
+	r := fakeDevBox(t, 3)
+	d := newDiscoverer(r)
+	cfg := discoverConfig{rng: PortRange{3000, 6000}}
+	first, _, err := d.Discover(cfg)
+	if err != nil || len(first) != 3 || first[0].Slug != "proj-0" {
+		t.Fatalf("first scan: %+v, %v", first, err)
+	}
+	second, _, _ := d.Discover(cfg)
+	if fmt.Sprint(first) != fmt.Sprint(second) {
+		t.Fatalf("re-scan changed services:\n%+v\n%+v", first, second)
+	}
+	if r.calls["lsof"] != 2 || r.calls["lsof-cwd"] != 1 || r.calls["ps"] != 0 {
+		t.Fatalf("calls = %v, want 2 listener scans, 1 cwd lookup, no ps", r.calls)
+	}
+}
+
+// ps runs only for a process lsof can't classify (e.g. a `go run` binary), and
+// a PID that disappears is evicted; one that comes back under another command
+// is looked up again.
+func TestDiscover_psFallbackAndEviction(t *testing.T) {
+	dir := mkProject(t, t.TempDir(), "gosvc")
+	r := &lsofRunner{
+		listen: "p77\ncmain\nn*:4000\n",
+		cwd:    "p77\nfcwd\nn" + dir + "\n",
+		ps:     "77 /var/folders/x/go-build1/b001/exe/main\n",
+	}
+	d := newDiscoverer(r)
+	cfg := discoverConfig{rng: PortRange{3000, 6000}}
+	svcs, _, _ := d.Discover(cfg)
+	if len(svcs) != 1 || svcs[0].Runtime != "go" || svcs[0].Slug != "gosvc" {
+		t.Fatalf("got %+v", svcs)
+	}
+	if r.calls["ps"] != 1 {
+		t.Fatalf("ps calls = %d, want 1", r.calls["ps"])
+	}
+	r.listen = ""
+	d.Discover(cfg)
+	if len(d.procs) != 0 {
+		t.Fatalf("gone PID not evicted: %+v", d.procs)
+	}
+	r.listen = "p77\ncnode\nn*:4000\n" // PID reused by another program
+	svcs, _, _ = d.Discover(cfg)
+	if len(svcs) != 1 || svcs[0].Runtime != "node" || r.calls["lsof-cwd"] != 2 {
+		t.Fatalf("reused PID not re-resolved: %+v, calls %v", svcs, r.calls)
+	}
+}
+
+// lsof exits non-zero when one PID can't be read but still prints the others;
+// those cwds must be used (a single unreadable process used to drop them all).
+func TestDiscover_usesPartialCwdOutput(t *testing.T) {
+	r := fakeDevBox(t, 2)
+	r.cwdErr = errString("exit status 1")
+	svcs, _, _ := newDiscoverer(r).Discover(discoverConfig{rng: PortRange{3000, 6000}})
+	if len(svcs) != 2 || svcs[0].Slug != "proj-0" || svcs[1].Slug != "proj-1" {
+		t.Fatalf("got %+v", svcs)
+	}
+}
+
+func TestLsofPorts(t *testing.T) {
+	if got := lsofPorts(PortRange{3000, 6000}); got != "3000-6000" {
+		t.Errorf("range = %q", got)
+	}
+	if got := lsofPorts(PortRange{4000, 4000}); got != "4000" {
+		t.Errorf("single = %q", got)
+	}
 }
 
 // BenchmarkDiscover_steadyState measures one re-scan of 20 unchanged servers
