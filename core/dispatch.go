@@ -7,7 +7,7 @@ import (
 )
 
 // Version is injected at build time via
-// -ldflags "-X github.com/meabed/tailscale-proxy/internal/core.Version=...".
+// -ldflags "-X github.com/meabed/tailscale-proxy/core.Version=...".
 var Version = "dev"
 
 // Run dispatches the subcommand and returns a process exit code. With no
