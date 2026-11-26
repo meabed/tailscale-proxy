@@ -3,7 +3,6 @@ package core
 import (
 	"flag"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -162,27 +161,17 @@ func runAll(r Runner, cmds [][]string) error {
 	return nil
 }
 
-// copyExecutable installs src at dst (0755) through a temp file and rename, so
-// a running service never sees a half-written binary.
+// copyExecutable installs src at dst (0755) atomically, so a running service
+// never sees a half-written binary.
 func copyExecutable(src, dst string) error {
+	data, err := os.ReadFile(src)
+	if err != nil {
+		return err
+	}
 	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 		return err
 	}
-	in, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer in.Close()
-	tmp, err := os.CreateTemp(filepath.Dir(dst), ".tsp-*")
-	if err != nil {
-		return err
-	}
-	_, cerr := io.Copy(tmp, in)
-	if err := firstErr(cerr, tmp.Chmod(0o755), tmp.Close()); err != nil {
-		_ = os.Remove(tmp.Name())
-		return err
-	}
-	return os.Rename(tmp.Name(), dst)
+	return writeFileAtomic(dst, data, 0o755)
 }
 
 func serviceUsage() {

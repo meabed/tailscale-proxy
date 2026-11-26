@@ -68,15 +68,6 @@ func nameFromHost(host string) string {
 	return name
 }
 
-// stateDir is ~/.tailscale-proxy (beside config.json).
-func stateDir() (string, error) {
-	p, err := configPath()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Dir(p), nil
-}
-
 // localRegistry reads and writes the route files in one directory. Lookups are
 // served from memory and re-read only when the directory changes.
 type localRegistry struct {
@@ -101,24 +92,13 @@ func (r *localRegistry) claim(name string) (release func(), ok bool, err error) 
 	return tryLock(r.lock(name))
 }
 
-// add writes the route atomically (temp file + rename). The caller holds its claim.
+// add writes the route atomically. The caller holds its claim.
 func (r *localRegistry) add(rt LocalRoute) error {
 	data, err := json.Marshal(rt)
 	if err != nil {
 		return err
 	}
-	tmp, err := os.CreateTemp(r.dir, ".route-*")
-	if err != nil {
-		return fmt.Errorf("writing route %s: %v", rt.Name, err)
-	}
-	_, werr := tmp.Write(data)
-	cerr := tmp.Close()
-	if werr != nil || cerr != nil {
-		_ = os.Remove(tmp.Name())
-		return fmt.Errorf("writing route %s: %v", rt.Name, firstErr(werr, cerr))
-	}
-	if err := os.Rename(tmp.Name(), r.file(rt.Name)); err != nil {
-		_ = os.Remove(tmp.Name())
+	if err := writeFileAtomic(r.file(rt.Name), data, 0o600); err != nil {
 		return fmt.Errorf("writing route %s: %v", rt.Name, err)
 	}
 	return nil
@@ -247,13 +227,4 @@ func portFree(p int) bool {
 	}
 	_ = ln.Close()
 	return true
-}
-
-func firstErr(errs ...error) error {
-	for _, e := range errs {
-		if e != nil {
-			return e
-		}
-	}
-	return nil
 }

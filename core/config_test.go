@@ -152,3 +152,45 @@ func TestLoadConfigFrom_partialOverlaysDefaults(t *testing.T) {
 		t.Errorf("LogRequests = %v, want %v", cfg.LogRequests, def.LogRequests)
 	}
 }
+
+func TestStateDir(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	dir, err := stateDir()
+	if err != nil || dir != filepath.Join(home, ".tailscale-proxy") {
+		t.Errorf("stateDir() = %q, %v", dir, err)
+	}
+}
+
+func TestWriteFileAtomic(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "f")
+	if err := writeFileAtomic(path, []byte("one"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeFileAtomic(path, []byte("two"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if data, _ := os.ReadFile(path); string(data) != "two" {
+		t.Errorf("content = %q, want the second write", data)
+	}
+	if entries, _ := os.ReadDir(dir); len(entries) != 1 {
+		t.Errorf("left behind: %v", entries)
+	}
+	if err := writeFileAtomic(filepath.Join(dir, "missing", "f"), nil, 0o600); err == nil {
+		t.Error("a write into a missing folder returned no error")
+	}
+	if err := writeFileAtomic(filepath.Join(dir, "sub"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_ = os.Remove(filepath.Join(dir, "sub"))
+	_ = os.Mkdir(filepath.Join(dir, "sub"), 0o755)
+	_ = os.WriteFile(filepath.Join(dir, "sub", "x"), nil, 0o600)
+	if err := writeFileAtomic(filepath.Join(dir, "sub"), []byte("x"), 0o600); err == nil {
+		t.Error("renaming over a non-empty folder returned no error")
+	}
+	if entries, _ := os.ReadDir(dir); len(entries) != 2 {
+		t.Errorf("a failed rename left its temp file: %v", entries)
+	}
+}

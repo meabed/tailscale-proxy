@@ -2,6 +2,7 @@ package core
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 )
@@ -47,17 +48,16 @@ var localProxyPresent = func() bool {
 	if err != nil {
 		return false
 	}
-	_, err = os.Stat(filepath.Join(dir, "ca", "ca.pem"))
+	certPath, _ := caFiles(dir)
+	_, err = os.Stat(certPath)
 	return err == nil
 }
 
 // defaultConfig returns the built-in defaults.
 func defaultConfig() Config {
 	return Config{
-		Ports: "3000-6000", All: false, Runtimes: "", Private: false,
-		Bind: "127.0.0.1", Port: defaultLocalPort, Interval: 20, HTTPSPort: defaultHTTPSPort(),
-		LogRequests: true, DeregisterCycles: 5, ForwardHost: false,
-		MatchSeparators: true,
+		Ports: "3000-6000", Bind: "127.0.0.1", Port: defaultLocalPort, Interval: 20,
+		HTTPSPort: defaultHTTPSPort(), LogRequests: true, DeregisterCycles: 5, MatchSeparators: true,
 	}
 }
 
@@ -68,6 +68,33 @@ func configPath() (string, error) {
 		return "", err
 	}
 	return filepath.Join(home, ".tailscale-proxy", "config.json"), nil
+}
+
+// stateDir is ~/.tailscale-proxy (beside config.json).
+func stateDir() (string, error) {
+	p, err := configPath()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Dir(p), nil
+}
+
+// writeFileAtomic writes data to path through a temp file and rename, so a
+// reader never sees a half-written file.
+func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".tmp-*")
+	if err != nil {
+		return err
+	}
+	_, err = tmp.Write(data)
+	err = errors.Join(err, tmp.Chmod(perm), tmp.Close())
+	if err == nil {
+		err = os.Rename(tmp.Name(), path)
+	}
+	if err != nil {
+		_ = os.Remove(tmp.Name())
+	}
+	return err
 }
 
 // loadConfigFrom reads a config file, overlaying it on defaults. Missing file →
@@ -87,7 +114,7 @@ func loadConfigFrom(path string) (Config, bool, error) {
 	return cfg, true, nil
 }
 
-// saveConfigTo writes cfg as indented JSON, creating the parent dir.
+// saveConfigTo writes cfg as indented JSON (atomically), creating the parent dir.
 func saveConfigTo(path string, cfg Config) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
@@ -96,7 +123,7 @@ func saveConfigTo(path string, cfg Config) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, append(data, '\n'), 0o644)
+	return writeFileAtomic(path, append(data, '\n'), 0o644)
 }
 
 // loadConfig loads the config at the default path. Returns (config, path, existed, error).

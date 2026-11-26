@@ -228,7 +228,7 @@ func serveLocal(ctx context.Context, lns []net.Listener, port int) int {
 	srv.ErrorLog = log.New(discardTLSNoise{}, "", 0)
 
 	state, _ := json.Marshal(proxyState{PID: os.Getpid(), Version: Version, Port: port})
-	if err := os.WriteFile(proxyStatePath(dir), state, 0o644); err != nil {
+	if err := writeFileAtomic(proxyStatePath(dir), state, 0o644); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}

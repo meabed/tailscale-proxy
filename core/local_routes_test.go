@@ -298,20 +298,3 @@ func TestPortFree(t *testing.T) {
 		t.Errorf("portFree(%d) = false after close", port)
 	}
 }
-
-func TestStateDir(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("USERPROFILE", home)
-	dir, err := stateDir()
-	if err != nil || dir != filepath.Join(home, ".tailscale-proxy") {
-		t.Errorf("stateDir() = %q, %v", dir, err)
-	}
-}
-
-func TestFirstErr(t *testing.T) {
-	e := errString("x")
-	if firstErr(nil, e, errString("y")) != e || firstErr(nil, nil) != nil {
-		t.Error("firstErr did not return the first non-nil error")
-	}
-}

@@ -144,20 +144,6 @@ func createCA(certPath, keyPath string) (*localCA, error) {
 	return &localCA{cert: cert, key: key, certPEM: certPath}, nil
 }
 
-// writeFileAtomic writes data to path through a temp file and rename.
-func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
-	tmp, err := os.CreateTemp(filepath.Dir(path), ".tmp-*")
-	if err != nil {
-		return err
-	}
-	_, werr := tmp.Write(data)
-	if err := firstErr(werr, tmp.Chmod(perm), tmp.Close()); err != nil {
-		_ = os.Remove(tmp.Name())
-		return err
-	}
-	return os.Rename(tmp.Name(), path)
-}
-
 func randomSerial() *big.Int {
 	n, _ := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 127))
 	return n
