@@ -1,7 +1,6 @@
 package core
 
 import (
-	"bufio"
 	"context"
 	"fmt"
 	"log"
@@ -9,7 +8,6 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"os"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -29,34 +27,23 @@ func splitFirstSegment(p string) (seg, rest string) {
 	return p, "/"
 }
 
-// writeIndex writes a plain-text list of registered services with the given status.
-func writeIndex(w http.ResponseWriter, store *RouteStore, status int) {
+// writeIndex answers an unknown path with 404 and the registered services.
+func writeIndex(w http.ResponseWriter, store *RouteStore) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	w.WriteHeader(status)
+	w.WriteHeader(http.StatusNotFound)
 	snap := store.snapshot()
-	slugs := make([]string, 0, len(snap))
-	for s := range snap {
-		slugs = append(slugs, s)
-	}
-	sort.Strings(slugs)
 	fmt.Fprintln(w, "tailscale-proxy — registered services:")
-	if len(slugs) == 0 {
+	if len(snap) == 0 {
 		fmt.Fprintln(w, "  (none discovered — start a dev server in range, or try --all / --ports, then `tsp doctor`)")
 		return
 	}
-	for _, s := range slugs {
-		svc := snap[s]
-		rt := svc.Runtime
-		if rt == "" {
-			rt = "?"
-		}
-		fmt.Fprintf(w, "  /%s/  →  %s:%d  (%s)\n", s, svc.upstreamHost(), svc.Port, rt)
+	for _, slug := range sortedSlugs(snap) {
+		svc := snap[slug]
+		fmt.Fprintf(w, "  /%s/  →  %s  (%s)\n", slug, targetDisplay(svc), runtimeOr(svc.Runtime))
 	}
 }
 
-type ctxKey int
-
-const targetKey ctxKey = 0
+type targetKey struct{}
 
 func (s Service) upstreamHost() string {
 	if s.Host != "" {
@@ -117,13 +104,12 @@ func newUpstreamTransport() *http.Transport {
 // host is forwarded to the app via X-Forwarded-Host + X-Forwarded-Proto=https;
 // otherwise the app only ever sees the local host (so it behaves like localhost).
 func newHandler(store *RouteStore, logRequests, forwardHost bool) http.Handler {
-	transport := newUpstreamTransport()
 	proxy := &httputil.ReverseProxy{
-		Transport:     transport,
+		Transport:     newUpstreamTransport(),
 		BufferPool:    copyBuffers,
 		FlushInterval: -1, // flush immediately: SSE / streaming / chunked
 		Rewrite: func(pr *httputil.ProxyRequest) {
-			tgt := pr.In.Context().Value(targetKey).(target)
+			tgt := pr.In.Context().Value(targetKey{}).(target)
 			pr.Out.URL.Scheme = "http"
 			pr.Out.URL.Host = tgt.dialHost()
 			pr.Out.URL.Path = tgt.path
@@ -159,10 +145,9 @@ func newHandler(store *RouteStore, logRequests, forwardHost bool) http.Handler {
 		svc, path, ok := resolveRoute(store, r, w)
 		if ok {
 			tgt := target{host: svc.upstreamHost(), port: svc.Port, path: path}
-			ctx := context.WithValue(r.Context(), targetKey, tgt)
-			proxy.ServeHTTP(rec, r.WithContext(ctx))
+			proxy.ServeHTTP(rec, r.WithContext(context.WithValue(r.Context(), targetKey{}, tgt)))
 		} else {
-			writeIndex(rec, store, http.StatusNotFound)
+			writeIndex(rec, store)
 		}
 
 		if logRequests {
@@ -214,8 +199,9 @@ func resolveRoute(store *RouteStore, r *http.Request, w http.ResponseWriter) (Se
 	return Service{}, "", false
 }
 
-// statusRecorder captures the response status code while preserving streaming
-// (Flush) and WebSocket (Hijack) support.
+// statusRecorder captures the response status code. Unwrap lets the reverse
+// proxy's http.ResponseController reach the real writer to flush streams and
+// hijack WebSocket upgrades.
 type statusRecorder struct {
 	http.ResponseWriter
 	status int
@@ -226,25 +212,13 @@ func (s *statusRecorder) WriteHeader(code int) {
 	s.ResponseWriter.WriteHeader(code)
 }
 
-func (s *statusRecorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
-	hj, ok := s.ResponseWriter.(http.Hijacker)
-	if !ok {
-		return nil, nil, fmt.Errorf("response writer does not support hijacking")
-	}
-	return hj.Hijack()
-}
-
-func (s *statusRecorder) Flush() {
-	if f, ok := s.ResponseWriter.(http.Flusher); ok {
-		f.Flush()
-	}
-}
+func (s *statusRecorder) Unwrap() http.ResponseWriter { return s.ResponseWriter }
 
 // logRequest prints one nicely formatted request line.
 func logRequest(r *http.Request, status int, svc Service, dur time.Duration) {
 	target := "—"
 	if svc.Port > 0 {
-		target = svc.upstreamHost() + ":" + strconv.Itoa(svc.Port)
+		target = targetDisplay(svc)
 	}
 	log.Printf("%s %-6s %s → %s (%s)",
 		colorStatus(status), r.Method, r.URL.Path, target, dur.Round(time.Millisecond))

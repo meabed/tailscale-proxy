@@ -388,3 +388,18 @@ func TestNewServer_timeouts(t *testing.T) {
 		t.Fatalf("streams must not have read/write deadlines, got %v / %v", srv.ReadTimeout, srv.WriteTimeout)
 	}
 }
+
+func TestHandler_flushesStreams(t *testing.T) {
+	// FlushInterval -1 flushes each write; the status recorder must pass it on.
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		io.WriteString(w, "data: 1\n\n")
+	}))
+	defer backend.Close()
+	h := newHandler(storeWith(Service{Slug: "sse", Port: mustPort(t, backend.URL)}), false, false)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("GET", "/sse/", nil))
+	if !rec.Flushed || rec.Body.String() != "data: 1\n\n" {
+		t.Errorf("flushed=%v body=%q", rec.Flushed, rec.Body.String())
+	}
+}
