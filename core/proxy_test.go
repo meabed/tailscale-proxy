@@ -376,3 +376,15 @@ func BenchmarkHandler_notFound(b *testing.B) {
 		h.ServeHTTP(httptest.NewRecorder(), req)
 	}
 }
+
+// The server must time out stalled headers and idle keep-alives, but never put a
+// deadline on bodies (SSE / HMR / WebSocket streams run for hours).
+func TestNewServer_timeouts(t *testing.T) {
+	srv := newServer("127.0.0.1:0", http.NotFoundHandler())
+	if srv.ReadHeaderTimeout <= 0 || srv.IdleTimeout <= 0 {
+		t.Fatalf("want header + idle timeouts, got %v / %v", srv.ReadHeaderTimeout, srv.IdleTimeout)
+	}
+	if srv.ReadTimeout != 0 || srv.WriteTimeout != 0 {
+		t.Fatalf("streams must not have read/write deadlines, got %v / %v", srv.ReadTimeout, srv.WriteTimeout)
+	}
+}

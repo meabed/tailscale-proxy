@@ -128,10 +128,7 @@ func (c *Controller) Start(o Options) error {
 	store := NewRouteStore(func() ([]Service, []Duplicate, error) { return disc.Discover(dcfg) }, o.DeregisterCycles, o.MatchSeparators)
 	_, _, _, _ = store.refresh()
 
-	srv := &http.Server{
-		Addr:    fmt.Sprintf("%s:%d", o.Bind, o.Port),
-		Handler: newHandler(store, o.LogRequests, o.ForwardHost),
-	}
+	srv := newServer(fmt.Sprintf("%s:%d", o.Bind, o.Port), newHandler(store, o.LogRequests, o.ForwardHost))
 	ln, err := net.Listen("tcp", srv.Addr)
 	if err != nil {
 		return fmt.Errorf("cannot listen on %s: %v", srv.Addr, err)

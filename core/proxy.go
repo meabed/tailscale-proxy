@@ -149,6 +149,18 @@ func newHandler(store *RouteStore, logRequests, forwardHost bool) http.Handler {
 	})
 }
 
+// newServer wraps the proxy handler in an http.Server with header and idle
+// timeouts, so stalled or abandoned client connections can't pile up over days.
+// No read/write deadline: SSE, HMR and WebSocket streams stay open indefinitely.
+func newServer(addr string, h http.Handler) *http.Server {
+	return &http.Server{
+		Addr:              addr,
+		Handler:           h,
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       2 * time.Minute,
+	}
+}
+
 // routeCookie pins a browser to the last project it opened, so prefix-less
 // asset/API requests (e.g. /_next/static/..., /api/...) — which lose the
 // /<slug>/ prefix because the app assumes it lives at the root — still reach the

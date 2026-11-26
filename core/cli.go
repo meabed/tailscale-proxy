@@ -230,7 +230,7 @@ func cmdStart(argv []string) int {
 	if o.bind != "127.0.0.1" && o.bind != "localhost" {
 		fmt.Printf("⚠ proxy bound to %s:%d — reachable beyond this host (containers/LAN). Anyone who can reach it can hit your dev servers.\n", o.bind, o.port)
 	}
-	srv := &http.Server{Addr: fmt.Sprintf("%s:%d", o.bind, o.port), Handler: newHandler(store, o.logRequests, o.forwardHost)}
+	srv := newServer(fmt.Sprintf("%s:%d", o.bind, o.port), newHandler(store, o.logRequests, o.forwardHost))
 	ln, err := net.Listen("tcp", srv.Addr)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "cannot listen on %s: %v\n", srv.Addr, err)
