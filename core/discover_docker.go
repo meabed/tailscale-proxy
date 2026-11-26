@@ -15,6 +15,21 @@ import (
 
 const dockerSocketPath = "/var/run/docker.sock"
 
+// dockerClient is shared by every scan: one keep-alive connection to the Docker
+// socket, dropped after a short idle period. (A client per scan leaked its idle
+// connection — one fd and two goroutines every refresh.)
+var dockerClient = &http.Client{
+	Timeout: 5 * time.Second,
+	Transport: &http.Transport{
+		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+			var d net.Dialer
+			return d.DialContext(ctx, "unix", dockerSocketPath)
+		},
+		MaxIdleConns:    1,
+		IdleConnTimeout: 30 * time.Second,
+	},
+}
+
 type dockerPortBinding struct {
 	PublicPort  int    `json:"PublicPort"`
 	PrivatePort int    `json:"PrivatePort"`
@@ -42,16 +57,7 @@ func (d *Discoverer) dockerListeners(rng PortRange) []listener {
 		return nil
 	}
 
-	client := &http.Client{
-		Timeout: 5 * time.Second,
-		Transport: &http.Transport{
-			DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
-				return net.Dial("unix", dockerSocketPath)
-			},
-		},
-	}
-
-	resp, err := client.Get("http://localhost/containers/json")
+	resp, err := dockerClient.Get("http://localhost/containers/json")
 	if err != nil {
 		return nil
 	}
@@ -124,16 +130,7 @@ func dockerAvailable() bool {
 		return false
 	}
 
-	client := &http.Client{
-		Timeout: 5 * time.Second,
-		Transport: &http.Transport{
-			DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
-				return net.Dial("unix", dockerSocketPath)
-			},
-		},
-	}
-
-	resp, err := client.Get("http://localhost/version")
+	resp, err := dockerClient.Get("http://localhost/version")
 	if err != nil {
 		return false
 	}
