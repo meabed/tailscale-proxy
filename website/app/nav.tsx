@@ -10,6 +10,7 @@ export const pages = [
   { href: "/desktop", label: "Desktop app" },
   { href: "/usage", label: "Usage & commands" },
   { href: "/configuration", label: "Configuration" },
+  { href: "/local-https", label: "Local HTTPS names" },
   { href: "/how-it-works", label: "How it works" },
   { href: "/troubleshooting", label: "Troubleshooting" },
 ];

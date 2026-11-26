@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 )
 
 func cmdConfigure(argv []string) int {
@@ -103,4 +104,38 @@ func queryConfig(argv []string) (Mode, discoverConfig, int) {
 		rng = PortRange{Lo: 3000, Hi: 5000}
 	}
 	return modeOf(*private), discoverConfig{rng: rng, all: *all, runtimes: parseRuntimes(*runtimesRaw), docker: *docker}, *httpsPort
+}
+
+// cmdRoutes lists the running local names (`tsp run`), as text or --json.
+func cmdRoutes(argv []string) int {
+	fs := flag.NewFlagSet("routes", flag.ContinueOnError)
+	asJSON := fs.Bool("json", false, "print JSON")
+	if err := fs.Parse(argv); err != nil {
+		if err == flag.ErrHelp {
+			return 0
+		}
+		return 2
+	}
+	dir, err := stateDir()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	routes := newLocalRegistry(filepath.Join(dir, "routes")).list()
+	if *asJSON {
+		if routes == nil {
+			routes = []LocalRoute{}
+		}
+		out, _ := json.MarshalIndent(routes, "", "  ")
+		fmt.Println(string(out))
+		return 0
+	}
+	if len(routes) == 0 {
+		fmt.Println("No apps are running. `tsp run` in an app's folder serves it at https://<name>.localhost.")
+		return 0
+	}
+	for _, rt := range routes {
+		fmt.Printf("%-48s → 127.0.0.1:%-5d  %s\n", rt.URL(), rt.Port, rt.Dir)
+	}
+	return 0
 }

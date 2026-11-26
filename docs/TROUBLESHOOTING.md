@@ -224,12 +224,12 @@ tailscale serve status   # should print "No serve config"
 `tsp start --bg` detaches and logs to `./tsp.log`. Stop it by `kill`-ing the printed
 pid (or `pgrep -f "tsp"`), then `tsp reset` to be sure the Serve/Funnel entry is down.
 
-## `https://*.localhost` hangs while tsp runs (portless on macOS)
+## `https://*.localhost` hangs while tsp runs (macOS)
 
 Tailscale.app's Serve listens on its public port on **every** address, so a Serve or
-Funnel on `443` takes the port [portless](https://github.com/vercel-labs/portless)'s
-HTTPS proxy needs: every `https://<app>.localhost` hangs. With portless installed,
-tsp defaults to `--https-port 8443` (public URLs become
+Funnel on `443` takes the port the local HTTPS proxy (`tsp proxy`, see
+[Local HTTPS names](LOCAL-HTTPS.md)) needs: every `https://<app>.localhost` hangs. Once `tsp proxy` is set up
+(its CA exists), tsp defaults to `--https-port 8443` (public URLs become
 `https://<node>.ts.net:8443/<project>/`); a saved config that pins `443` gets a
 warning on start. Fix an existing setup with:
 

@@ -6,7 +6,8 @@
 [![docs](https://img.shields.io/badge/docs-tailscaleproxy.vercel.app-blue)](https://tailscaleproxy.vercel.app)
 
 Self-hosted **[ngrok](https://ngrok.com) alternative** on [Tailscale](https://tailscale.com) —
-share all your local dev servers through one stable `*.ts.net` URL, routed by project name.
+share all your local dev servers through one stable `*.ts.net` URL, routed by project name —
+and run them locally at trusted `https://<name>.localhost` names ([`tsp run`](docs/LOCAL-HTTPS.md)).
 
 ## ⬇️ Download the desktop app
 
@@ -144,6 +145,12 @@ tsp reset           Remove the Serve/Funnel entry and exit
 tsp doctor          Check tailscale, exposure readiness, and discovery
 tsp configure       Save defaults to ~/.tailscale-proxy/config.json
 tsp update          Update to the latest release
+
+tsp run             Run an app at https://<name>.localhost (local HTTPS names)
+tsp routes          Running local names (--json)
+tsp service         install | uninstall | status — the local HTTPS proxy, from boot
+tsp trust           Trust the local CA (browsers, curl), once per machine
+tsp proxy           The local HTTPS proxy in the foreground (what the service runs)
 ```
 
 Run `tsp start --help` for all flags. Global: `-h/--help`, `-v/--version`.
@@ -160,7 +167,7 @@ Run `tsp start --help` for all flags. Global: `-h/--help`, `-v/--version`.
 | `--bind <addr>` | `127.0.0.1` | Proxy listen address. Use `0.0.0.0` to reach the proxy from **Docker containers / the LAN** without MagicDNS |
 | `--port <n>` | `18443` | Local proxy HTTP port (never a Funnel port: Tailscale.app's Serve binds that port on every address) |
 | `--interval <sec>` | `20` | Re-scan period |
-| `--https-port <n>` | `443` (`8443` when portless is installed) | Public/tailnet HTTPS port (Funnel: `443`/`8443`/`10000`) |
+| `--https-port <n>` | `443` (`8443` when `tsp proxy` is set up) | Public/tailnet HTTPS port (Funnel: `443`/`8443`/`10000`) |
 | `--deregister-cycles <n>` | `5` | Missing scans before a gone service is removed |
 | `--forward-host` | off | Forward the public host to apps via `X-Forwarded-Host/Proto`. Default presents a **local** request so apps behave exactly like `localhost` |
 | `--match-separators` | on | Treat `-` and `_` as interchangeable in the path slug, so `/module-api/` and `/module_api/` both route. Pass `--match-separators=false` for exact-dash routing |
@@ -185,6 +192,20 @@ Using config: /Users/me/.tailscale-proxy/config.json
 Request logs are colorized by status on a terminal (set `NO_COLOR` to disable).
 
 ---
+
+## Local HTTPS names
+
+`tsp run` serves an app at `https://<name>.localhost` on this machine while it runs, with
+its own trusted certificate and the original `Host`:
+
+```bash
+tsp service install && tsp trust          # once per machine
+tsp run api.acme -- bun --hot src/index.ts
+# or package.json: "dev": "tsp run", "tsp": {"name": "api.acme", "script": "dev:app"}
+```
+
+The app gets `PORT` (stable per name), `HOST=127.0.0.1` and `NODE_EXTRA_CA_CERTS`. Details:
+[docs/LOCAL-HTTPS.md](docs/LOCAL-HTTPS.md).
 
 ## Configuration
 

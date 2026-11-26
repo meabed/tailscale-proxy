@@ -1,0 +1,109 @@
+# Local HTTPS names (`tsp run`)
+
+`tsp run` starts an app on a free port and serves it at a stable HTTPS name on this
+machine, `https://<name>.localhost`, for as long as it runs. Rules and code style
+live in [AGENT.md](../AGENT.md); this page is how the feature works.
+
+```
+browser / curl / Bun ──► https://api.acme.localhost ──► tsp proxy (127.0.0.1:443, [::1]:443)
+                                                          │  Host → name → port (~/.tailscale-proxy/routes)
+                                                          ▼
+                                       the app `tsp run` started on 127.0.0.1:<port>
+```
+
+It is independent of `tsp start` (the Tailscale Funnel/Serve side). When both run, the
+Funnel uses `8443` (see [Troubleshooting](TROUBLESHOOTING.md)), and a `tsp run` app is
+also discovered by `tsp start` like any other dev server.
+
+## Set up a machine (once)
+
+```bash
+tsp service install    # the local HTTPS proxy from boot (asks for your sudo password)
+tsp trust              # browsers, curl and git trust its certificates (macOS: at the Mac's screen)
+tsp service status     # ✓ boot service · ✓ proxy running · ✓ CA trusted (exit 1 otherwise)
+```
+
+## Run an app
+
+```jsonc
+// package.json
+"scripts": { "dev": "tsp run", "dev:app": "bun --hot src/index.ts" },
+"tsp": { "name": "api.acme", "script": "dev:app" }
+```
+
+```bash
+bun dev                                   # → https://api.acme.localhost
+tsp run api.acme -- bun src/index.ts      # any command, no package.json needed
+tsp run --force                           # take the name over from another terminal
+TSP=0 bun dev                             # run dev:app as is, on its own port
+tsp routes                                # running names (--json for scripts)
+```
+
+The app gets:
+
+| Variable              | Value                                                                    |
+| --------------------- | ------------------------------------------------------------------------ |
+| `PORT`                | a port in 4000–4999, the same for a name run after run while it is free  |
+| `HOST`                | `127.0.0.1`                                                              |
+| `NODE_EXTRA_CA_CERTS` | the local CA, unless already set (Bun/Node calls to other `.localhost` names) |
+
+The app's script must listen on `$PORT` and `$HOST` (`vite --port $PORT --host $HOST`,
+`next dev -p $PORT -H $HOST`; Bun and Hono servers read `PORT`). The script runs with the
+package manager that ran `tsp run` (`npm_execpath`), so `bun dev` runs `bun run dev:app`.
+
+A name also answers for its subdomains: with `help-chat` running,
+`https://acme.help-chat.localhost` reaches it too (the nearest registered parent wins),
+for apps that serve one tenant per subdomain.
+
+Requests reach the app with the original `Host` (`api.acme.localhost`) and
+`X-Forwarded-Proto: https`, `X-Forwarded-Host`, `X-Forwarded-For`. HTTP/2, streaming
+(SSE) and WebSockets (Vite/Next hot reload) pass through.
+
+## How it works
+
+- **Routes** are one JSON file per running app in `~/.tailscale-proxy/routes/<name>.json`
+  (`{name, port, pid, dir}`), written atomically by its `tsp run` and removed when it
+  exits. A route whose `tsp run` process is gone is ignored and deleted on the next read,
+  so a crash or `kill -9` never leaves a name behind. The proxy re-reads the folder only
+  when it changes.
+- **Certificates**: a local CA in `~/.tailscale-proxy/ca/` (ECDSA P-256, 10 years, key
+  `0600`) signs one certificate per exact name on first use (90 days, renewed in memory).
+  The CA carries a name constraint for `localhost`: it cannot sign a certificate for any
+  other domain that a browser would accept. Names outside `.localhost` get no certificate,
+  and the cache is bounded.
+- **The service** runs a root-owned copy of `tsp` (`/usr/local/lib/tailscale-proxy/tsp`):
+  root binds `127.0.0.1:443` and `[::1]:443`, then the process switches to your user for
+  good, so every file it writes stays yours. macOS: a launchd daemon
+  (`/Library/LaunchDaemons/com.meabed.tailscale-proxy.plist`, log
+  `/var/log/tailscale-proxy.log`). Linux: a systemd unit (`tailscale-proxy.service`,
+  `journalctl -u tailscale-proxy`). Run `tsp service install` again after updating tsp:
+  `tsp run` and `tsp service status` say when the proxy runs an older version.
+- **Trust**: macOS adds the CA to your login keychain (one password dialog at the
+  screen; not possible over SSH). Debian/Ubuntu: `/usr/local/share/ca-certificates` +
+  `update-ca-certificates`; Fedora/RHEL: `/etc/pki/ca-trust/source/anchors` +
+  `update-ca-trust`. Windows: the user's Root store (`certutil -user`).
+
+## Commands
+
+```
+tsp run [--force] [<name> -- <cmd...>]   run an app at https://<name>.localhost
+tsp routes [--json]                      running names
+tsp service install|uninstall|status     the local HTTPS proxy, from boot
+tsp trust                                trust the local CA (once per machine)
+tsp proxy [--port n]                     the proxy in the foreground (what the service runs)
+```
+
+## Troubleshooting
+
+| Symptom | Fix |
+| --- | --- |
+| `tsp run` warns "the local HTTPS proxy is not running" | `tsp service install` |
+| Browser: "not private" / curl: certificate error | `tsp trust` (macOS: at the screen), restart the browser |
+| `tsp proxy`: cannot listen on 127.0.0.1:443 | another proxy holds 443: `lsof -nP -iTCP:443 -sTCP:LISTEN` |
+| `https://<name>.localhost` → 404 "nothing runs at" | start it: `bun dev` / `tsp run` in its folder; `tsp routes` lists what runs |
+| → 502 "not answering" | the app is still starting, or does not listen on `$PORT`/`$HOST` |
+| "already runs (pid …)" | stop the other terminal's run, or `tsp run --force` |
+| every `*.localhost` hangs | a Tailscale Serve/Funnel on 443: `tsp reset`, then `tsp configure --https-port 8443` |
+
+Remove everything: `tsp service uninstall`, then delete `~/.tailscale-proxy/ca` and remove
+the "tailscale-proxy local CA" certificate from the OS trust store (Keychain Access on macOS).

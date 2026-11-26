@@ -1,7 +1,7 @@
 {
   "name": "tailscale-proxy",
   "version": "1.8.1",
-  "description": "Discover local dev servers by port and expose them through one Tailscale Serve/Funnel entry, routed by project name.",
+  "description": "Discover local dev servers by port and expose them through one Tailscale Serve/Funnel entry, routed by project name, and serve them locally at https://<name>.localhost.",
   "keywords": [
     "tailscale",
     "tailscale-funnel",
@@ -13,6 +13,8 @@
     "dev",
     "discovery",
     "localhost",
+    "https",
+    "local-https",
     "tunnel",
     "ngrok",
     "ngrok-alternative",

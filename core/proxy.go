@@ -94,17 +94,12 @@ func (b *bufferPool) Get() []byte {
 
 func (b *bufferPool) Put(buf []byte) { b.p.Put(&buf) }
 
-// newHandler returns an HTTP handler that routes by first path segment.
-// When logRequests is true, each request is logged with method, status,
-// target, and duration. When forwardHost is true, the external (funnel/serve)
-// host is forwarded to the app via X-Forwarded-Host + X-Forwarded-Proto=https;
-// otherwise the app only ever sees the local host (so it behaves like localhost).
-func newHandler(store *RouteStore, logRequests, forwardHost bool) http.Handler {
-	// One shared, bounded transport: the idle pool is sized for a page load's
-	// burst of parallel asset requests (a small per-host cap forced constant
-	// re-dials under load), and the idle timeout drops connections to dev servers
-	// that come and go, so memory stays flat.
-	transport := &http.Transport{
+// newUpstreamTransport is the bounded transport both proxies dial apps with: the
+// idle pool is sized for a page load's burst of parallel asset requests (a small
+// per-host cap forced constant re-dials under load), and the idle timeout drops
+// connections to dev servers that come and go, so memory stays flat.
+func newUpstreamTransport() *http.Transport {
+	return &http.Transport{
 		Proxy:                 http.ProxyFromEnvironment,
 		DialContext:           (&net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
 		MaxIdleConns:          256,
@@ -114,6 +109,15 @@ func newHandler(store *RouteStore, logRequests, forwardHost bool) http.Handler {
 		ExpectContinueTimeout: time.Second,
 		ForceAttemptHTTP2:     true,
 	}
+}
+
+// newHandler returns an HTTP handler that routes by first path segment.
+// When logRequests is true, each request is logged with method, status,
+// target, and duration. When forwardHost is true, the external (funnel/serve)
+// host is forwarded to the app via X-Forwarded-Host + X-Forwarded-Proto=https;
+// otherwise the app only ever sees the local host (so it behaves like localhost).
+func newHandler(store *RouteStore, logRequests, forwardHost bool) http.Handler {
+	transport := newUpstreamTransport()
 	proxy := &httputil.ReverseProxy{
 		Transport:     transport,
 		BufferPool:    copyBuffers,

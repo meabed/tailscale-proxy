@@ -31,6 +31,16 @@ func Run(argv []string) int {
 		return cmdConfigure(argv[1:])
 	case "update":
 		return cmdUpdate(argv[1:])
+	case "run":
+		return cmdRun(argv[1:])
+	case "proxy":
+		return cmdProxy(argv[1:])
+	case "routes":
+		return cmdRoutes(argv[1:])
+	case "service":
+		return cmdService(argv[1:])
+	case "trust":
+		return cmdTrust(argv[1:])
 	case "-v", "--version", "version":
 		fmt.Println(Version)
 		return 0

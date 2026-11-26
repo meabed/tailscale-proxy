@@ -3,7 +3,6 @@ package core
 import (
 	"encoding/json"
 	"os"
-	"os/exec"
 	"path/filepath"
 )
 
@@ -31,27 +30,24 @@ type Config struct {
 // address, so a local proxy there could not bind it.
 const defaultLocalPort = 18443
 
-// defaultHTTPSPort is the public Serve/Funnel port: 8443 when portless runs on
-// this machine (its HTTPS proxy owns local 443, which a Serve on 443 takes on
-// macOS, and every https://*.localhost hangs), else 443.
+// defaultHTTPSPort is the public Serve/Funnel port: 8443 when this machine
+// serves https://*.localhost on 443 (tsp proxy), since a Serve on 443 takes that
+// port on macOS and every *.localhost name would hang; else 443.
 func defaultHTTPSPort() int {
-	if portlessPresent() {
+	if localProxyPresent() {
 		return 8443
 	}
 	return 443
 }
 
-// portlessPresent reports whether portless is installed or has state here. A
-// variable so tests can pin it.
-var portlessPresent = func() bool {
-	if _, err := exec.LookPath("portless"); err == nil {
-		return true
-	}
-	home, err := os.UserHomeDir()
+// localProxyPresent reports whether the local HTTPS proxy is set up here (its
+// CA exists). A variable so tests can pin it.
+var localProxyPresent = func() bool {
+	dir, err := stateDir()
 	if err != nil {
 		return false
 	}
-	_, err = os.Stat(filepath.Join(home, ".portless"))
+	_, err = os.Stat(filepath.Join(dir, "ca", "ca.pem"))
 	return err == nil
 }
 

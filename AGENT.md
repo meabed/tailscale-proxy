@@ -14,6 +14,9 @@ Serve/Funnel entry, routed by URL path:
 https://<node>.ts.net/<project>/foo   →   strip segment → 127.0.0.1:<port>/foo
 ```
 
+It also serves apps locally at stable HTTPS names (`tsp run` → `https://<name>.localhost`,
+behind `tsp proxy` on 443 with its own CA): [docs/LOCAL-HTTPS.md](docs/LOCAL-HTTPS.md).
+
 Self-hosted ngrok alternative. Go **stdlib only**, zero runtime dependencies,
 cross-platform (macOS, Linux, Windows, WSL). Module `github.com/meabed/tailscale-proxy`, Go 1.24.
 
@@ -23,6 +26,7 @@ cross-platform (macOS, Linux, Windows, WSL). Module `github.com/meabed/tailscale
 | --- | --- |
 | Architecture & request flow | [docs/HOW-IT-WORKS.md](docs/HOW-IT-WORKS.md) |
 | Usage & real examples | [docs/EXAMPLES.md](docs/EXAMPLES.md) |
+| Local HTTPS names (`tsp run`, `tsp proxy`, service, trust) | [docs/LOCAL-HTTPS.md](docs/LOCAL-HTTPS.md) |
 | Troubleshooting | [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) |
 | Testing approach & helpers | [docs/TESTING.md](docs/TESTING.md) |
 | Release process | [docs/RELEASING.md](docs/RELEASING.md) |
@@ -56,6 +60,13 @@ module** under `desktop/` that imports `core` and drives it in-process.
 | `core/output.go` | Start header, service URLs, duplicate notes |
 | `core/poll.go` | Periodic re-scan loop + logging (CLI) |
 | `core/update.go` | Self-update (brew / npm / standalone) |
+| `core/local_routes.go` | `LocalRoute`, name rules, the per-route file registry (`~/.tailscale-proxy/routes`), stable port pick |
+| `core/local_ca.go` | Local CA (name-constrained to `localhost`), per-name leaf issuer with a bounded cache, `caTrusted` |
+| `core/local_proxy.go` | `tsp proxy`: HTTPS on `127.0.0.1`/`[::1]:443`, routes by Host, privilege drop, `proxy.json` |
+| `core/local_run.go` | `tsp run`: package.json `"tsp"` or explicit command, env, registration, signal pass-through |
+| `core/local_service.go` | `tsp service install/uninstall/status` (launchd/systemd), sudo re-run, test seams |
+| `core/local_trust.go` | `tsp trust`: per-OS trust-store commands |
+| `core/service_*.go` / `core/process_*.go` | Build-tagged init-system paths; pid liveness, stop, privilege drop |
 | `core/detach_unix.go` / `core/detach_windows.go` | Build-tagged `--bg` background spawn |
 | `desktop/` | **Separate module** — Wails v3 tray app over `core.Controller`. See [desktop/README.md](desktop/README.md) |
 
@@ -98,6 +109,13 @@ Tests are `*_test.go` beside each file in `core/`. See [docs/TESTING.md](docs/TE
   protocol); `--forward-host` is opt-in for apps needing the public host.
 
 ## Conventions (behavior rules established across sessions)
+
+- **Local HTTPS names:** a route is one file per running `tsp run`, removed on exit and
+  ignored once its pid is gone; never a shared mutable file. The CA only ever signs
+  `localhost` names (name constraint + issuer check). The service binary is a root-owned
+  copy, and `tsp proxy` drops to the user right after binding 443, before touching files.
+  Commands that need the terminal (sudo, the macOS trust dialog) go through `interactive`;
+  tests pin `geteuid`/`interactive`/`serviceRunner` and never touch the real service paths.
 
 - **System/global mutations are opt-in, default off, never silently reverted, and
   log how to undo.** Examples: `--accept-dns` (default unset = leave Tailscale DNS

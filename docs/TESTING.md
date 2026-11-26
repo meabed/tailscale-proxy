@@ -30,6 +30,11 @@ the real binaries from a test. Two fakes exist:
   commands (e.g. `runDoctor` calls `tailscale version`, `status`, `funnel status`,
   `debug prefs`, `lsof …`).
 - **`errString`** (`doctor_test.go`) — a string error for the `err` slot.
+- **`recRunner`** + **`pinSystem`** (`local_service_test.go`) — record service commands and
+  pin `geteuid`, `interactive` (sudo / trust dialogs) and `serviceRunner`; **`testService`**
+  points every service path into a temp dir.
+- **`testRegistry`** (`local_routes_test.go`) — a route registry in a temp dir with a fixed
+  set of live pids; **`isolate`** (`local_run_test.go`) sets `HOME` and the cwd to temp dirs.
 
 ## What to cover when adding a feature
 
@@ -42,6 +47,9 @@ the real binaries from a test. Two fakes exist:
   unix/windows parser tests in their build-tagged `_test.go` files.
 - **Discovery:** project-root slugging, duplicate collapsing, and `-<port>`
   suffixing belong in `discover_test.go`.
+- **Local names:** registry files (atomic writes, stale pids, foreign files), the CA's
+  name constraint and the issuer's refusals, Host routing, 404/502 pages, WebSocket
+  upgrades, and `serveLocal` end to end over TLS + HTTP/2.
 - **Proxy:** path-segment routing, the `tsp_route` cookie affinity, and Host
   rewriting belong in `proxy_test.go`.
 
