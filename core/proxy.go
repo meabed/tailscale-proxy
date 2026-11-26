@@ -79,19 +79,36 @@ func (t target) dialHost() string { return t.host + ":" + strconv.Itoa(t.port) }
 // actually reach them — `http://localhost:<port>`.
 func (t target) hostHeader() string { return "localhost:" + strconv.Itoa(t.port) }
 
+// copyBuffers recycles the reverse proxy's 32 KiB body-copy buffers instead of
+// allocating one per request.
+var copyBuffers = &bufferPool{}
+
+type bufferPool struct{ p sync.Pool }
+
+func (b *bufferPool) Get() []byte {
+	if buf, ok := b.p.Get().(*[]byte); ok {
+		return *buf
+	}
+	return make([]byte, 32*1024)
+}
+
+func (b *bufferPool) Put(buf []byte) { b.p.Put(&buf) }
+
 // newHandler returns an HTTP handler that routes by first path segment.
 // When logRequests is true, each request is logged with method, status,
 // target, and duration. When forwardHost is true, the external (funnel/serve)
 // host is forwarded to the app via X-Forwarded-Host + X-Forwarded-Proto=https;
 // otherwise the app only ever sees the local host (so it behaves like localhost).
 func newHandler(store *RouteStore, logRequests, forwardHost bool) http.Handler {
-	// A dedicated, bounded transport so idle connections to dev servers that come
-	// and go don't accumulate (capped pool + short idle timeout = steady memory).
+	// One shared, bounded transport: the idle pool is sized for a page load's
+	// burst of parallel asset requests (a small per-host cap forced constant
+	// re-dials under load), and the idle timeout drops connections to dev servers
+	// that come and go, so memory stays flat.
 	transport := &http.Transport{
 		Proxy:                 http.ProxyFromEnvironment,
 		DialContext:           (&net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
-		MaxIdleConns:          64,
-		MaxIdleConnsPerHost:   8,
+		MaxIdleConns:          256,
+		MaxIdleConnsPerHost:   64,
 		IdleConnTimeout:       60 * time.Second,
 		TLSHandshakeTimeout:   10 * time.Second,
 		ExpectContinueTimeout: time.Second,
@@ -99,6 +116,7 @@ func newHandler(store *RouteStore, logRequests, forwardHost bool) http.Handler {
 	}
 	proxy := &httputil.ReverseProxy{
 		Transport:     transport,
+		BufferPool:    copyBuffers,
 		FlushInterval: -1, // flush immediately: SSE / streaming / chunked
 		Rewrite: func(pr *httputil.ProxyRequest) {
 			tgt := pr.In.Context().Value(targetKey).(target)
