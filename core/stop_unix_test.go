@@ -133,7 +133,7 @@ func TestStopProcesses_forceEndsWhatIgnoresSIGTERM(t *testing.T) {
 	running(t, reg, localRoute{Name: "stubborn", Port: port, PID: cmd.Process.Pid})
 	rt, _ := reg.read("stubborn")
 	rt.Source = sourceRun
-	target, err := targetOf(reg, rt)
+	target, err := targetOf(reg, rt, &cpuSampler{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -171,10 +171,62 @@ func TestRequestFromOwner_onlyThisUsersProcesses(t *testing.T) {
 	}
 }
 
+func TestStopProcesses_forceEndsTheProcessesItStarted(t *testing.T) {
+	orig := stopGrace
+	stopGrace = 400 * time.Millisecond
+	t.Cleanup(func() { stopGrace = orig })
+	// A shell that starts a dev server and waits: SIGTERM ends the shell, and the
+	// server it started keeps running until a forced stop ends the whole tree.
+	sh := exec.Command("sh", "-c", `"$0" -test.run='^$' & wait`, os.Args[0])
+	sh.Env = append(os.Environ(), "TSP_TEST_LISTEN=plain")
+	out, err := sh.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sh.Start(); err != nil {
+		t.Fatal(err)
+	}
+	go func() { _ = sh.Wait() }()
+	if _, err := bufio.NewReader(out).ReadString('\n'); err != nil {
+		t.Fatal(err)
+	}
+	target := stopTarget{Source: "pid", PID: sh.Process.Pid}
+	target.inspect(&cpuSampler{})
+	if len(target.Tree) != 1 || target.Process == nil || target.Process.Procs != 2 {
+		t.Fatalf("target = %+v (process %+v)", target, target.Process)
+	}
+	child := target.Tree[0]
+	t.Cleanup(func() { _ = signalStop(child, true) })
+	if res := stopProcesses(target, false); res.Stopped {
+		t.Fatalf("graceful stop reported the tree gone while its server runs: %+v", res)
+	}
+	if res := stopProcesses(target, true); !res.Stopped || !strings.Contains(res.Ran, strconv.Itoa(child)) {
+		t.Fatalf("forced: %+v", res)
+	}
+}
+
 func TestGuardTarget_neverStopsTspItself(t *testing.T) {
 	for _, pid := range []int{0, 1, os.Getpid(), os.Getppid()} {
 		if err := guardTarget(t.TempDir(), stopTarget{PID: pid}); err == nil {
 			t.Errorf("pid %d was not refused", pid)
 		}
+	}
+}
+
+func TestDashboardStatus_marksAnExitedAppAndMeasuresALiveOne(t *testing.T) {
+	cmd, port := startListener(t, false)
+	reg := testRegistry(t)
+	running(t, reg, localRoute{Name: "live", Port: port, PID: cmd.Process.Pid})
+	running(t, reg, localRoute{Name: "gone", Port: 1, PID: 999_999})
+	ds := newDashboardStatus(t.TempDir(), reg, nil, newProxyMetrics(), &cpuSampler{})
+	by := map[string]appStatus{}
+	for _, a := range ds.Apps {
+		by[a.Name] = a
+	}
+	if a := by["live"]; a.Exited || a.Process == nil || a.Process.MemoryMB <= 0 || a.Process.Procs != 1 {
+		t.Errorf("live = %+v (process %+v)", a, a.Process)
+	}
+	if a := by["gone"]; !a.Exited || a.Process != nil {
+		t.Errorf("gone = %+v", a)
 	}
 }

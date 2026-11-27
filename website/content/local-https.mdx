@@ -216,8 +216,8 @@ runs the `dev:app` script as it is, without tsp. The name `tsp` is reserved for 
 
 ## The dashboard
 
-`https://tsp.localhost` shows what runs (how each was started, port, folder, uptime), requests, failures and p50/p95
-per name, the proxy's version, live updates and set-aside releases, discovery and update status, and any config file
+`https://tsp.localhost` shows what runs (how each was started, port, folder, uptime), the CPU and memory of each app
+with every process it started (macOS, Linux), requests, failures and p50/p95 per name, the proxy's version, live updates and set-aside releases, discovery and update status, and any config file
 it skipped, with how to fix it. It updates itself every few seconds and is reachable only from this machine. The same
 data as JSON for scripts and agents: `https://tsp.localhost/api/status`.
 
@@ -231,13 +231,15 @@ tsp stop 3000            # whatever listens on port 3000
 tsp stop web.acme --force
 ```
 
-`tsp stop` shows what it is about to end (process, pid, port, folder) and the command it runs, then asks. It sends
-SIGTERM, as Ctrl-C in the app's terminal would, and waits up to 5 seconds for it to exit; a `tsp run` app ends with
-its `tsp run`. An app that ignores it is still running afterwards, and `--force` ends it at once (SIGKILL). On Windows
-it runs `taskkill /PID <pid> /T`, and `/F` with `--force`. `--yes` skips the question, for scripts and agents.
+`tsp stop` shows what it is about to end (process, pid, CPU and memory, how long it has run, port, folder) and the
+command it runs, then asks. It sends SIGTERM, as Ctrl-C in the app's terminal would, and waits up to 5 seconds for it
+and the processes it started to exit; a `tsp run` app ends with its `tsp run`. For an app that hangs, `--force` ends
+it and every process it started at once (SIGKILL), with no chance to clean up. On Windows it runs
+`taskkill /PID <pid> /T`, and `/F` with `--force`. `--yes` skips the question, for scripts and agents.
 
-On the dashboard, each app has a **Stop** button. It opens the same summary, the exact command the button runs, and
-the commands that do the same in a terminal on this OS, each with a copy button:
+On the dashboard, each app has a **Stop** button. It opens the same summary, with **Stop** and **Force stop** side by
+side, the exact command each runs, and the commands that do the same in a terminal on this OS, each with a copy
+button. A name whose process exited shows **exited**: tsp keeps a found name for a few scans in case it restarts.
 
 | | macOS, Linux | Windows |
 | --- | --- | --- |

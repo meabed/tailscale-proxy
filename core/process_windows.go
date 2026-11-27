@@ -35,6 +35,10 @@ var requestFromOwner = func(*http.Request) error {
 	return fmt.Errorf("on Windows the dashboard cannot tell whose program asks, so it does not stop apps: run tsp stop <name> in a terminal")
 }
 
+// psTable is empty on Windows: tasklist has no CPU time or parent, so the
+// dashboard shows no CPU or memory there, and taskkill /T finds the tree itself.
+func psTable() map[int]psRow { return nil }
+
 // signalStop ends pid and the processes it started: taskkill /T asks them to
 // close, /F (forced) ends them. A process that is gone already counts as stopped.
 func signalStop(pid int, force bool) error {

@@ -244,21 +244,23 @@ func writeBadGateway(w http.ResponseWriter, r *http.Request, rt localRoute, err 
 
 // appStatus is one running name, with its traffic since this proxy started.
 type appStatus struct {
-	Name     string    `json:"name"`
-	URL      string    `json:"url"`
-	Source   string    `json:"source"` // "run" (tsp run) or "found" (discovered)
-	Runtime  string    `json:"runtime,omitempty"`
-	Port     int       `json:"port"`
-	PID      int       `json:"pid"`
-	Dir      string    `json:"dir"`
-	Started  time.Time `json:"started,omitzero"`
-	Uptime   string    `json:"-"`
-	Requests uint64    `json:"requests"`
-	Failed   uint64    `json:"failed"`
-	S4xx     uint64    `json:"4xx"`
-	S5xx     uint64    `json:"5xx"`
-	P50ms    float64   `json:"p50ms"`
-	P95ms    float64   `json:"p95ms"`
+	Name     string     `json:"name"`
+	URL      string     `json:"url"`
+	Source   string     `json:"source"` // "run" (tsp run) or "found" (discovered)
+	Runtime  string     `json:"runtime,omitempty"`
+	Port     int        `json:"port"`
+	PID      int        `json:"pid"`
+	Dir      string     `json:"dir"`
+	Started  time.Time  `json:"started,omitzero"`
+	Uptime   string     `json:"-"`
+	Requests uint64     `json:"requests"`
+	Failed   uint64     `json:"failed"`
+	S4xx     uint64     `json:"4xx"`
+	S5xx     uint64     `json:"5xx"`
+	P50ms    float64    `json:"p50ms"`
+	P95ms    float64    `json:"p95ms"`
+	Process  *procStats `json:"process,omitempty"` // CPU and memory of PID and what it started (not on Windows)
+	Exited   bool       `json:"exited,omitempty"`  // its process is gone; a found name stays listed a few scans, in case it restarts
 }
 
 // proxyStatus is the proxy's health, as `tsp stats` and `tsp doctor` report it.
@@ -291,7 +293,7 @@ type dashboardStatus struct {
 	Docs     string       `json:"docs"`
 }
 
-func newDashboardStatus(dir string, reg *localRegistry, w *localWatcher, m *proxyMetrics) dashboardStatus {
+func newDashboardStatus(dir string, reg *localRegistry, w *localWatcher, m *proxyMetrics, cpu *cpuSampler) dashboardStatus {
 	snap := m.snapshot()
 	now := time.Now()
 	st, _ := readProxyState(dir)
@@ -316,10 +318,26 @@ func newDashboardStatus(dir string, reg *localRegistry, w *localWatcher, m *prox
 		}
 	}
 	ds := dashboardStatus{Proxy: ps, Apps: []appStatus{}, Examples: examplesFor(""), Docs: docsURL}
-	for _, rt := range allRoutes(reg, w) {
+	routes := allRoutes(reg, w)
+	pids := make([]int, len(routes))
+	for i, rt := range routes {
+		pids[i] = rt.PID
+	}
+	table := psTable()
+	stats := cpu.stats(table, pids)
+	for _, rt := range routes {
 		a := appStatus{Name: rt.Name, URL: rt.URL(), Source: rt.Source, Runtime: rt.Runtime, Port: rt.Port, PID: rt.PID, Dir: rt.Dir}
 		if fi, err := os.Stat(reg.file(rt.Name)); rt.Source == sourceRun && err == nil {
 			a.Started, a.Uptime = fi.ModTime(), shortDuration(now.Sub(fi.ModTime()))
+		}
+		if _, ok := table[rt.PID]; table != nil && !ok {
+			a.Exited, a.Uptime = true, ""
+		}
+		if st, ok := stats[rt.PID]; ok {
+			a.Process = &st
+			if a.Uptime == "" {
+				a.Uptime = shortDuration(time.Duration(st.UpSeconds * float64(time.Second)))
+			}
 		}
 		if rs, ok := snap.Routes[rt.Name]; ok {
 			a.Requests, a.Failed, a.S4xx, a.S5xx = rs.Requests, rs.Errors, rs.S4xx, rs.S5xx
@@ -363,16 +381,17 @@ func readProxyState(dir string) (proxyState, bool) {
 // another account on the same machine.
 func dashboardHandler(dir string, reg *localRegistry, lw *localWatcher, m *proxyMetrics) http.Handler {
 	mux := http.NewServeMux()
+	cpu := &cpuSampler{}
 	mux.HandleFunc("GET /api/status", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, newDashboardStatus(dir, reg, lw, m))
+		writeJSON(w, http.StatusOK, newDashboardStatus(dir, reg, lw, m, cpu))
 	})
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-store")
-		_ = pageTemplates.ExecuteTemplate(w, "dashboard", newDashboardStatus(dir, reg, lw, m))
+		_ = pageTemplates.ExecuteTemplate(w, "dashboard", newDashboardStatus(dir, reg, lw, m, cpu))
 	})
 	mux.HandleFunc("GET /api/apps/{name}", func(w http.ResponseWriter, r *http.Request) {
-		t, code, err := dashboardTarget(dir, reg, lw, r.PathValue("name"))
+		t, code, err := dashboardTarget(dir, reg, lw, r.PathValue("name"), cpu)
 		if err != nil {
 			writeJSON(w, code, stopResult{Error: err.Error()})
 			return
@@ -395,7 +414,7 @@ func dashboardHandler(dir string, reg *localRegistry, lw *localWatcher, m *proxy
 			writeJSON(w, http.StatusForbidden, stopResult{Error: err.Error()})
 			return
 		}
-		t, code, err := dashboardTarget(dir, reg, lw, r.PathValue("name"))
+		t, code, err := dashboardTarget(dir, reg, lw, r.PathValue("name"), cpu)
 		if err != nil {
 			writeJSON(w, code, stopResult{Error: err.Error()})
 			return
@@ -412,12 +431,12 @@ func dashboardHandler(dir string, reg *localRegistry, lw *localWatcher, m *proxy
 
 // dashboardTarget is the stop target of a name the proxy serves now, or the
 // status code and reason it has none.
-func dashboardTarget(dir string, reg *localRegistry, lw *localWatcher, name string) (stopTarget, int, error) {
+func dashboardTarget(dir string, reg *localRegistry, lw *localWatcher, name string, cpu *cpuSampler) (stopTarget, int, error) {
 	for _, rt := range allRoutes(reg, lw) {
 		if rt.Name != name {
 			continue
 		}
-		t, err := targetOf(reg, rt)
+		t, err := targetOf(reg, rt, cpu)
 		if err == nil {
 			err = guardTarget(dir, t)
 		}
@@ -514,7 +533,7 @@ const pageHTML = `
 :root{--bg:#fcfcfd;--fg:#1d2430;--muted:#5f6878;--line:#e3e6eb;--soft:#f3f5f8;--accent:#2f6fdb;--ok:#1f8f63;--warn:#b26a00;--bad:#c4372f}
 @media (prefers-color-scheme:dark){:root{--bg:#14181f;--fg:#e6e9ee;--muted:#9aa3b2;--line:#2b313b;--soft:#1b2029;--accent:#78a6ff;--ok:#5fd0a0;--warn:#f0b45a;--bad:#e5534b}}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
-main{max-width:980px;margin:0 auto;padding:40px 22px 64px}h1{font-size:28px;line-height:1.15;margin:0 0 6px;letter-spacing:-.02em}
+main{max-width:1240px;margin:0 auto;padding:40px 22px 64px}h1{font-size:28px;line-height:1.15;margin:0 0 6px;letter-spacing:-.02em}
 h2{font-size:17px;margin:34px 0 10px}p{margin:8px 0}a{color:var(--accent)}code,pre,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px}
 pre{background:var(--soft);border:1px solid var(--line);border-radius:8px;padding:12px 14px;overflow-x:auto;margin:10px 0}
 table{width:100%;border-collapse:collapse;font-size:14px}th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
@@ -531,7 +550,8 @@ dialog dl{margin:14px 0}dialog dd{word-break:break-all}.cmds{display:grid;grid-t
 .cmds code{background:var(--soft);border:1px solid var(--line);border-radius:6px;padding:4px 8px;overflow-x:auto;white-space:nowrap}.cmds span{color:var(--muted);font-size:13px}
 .runs{margin:10px 0 0}.runs code{background:var(--soft);border-radius:4px;padding:1px 6px}.actions{display:flex;gap:8px;justify-content:flex-end;margin-top:18px}
 #sd-msg.bad{color:var(--bad)}#sd-msg.good{color:var(--ok)}
-dialog:not([data-state=ready]) #sd-stop,dialog:not([data-state=failed]) #sd-force,dialog:not([data-state=ready]):not([data-state=failed]):not([data-state=manual]) .plan,dialog[data-state=manual] .runs{display:none}
+dialog[data-state=ready] #sd-force{background:var(--bg);color:var(--bad);border-color:var(--bad)}
+dialog:not([data-state=ready]) #sd-stop,dialog:not([data-state=ready]):not([data-state=failed]) #sd-force,dialog[data-state=manual] .force-runs,dialog:not([data-state=ready]):not([data-state=failed]):not([data-state=manual]) .plan,dialog[data-state=manual] .runs{display:none}
 </style>{{end}}
 
 {{define "examples"}}<div class="wrap"><table><tbody>{{range .}}<tr><td>{{.Stack}}</td><td class="mono">{{.Command}}</td><td class="muted">{{.Note}}</td></tr>{{end}}</tbody></table></div>{{end}}
@@ -572,9 +592,9 @@ dialog:not([data-state=ready]) #sd-stop,dialog:not([data-state=failed]) #sd-forc
 <p class="muted">Served by tsp {{.Proxy.Version}} on this machine. Updates by itself every few seconds.</p>
 <div id="live">
 <h2>Running</h2>
-{{if .Apps}}<div class="wrap"><table><thead><tr><th>Name</th><th>From</th><th>Port</th><th>PID</th><th>Folder</th><th>Up</th><th class="n">Requests</th><th class="n">Failed</th><th class="n">p50</th><th class="n">p95</th><th><span class="muted" aria-hidden="true"></span></th></tr></thead><tbody>
-{{range .Apps}}<tr><td><a href="{{.URL}}">{{.URL}}</a></td><td>{{.Source}}{{if .Runtime}} <span class="muted">{{.Runtime}}</span>{{end}}</td><td class="mono">{{.Port}}</td><td class="mono">{{.PID}}</td><td class="mono">{{home .Dir}}</td><td>{{.Uptime}}</td><td class="n">{{.Requests}}</td><td class="n">{{.Failed}}</td><td class="n">{{ms .P50ms}}</td><td class="n">{{ms .P95ms}}</td><td>{{if and .PID (ne .Runtime "docker")}}<button type="button" class="stop" data-stop="{{.Name}}" aria-label="Stop {{.URL}}">Stop</button>{{end}}</td></tr>{{end}}
-</tbody></table></div><p class="muted"><b>run</b>: started with tsp run; <b>found</b>: a dev server tsp found by itself. Requests since this proxy started; p50 and p95 are times to the first byte. <b>Stop</b> shows what it ends and the command it runs before it does.</p>
+{{if .Apps}}<div class="wrap"><table><thead><tr><th>Name</th><th>From</th><th>Port</th><th>PID</th><th>Folder</th><th>Up</th><th class="n">CPU</th><th class="n">Memory</th><th class="n">Requests</th><th class="n">Failed</th><th class="n">p50</th><th class="n">p95</th><th><span class="muted" aria-hidden="true"></span></th></tr></thead><tbody>
+{{range .Apps}}<tr><td><a href="{{.URL}}">{{.URL}}</a></td><td>{{.Source}}{{if .Runtime}} <span class="muted">{{.Runtime}}</span>{{end}}</td><td class="mono">{{.Port}}</td><td class="mono">{{.PID}}</td><td class="mono">{{home .Dir}}</td><td>{{if .Exited}}<span class="warn" title="Its process is gone; the name stays a few scans in case it restarts">exited</span>{{else}}{{.Uptime}}{{end}}</td>{{with .Process}}<td class="n" title="{{.Procs}} processes">{{.CPUText}}</td><td class="n" title="{{.Procs}} processes">{{.MemoryText}}</td>{{else}}<td class="n">-</td><td class="n">-</td>{{end}}<td class="n">{{.Requests}}</td><td class="n">{{.Failed}}</td><td class="n">{{ms .P50ms}}</td><td class="n">{{ms .P95ms}}</td><td>{{if and .PID (ne .Runtime "docker") (not .Exited)}}<button type="button" class="stop" data-stop="{{.Name}}" aria-label="Stop {{.URL}}">Stop</button>{{end}}</td></tr>{{end}}
+</tbody></table></div><p class="muted"><b>run</b>: started with tsp run; <b>found</b>: a dev server tsp found by itself. CPU and memory are the app's process and every process it started, now. Requests since this proxy started; p50 and p95 are times to the first byte. <b>Stop</b> shows what it ends and the command it runs before it does.</p>
 {{else}}<p class="muted">No apps are running. Start one below.</p>{{end}}
 <h2>Proxy</h2><dl>
 <dt>Serving</dt><dd>tsp {{.Proxy.Version}} ({{.Proxy.Mode}}, pid {{.Proxy.PID}}), up {{.Proxy.Uptime}}{{if .Proxy.Supervisor}}; boot service tsp {{.Proxy.Supervisor}}{{end}}</dd>
@@ -597,6 +617,7 @@ dialog:not([data-state=ready]) #sd-stop,dialog:not([data-state=failed]) #sd-forc
 <p id="sd-msg" role="status" aria-live="polite"></p>
 <div class="plan"><dl id="sd-facts"></dl>
 <p class="runs">Stop runs <code id="sd-runs"></code></p>
+<p class="runs force-runs">Force stop runs <code id="sd-force-runs"></code><br><span class="muted">For an app that hangs: it ends it and every process it started at once, with no chance to clean up.</span></p>
 <p class="muted" style="margin-top:14px">Or from a terminal:</p><div class="cmds" id="sd-cmds"></div></div>
 <div class="actions"><button value="cancel" id="sd-cancel">Cancel</button><button type="button" class="danger" id="sd-stop">Stop</button><button type="button" class="danger" id="sd-force">Force stop</button></div>
 </form></dialog>
@@ -623,6 +644,8 @@ dialog:not([data-state=ready]) #sd-stop,dialog:not([data-state=failed]) #sd-forc
     copy.setAttribute("aria-label", "Copy " + c.command);
     return [label, code, copy];
   }));
+  const mem = (mb) => (mb >= 1024 ? (mb / 1024).toFixed(1) + " GB" : Math.round(mb) + " MB");
+  const since = (s) => (s < 60 ? Math.round(s) + "s" : s < 3600 ? Math.floor(s / 60) + "m" : s < 172800 ? Math.floor(s / 3600) + "h" + Math.floor((s % 3600) / 60) + "m" : Math.floor(s / 86400) + "d" + Math.floor((s % 86400) / 3600) + "h");
   const openStop = async (name) => {
     plan = null;
     el("sd-title").textContent = "Stop https://" + name + ".localhost?";
@@ -636,10 +659,13 @@ dialog:not([data-state=ready]) #sd-stop,dialog:not([data-state=failed]) #sd-forc
     facts([
       ["Process", (t.command || "") + " (pid " + t.pid + ")"],
       ["Started", t.source === "run" ? "with tsp run" : t.source === "found" ? "by you; tsp found it" : ""],
+      ["Using", t.process ? t.process.cpu.toFixed(1) + "% CPU, " + mem(t.process.memoryMB) + ", " + t.process.procs + (t.process.procs === 1 ? " process" : " processes") : ""],
+      ["Running", t.process ? since(t.process.upSeconds) : ""],
       ["Port", t.port ? String(t.port) : ""],
       ["Folder", body.folder],
     ]);
     el("sd-runs").textContent = body.runs;
+    el("sd-force-runs").textContent = body.force;
     commands(body.commands);
     if (!body.stopHere) return state("manual", body.how);
     state("ready", body.how);
@@ -658,7 +684,6 @@ dialog:not([data-state=ready]) #sd-stop,dialog:not([data-state=failed]) #sd-forc
       return;
     }
     if (res && res.status === 409 && !force && plan) {
-      el("sd-runs").textContent = plan.force;
       return state("failed", (body.error || "it did not stop") + ". It may still be finishing work, or it ignores SIGTERM: Force stop ends it at once.", "bad");
     }
     state("error", body.error || "it did not stop", "bad");

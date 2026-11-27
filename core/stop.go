@@ -30,19 +30,33 @@ var stopGrace = 5 * time.Second
 
 // stopTarget is what a stop ends: the process behind a name or a port.
 type stopTarget struct {
-	Name      string `json:"name,omitempty"` // the route it serves, when it is one
-	Source    string `json:"source"`         // run, found, port or pid
-	Port      int    `json:"port,omitempty"`
-	PID       int    `json:"pid"`                 // the one a graceful stop signals (tsp run's, for run)
-	Listeners []int  `json:"listeners,omitempty"` // the processes on Port; --force ends them too
-	Command   string `json:"command,omitempty"`   // PID's command line, shortened
-	Dir       string `json:"dir,omitempty"`
+	Name      string     `json:"name,omitempty"` // the route it serves, when it is one
+	Source    string     `json:"source"`         // run, found, port or pid
+	Port      int        `json:"port,omitempty"`
+	PID       int        `json:"pid"`                 // the one a graceful stop signals (tsp run's, for run)
+	Tree      []int      `json:"tree,omitempty"`      // every process PID started; --force ends them too
+	Listeners []int      `json:"listeners,omitempty"` // the processes on Port; --force ends them too
+	Command   string     `json:"command,omitempty"`   // PID's command line, shortened
+	Dir       string     `json:"dir,omitempty"`
+	Process   *procStats `json:"process,omitempty"` // CPU and memory of PID and its tree (not on Windows)
 }
 
-// pids is every process a forced stop ends: the target and its listeners.
+// inspect fills in the command line, the processes it started and what they
+// cost, from one ps.
+func (t *stopTarget) inspect(s *cpuSampler) {
+	t.Command = processCommands([]int{t.PID})[t.PID]
+	table := psTable()
+	t.Tree = descendants(table, t.PID)
+	if st, ok := s.stats(table, []int{t.PID})[t.PID]; ok {
+		t.Process = &st
+	}
+}
+
+// pids is every process a forced stop ends: the target, the processes it
+// started, and its listeners.
 func (t stopTarget) pids() []int {
 	out := []int{t.PID}
-	for _, p := range t.Listeners {
+	for _, p := range slices.Concat(t.Tree, t.Listeners) {
 		if !slices.Contains(out, p) {
 			out = append(out, p)
 		}
@@ -207,7 +221,7 @@ func dockerPort(port int) error {
 
 // targetOf is the stop target behind a served route, checked against the
 // processes running now (a pid that exited, or was reused, is not signalled).
-func targetOf(reg *localRegistry, rt localRoute) (stopTarget, error) {
+func targetOf(reg *localRegistry, rt localRoute, s *cpuSampler) (stopTarget, error) {
 	t := stopTarget{Name: rt.Name, Source: rt.Source, Port: rt.Port, PID: rt.PID, Dir: rt.Dir}
 	pids, docker := listenersOn(rt.Port)
 	t.Listeners = pids
@@ -223,7 +237,7 @@ func targetOf(reg *localRegistry, rt localRoute) (stopTarget, error) {
 			return t, fmt.Errorf("%s has stopped already (nothing listens on port %d as pid %d)", rt.URL(), rt.Port, rt.PID)
 		}
 	}
-	t.Command = processCommands([]int{t.PID})[t.PID]
+	t.inspect(s)
 	return t, nil
 }
 
@@ -269,7 +283,8 @@ waits up to 5s for it to exit. A tsp run app ends with its tsp run.
 
 Flags:
   --pid <n>   stop this process
-  --force     end it at once (SIGKILL; Windows: taskkill /T /F)
+  --force     end it and every process it started at once, for an app that
+              hangs (SIGKILL; Windows: taskkill /T /F): no chance to clean up
   --yes       don't ask first (needed without a terminal)
 
 Examples:
@@ -349,12 +364,13 @@ func resolveStop(dir string, args []string, pid int) (stopTarget, error) {
 		if !pidRunning(pid) {
 			return stopTarget{}, fmt.Errorf("no process %d is running", pid)
 		}
-		t := stopTarget{Source: "pid", PID: pid, Command: processCommands([]int{pid})[pid]}
+		t := stopTarget{Source: "pid", PID: pid}
 		for _, rt := range routes {
 			if rt.PID == pid {
 				t.Name, t.Port, t.Dir, t.Source = rt.Name, rt.Port, rt.Dir, rt.Source
 			}
 		}
+		t.inspect(&cpuSampler{})
 		return t, nil
 	}
 	arg := args[0]
@@ -364,7 +380,7 @@ func resolveStop(dir string, args []string, pid int) (stopTarget, error) {
 		}
 		for _, rt := range routes {
 			if rt.Port == port && rt.Source == sourceRun {
-				return targetOf(reg, rt)
+				return targetOf(reg, rt, &cpuSampler{})
 			}
 		}
 		pids, docker := listenersOn(port)
@@ -380,7 +396,7 @@ func resolveStop(dir string, args []string, pid int) (stopTarget, error) {
 				t.Name, t.Dir, t.PID = rt.Name, rt.Dir, rt.PID
 			}
 		}
-		t.Command = processCommands([]int{t.PID})[t.PID]
+		t.inspect(&cpuSampler{})
 		return t, nil
 	}
 	name := nameFromHost(strings.TrimSuffix(strings.TrimPrefix(strings.TrimPrefix(arg, "https://"), "http://"), "/"))
@@ -389,7 +405,7 @@ func resolveStop(dir string, args []string, pid int) (stopTarget, error) {
 	}
 	for _, rt := range routes {
 		if rt.Name == name {
-			return targetOf(reg, rt)
+			return targetOf(reg, rt, &cpuSampler{})
 		}
 	}
 	msg := fmt.Sprintf("nothing runs at %s", localRoute{Name: name}.URL())
@@ -415,6 +431,9 @@ func printStopTarget(t stopTarget) {
 	}
 	if t.Source == sourceRun {
 		fmt.Println("  started  with tsp run: it passes the stop on to its app")
+	}
+	if p := t.Process; p != nil {
+		fmt.Printf("  using    %s; running %s\n", p.summary(), shortDuration(time.Duration(p.UpSeconds*float64(time.Second))))
 	}
 	if t.Port > 0 {
 		fmt.Printf("  port     %d\n", t.Port)

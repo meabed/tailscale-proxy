@@ -118,8 +118,9 @@ with the running names and a way to run an app there per stack; a registered nam
 text. Port 80 answers every `http://*.localhost` (reserved names too) with a 308 to the same URL over https, the bare
 localhost and loopback addresses with the dashboard, any other host with a bare 404 (nothing listed: DNS rebinding). `stop.go` is `tsp
 stop` and the dashboard's Stop: it re-checks the pid against the registry or `lsof` before it signals, never touches
-tsp's own processes or Docker's forwarder, sends SIGTERM (`taskkill /T`) and waits 5s, and SIGKILLs the run and its
-listeners with `--force`. `tsp run <name> -- '<one
+tsp's own processes or Docker's forwarder, sends SIGTERM (`taskkill /T`) and waits 5s for the process and its descendants, and SIGKILLs the whole tree
+and the port's listeners with `--force`. `proc_stats.go` reads one `ps -A` per dashboard refresh: CPU (CPU-time
+delta between looks) and memory of each app's process tree, and the tree a forced stop ends; Windows shows none. `tsp run <name> -- '<one
 command>'` runs it with `/bin/sh -c` (`exec` for a simple command, so signals and exit codes pass straight through).
 
 ### Finding dev servers for local names

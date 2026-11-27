@@ -73,6 +73,15 @@ var requestFromOwner = func(r *http.Request) error {
 	return fmt.Errorf("only your own programs may stop your apps: the connection %s does not belong to a process of uid %d", want, os.Getuid())
 }
 
+// psTable is every process, from one ps.
+func psTable() map[int]psRow {
+	out, err := exec.Command("ps", "-A", "-o", "pid=,ppid=,time=,pcpu=,rss=,etime=").Output()
+	if err != nil && len(out) == 0 {
+		return nil
+	}
+	return parsePSTable(string(out))
+}
+
 // signalStop sends pid SIGTERM, or SIGKILL when forced. A process that is gone
 // already counts as stopped.
 func signalStop(pid int, force bool) error {
