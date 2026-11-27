@@ -4,7 +4,7 @@ tsp is one binary with two halves. Set up the half you need, or both: they don't
 
 | You want | Set up | Takes |
 | --- | --- | --- |
-| `https://<name>.localhost` on this machine | [Local HTTPS](#2-local-https-once-per-machine) | one command, one password prompt |
+| `https://<name>.localhost` on this machine | [Local HTTPS](#2-local-https-once-per-machine) | one command, your password once per machine |
 | A link that works from anywhere (webhooks, callbacks, sharing) | [Tailscale](#3-tailscale-for-online-links) | a free Tailscale account, two switches in its admin console |
 
 ## 1. Install tsp
@@ -49,9 +49,11 @@ tsp service install
 ```
 
 It starts the local proxy at boot and adds its certificate authority to the system's trust store, so browsers, curl,
-Bun and Node accept `https://<name>.localhost`. It asks for your password only when the boot service itself changes:
-the first time, and after a tsp update. Running it again is always safe; it checks what is in place and fixes only what
-is missing. `tsp service status` prints the same three lines and exits 1 if any is off.
+Bun and Node accept `https://<name>.localhost`. Your password is asked once: port 443 needs admin rights to open.
+After that the proxy keeps itself current: a newer tsp, from `brew upgrade`, `npm update` or its own daily check,
+takes over within seconds, with no password and no command to run. Running `tsp service install` again is always safe;
+it checks what is in place and fixes only what is missing. `tsp service status` prints the same lines and exits 1 if
+any is off.
 
 Then run an app at its name: [Local HTTPS names](/local-https).
 
@@ -116,13 +118,33 @@ All checks passed: `tsp start` exposes your servers, `tsp run` serves an app at 
 
 Each ✗ is followed by the command that fixes it, and the last line says which half is ready. Then share your dev servers: [Share online](/share).
 
-## Update and remove
+## Updates
+
+The local proxy updates itself: once a day it checks for a release, verifies the download against the release's
+checksums and restarts on it, finishing the requests in flight. In a terminal, tsp tells you once a day when a release
+is out for the command itself.
 
 ```bash
-tsp update                 # the latest release: runs brew or npm itself when that is how tsp was installed
-tsp service install        # after an update: moves the boot service to the new version
-tsp service uninstall      # stop and remove the boot service
+tsp update                          # now: runs brew or npm when that is how tsp was installed
+tsp configure --auto-update=false   # no automatic updates (TSP_NO_UPDATE=1 for one shell; off in CI)
 ```
 
-To remove the local certificate authority as well, delete `~/.tailscale-proxy/ca` and remove the "tailscale-proxy local
-CA" certificate from the trust store (Keychain Access on macOS).
+## Remove
+
+```bash
+tsp uninstall          # asks first; --yes to skip the question
+```
+
+```
+✓ Tailscale Serve/Funnel entry removed (it pointed at 127.0.0.1:18443)
+✓ boot service removed: nothing answers https://*.localhost now
+✓ local CA removed from the OS trust store
+✓ /Users/you/.tailscale-proxy emptied (config.json kept: --all removes it)
+
+Last step, the tsp command: brew uninstall tsp
+```
+
+A step with nothing to do prints `–`; one that fails prints `✗` and the command to finish it by hand.
+
+It removes only a Tailscale entry that points at tsp, so it never takes down someone else's. Safe to run twice.
+`tsp service uninstall` removes just the boot service.

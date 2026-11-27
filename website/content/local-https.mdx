@@ -82,16 +82,22 @@ Requests reach the app with the original `Host` (`api.acme.localhost`) and
   The CA carries a name constraint for `localhost`: it cannot sign a certificate for any
   other domain that a browser would accept. Names outside `.localhost` get no certificate,
   and the cache is bounded.
-- **The service** runs a root-owned copy of `tsp` (`/usr/local/lib/tailscale-proxy/tsp`):
-  root binds `127.0.0.1:443` and `[::1]:443`, then the process switches to your user for
-  good, so every file it writes stays yours. macOS: a launchd daemon
+- **The service** is a small launcher that runs as root for one job: opening
+  `127.0.0.1:443` and `[::1]:443`, which an ordinary process cannot do. It then switches to
+  your user for good and starts your own copy of tsp, `~/.tailscale-proxy/bin/tsp`, handing
+  it the open sockets. Root never runs a file you can write, and every file the proxy writes
+  stays yours. If that copy is missing or fails to start, the launcher serves the names
+  itself, so they keep working. macOS: a launchd daemon
   (`/Library/LaunchDaemons/com.meabed.tailscale-proxy.plist`, log
   `/var/log/tailscale-proxy.log`). Linux: a systemd unit (`tailscale-proxy.service`,
-  `journalctl -u tailscale-proxy`). `tsp service install` first checks what is in place and
-  changes only what is missing or old: sudo asks for your password only when the boot
-  service itself changes (first install, a new tsp version), and an up-to-date machine
-  needs none. `tsp run` in a terminal does the same when the proxy is down or older than
-  itself; in CI or a pipe it only warns.
+  `journalctl -u tailscale-proxy`).
+- **Updates without a password**: any newer tsp you run copies itself to
+  `~/.tailscale-proxy/bin/tsp` (never an older one), and the proxy checks for a release once a
+  day and verifies it against the release's `checksums.txt`. The running proxy sees the new
+  copy within seconds, finishes its requests and exits; launchd or systemd start it again on
+  the new one. sudo is needed again only if the launcher itself changes, which
+  `tsp doctor` says. `tsp run` in a terminal sets up a machine that has no proxy yet; in CI or
+  a pipe it only warns.
 - **Trust**: `tsp service install` ends with it (or `tsp trust` alone). macOS adds the CA
   to your login keychain (one password dialog at the screen; over SSH it is left as a
   next step). Debian/Ubuntu: `/usr/local/share/ca-certificates` +
@@ -104,6 +110,7 @@ Requests reach the app with the original `Host` (`api.acme.localhost`) and
 tsp run [--force] [<name> -- <cmd...>]   run an app at https://<name>.localhost
 tsp routes [--json]                      running names
 tsp service install|uninstall|status     the local HTTPS proxy, from boot (install also trusts the CA)
+tsp uninstall [--yes] [--all]            remove everything tsp set up
 tsp trust                                trust the local CA only
 tsp proxy [--port n]                     the proxy in the foreground (what the service runs)
 ```
@@ -120,5 +127,5 @@ tsp proxy [--port n]                     the proxy in the foreground (what the s
 | "already runs (pid …)" | stop the other terminal's run, or `tsp run --force` |
 | every `*.localhost` hangs | another proxy holds `*:443`: `lsof -nP -iTCP:443 -sTCP:LISTEN` (or move the Funnel: `tsp configure --https-port 8443`) |
 
-Remove everything: `tsp service uninstall`, then delete `~/.tailscale-proxy/ca` and remove
-the "tailscale-proxy local CA" certificate from the OS trust store (Keychain Access on macOS).
+Remove everything: `tsp uninstall` (the boot service, the CA and its trust, the route files and the copy in
+`~/.tailscale-proxy`).

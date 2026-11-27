@@ -8,7 +8,8 @@ version.
 | Command | What it does |
 | --- | --- |
 | `tsp doctor` | Check Tailscale and local HTTPS; each ✗ with the command that fixes it; exit 1 when one fails |
-| `tsp update` | Update to the latest release, the way tsp was installed (brew, npm or the binary itself) |
+| `tsp update` | Update to the latest release, the way tsp was installed (brew, npm or the binary itself, checksum-verified) |
+| `tsp uninstall [--yes] [--all]` | Remove everything tsp set up: the Tailscale entry it created, the boot service, the CA and `~/.tailscale-proxy`; `--all` also the config and a standalone binary |
 
 ## Local HTTPS names
 
@@ -18,7 +19,7 @@ version.
 | `tsp run <name> -- <cmd...>` | Run any command at `https://<name>.localhost` |
 | `tsp run --force` | Take a name over from a run in another terminal |
 | `tsp routes [--json]` | The names running now, with port, process and folder |
-| `tsp service install` | Once per machine: the proxy from boot, and its CA trusted. Safe to repeat |
+| `tsp service install` | Once per machine (your password once): the proxy from boot, its CA trusted; it updates itself afterwards. Safe to repeat |
 | `tsp service status` | Three ✓/✗ lines; exit 1 when one is off |
 | `tsp service uninstall` | Stop and remove the boot service |
 | `tsp trust` | Trust the local CA only |

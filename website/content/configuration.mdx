@@ -28,7 +28,8 @@ Each run takes the built-in defaults, then the file, then the flags you pass, so
   "forwardHost": false,
   "matchSeparators": true,
   "docker": false,
-  "acceptDns": ""
+  "acceptDns": "",
+  "autoUpdate": true
 }
 ```
 
@@ -47,6 +48,7 @@ Each run takes the built-in defaults, then the file, then the flags you pass, so
 | `forwardHost` | Forward the public host to apps (`X-Forwarded-Host`/`-Proto`) |
 | `matchSeparators` | Treat `-` and `_` as interchangeable in the path slug, so `/module-api/` and `/module_api/` both route (default on) |
 | `docker` | Also discover Docker containers via the local Docker API (read-only, over `/var/run/docker.sock`) |
+| `autoUpdate` | The local HTTPS proxy installs new releases itself, checksum-verified, and the CLI says once a day when one is out (default on; `TSP_NO_UPDATE=1` or `CI` turns both off) |
 | `acceptDns` | `""` leaves Tailscale DNS alone; `"true"`/`"false"` runs `tailscale set --accept-dns` on start |
 
 ## Host header behavior
