@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -348,7 +349,7 @@ func pinSystem(t *testing.T, euid int, r Runner) *[][]string {
 func sudoStartsProxy(t *testing.T, dir string, ran *[][]string) {
 	interactive = func(argv []string) error {
 		*ran = append(*ran, argv)
-		if argv[0] != "sudo" {
+		if argv[0] != "sudo" || !slices.Contains(argv, "service") { // Linux: the trust steps run through sudo too
 			return nil
 		}
 		data, _ := json.Marshal(proxyState{PID: 42, Version: Version, Port: 443})
