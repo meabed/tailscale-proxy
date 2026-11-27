@@ -27,11 +27,20 @@ func splitFirstSegment(p string) (seg, rest string) {
 	return p, "/"
 }
 
-// writeIndex answers an unknown path with 404 and the registered services.
-func writeIndex(w http.ResponseWriter, store *routeStore) {
+// writeIndex answers an unknown path with 404 and the registered services. A
+// Funnel caller (from the internet) never sees a project that says "share":
+// "private": not its path, its port or that it exists.
+func writeIndex(w http.ResponseWriter, store *routeStore, funnel bool) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(http.StatusNotFound)
 	snap := store.snapshot()
+	if funnel {
+		for slug, svc := range snap {
+			if svc.Share == "private" {
+				delete(snap, slug)
+			}
+		}
+	}
 	fmt.Fprintln(w, "tailscale-proxy — registered services:")
 	if len(snap) == 0 {
 		fmt.Fprintln(w, "  (none discovered — start a dev server in range, or try --all / --ports, then `tsp doctor`)")
@@ -146,21 +155,16 @@ func newHandler(store *routeStore, logRequests, forwardHost bool, m *proxyMetric
 		start := time.Now()
 		mw := newMeteredWriter(w)
 
-		svc, path, ok := resolveRoute(store, r, w)
-		if ok && svc.Share == "private" && r.Header.Get("Tailscale-Funnel-Request") != "" {
-			// A project that says "share": "private" answers only the tailnet, even while
-			// tsp runs public: Tailscale marks every Funnel request (and drops the header
-			// a client sends itself).
-			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-			w.WriteHeader(http.StatusNotFound)
-			fmt.Fprintf(w, "tailscale-proxy: /%s/ is private to this tailnet\n", svc.Slug)
-			return
-		}
+		// A project that says "share": "private" answers only the tailnet, even while tsp
+		// runs public: Tailscale marks every Funnel request (and drops the header a client
+		// sends itself). To a Funnel caller it is a path that does not exist.
+		funnel := r.Header.Get("Tailscale-Funnel-Request") != ""
+		svc, path, ok := resolveRoute(store, r, w, funnel)
 		if ok {
 			tgt := target{host: svc.upstreamHost(), port: svc.Port, path: path}
 			proxy.ServeHTTP(mw, r.WithContext(context.WithValue(r.Context(), targetKey{}, tgt)))
 		} else {
-			writeIndex(mw, store)
+			writeIndex(mw, store, funnel)
 		}
 		status, ttfb := mw.result()
 		m.record(svc.Slug, status, ttfb, mw.bytes, mw.failed)
@@ -193,10 +197,17 @@ const routeCookie = "tsp_route"
 // First path segment matching a slug wins (prefix stripped, affinity cookie set).
 // Otherwise it falls back to the affinity cookie and forwards the full path.
 // Returns (service, path, ok).
-func resolveRoute(store *routeStore, r *http.Request, w http.ResponseWriter) (Service, string, bool) {
+func resolveRoute(store *routeStore, r *http.Request, w http.ResponseWriter, funnel bool) (Service, string, bool) {
+	lookup := func(slug string) (Service, bool) {
+		svc, ok := store.lookup(slug)
+		if ok && funnel && svc.Share == "private" {
+			return Service{}, false // before any cookie names it
+		}
+		return svc, ok
+	}
 	seg, rest := splitFirstSegment(r.URL.Path)
 	if seg != "" {
-		if svc, ok := store.lookup(seg); ok {
+		if svc, ok := lookup(seg); ok {
 			// Remember this app for subsequent prefix-less requests.
 			http.SetCookie(w, &http.Cookie{
 				Name: routeCookie, Value: seg, Path: "/", SameSite: http.SameSiteLaxMode,
@@ -207,7 +218,7 @@ func resolveRoute(store *routeStore, r *http.Request, w http.ResponseWriter) (Se
 	// Prefix-less request (asset/API/HMR): follow the affinity cookie, forwarding
 	// the full original path unchanged.
 	if c, err := r.Cookie(routeCookie); err == nil && c.Value != "" {
-		if svc, ok := store.lookup(c.Value); ok {
+		if svc, ok := lookup(c.Value); ok {
 			return svc, r.URL.Path, true
 		}
 	}

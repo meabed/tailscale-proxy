@@ -403,3 +403,46 @@ func TestHandler_flushesStreams(t *testing.T) {
 		t.Errorf("flushed=%v body=%q", rec.Flushed, rec.Body.String())
 	}
 }
+
+func TestHandler_privateProjectsAreInvisibleToFunnel(t *testing.T) {
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("secret")) }))
+	defer up.Close()
+	port := up.Listener.Addr().(*net.TCPAddr).Port
+	store := newRouteStore(func() ([]Service, []duplicate, error) {
+		return []Service{
+			{Slug: "admin", Port: port, Host: "127.0.0.1", Share: "private"},
+			{Slug: "site", Port: port, Host: "127.0.0.1"},
+		}, nil, nil
+	}, 5, true)
+	if _, _, _, err := store.refresh(); err != nil {
+		t.Fatal(err)
+	}
+	h := newHandler(store, false, false, newProxyMetrics())
+	do := func(path string, funnel bool, cookie string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest("GET", path, nil)
+		if funnel {
+			req.Header.Set("Tailscale-Funnel-Request", "?1")
+		}
+		if cookie != "" {
+			req.AddCookie(&http.Cookie{Name: routeCookie, Value: cookie})
+		}
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec
+	}
+	for _, rec := range []*httptest.ResponseRecorder{do("/admin/", true, ""), do("/", true, "admin"), do("/nope/", true, "")} {
+		body := rec.Body.String()
+		if rec.Code != 404 || strings.Contains(body, "admin") || strings.Contains(body, "secret") || strings.Contains(rec.Header().Get("Set-Cookie"), "admin") {
+			t.Errorf("funnel: %d %q cookie %q", rec.Code, body, rec.Header().Get("Set-Cookie"))
+		}
+	}
+	if rec := do("/site/", true, ""); rec.Code != 200 {
+		t.Errorf("a public project over Funnel: %d", rec.Code)
+	}
+	if rec := do("/admin/", false, ""); rec.Code != 200 || rec.Body.String() != "secret" {
+		t.Errorf("the tailnet reaches a private project: %d %q", rec.Code, rec.Body.String())
+	}
+	if rec := do("/nope/", false, ""); !strings.Contains(rec.Body.String(), "/admin/") {
+		t.Errorf("the tailnet index lists it: %q", rec.Body.String())
+	}
+}
