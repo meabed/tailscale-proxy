@@ -3,7 +3,7 @@
 A tray-first desktop wrapper around the `tsp` engine. It drives
 [`core.Controller`](../core/controller.go) **in-process** (no sidecar), so the menu
 bar can start/stop the proxy, switch Funnel/Serve, open service URLs, toggle
-start-at-login, and edit the shared `~/.tailscale-proxy/config.json`.
+start-at-login, and edit the shared `~/.tsp/config.json`.
 
 > **Download a build:** [Releases](https://github.com/meabed/tailscale-proxy/releases)
 > (newest `desktop-v…`) · [docs page](https://tailscaleproxy.vercel.app/desktop).

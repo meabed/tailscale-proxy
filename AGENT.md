@@ -1,8 +1,9 @@
 # AGENT.md
 
 Single source of truth for agents and contributors. **Rules, code style, patterns,
-and workflow live here.** Product/usage/behavior specs live in the linked docs —
-don't inline them here; keep them updated as features change.
+and workflow live here.** User docs live on the site (`website/content/*.mdx`), internals
+in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — don't inline them here; keep them updated
+as features change.
 
 ## What this is
 
@@ -15,26 +16,23 @@ https://<node>.ts.net/<project>/foo   →   strip segment → 127.0.0.1:<port>/f
 ```
 
 It also serves apps locally at stable HTTPS names (`tsp run` → `https://<name>.localhost`,
-behind `tsp proxy` on 443 with its own CA): [docs/LOCAL-HTTPS.md](docs/LOCAL-HTTPS.md).
+behind `tsp proxy` on 443 with its own CA), from a boot service that updates itself live.
 
 Self-hosted ngrok alternative. Go **stdlib only**, zero runtime dependencies,
-cross-platform (macOS, Linux, Windows, WSL). Module `github.com/meabed/tailscale-proxy`, Go 1.24.
+cross-platform (macOS, Linux, Windows, WSL). Module `github.com/meabed/tailscale-proxy`.
 
 ## Spec & reference docs (keep updated; link, don't duplicate)
 
 | Topic | File |
 | --- | --- |
-| Architecture & request flow | [docs/HOW-IT-WORKS.md](docs/HOW-IT-WORKS.md) |
-| Usage & real examples | [docs/EXAMPLES.md](docs/EXAMPLES.md) |
-| Local HTTPS names (`tsp run`, `tsp proxy`, service, trust) | [docs/LOCAL-HTTPS.md](docs/LOCAL-HTTPS.md) |
-| Troubleshooting | [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) |
+| User docs (the one source: install, guides, commands, troubleshooting) | `website/content/*.mdx` → https://tailscaleproxy.vercel.app · [website/README.md](website/README.md) |
+| Internals: both proxies, the supervisor and live updates, logs and metrics | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
 | Testing approach & helpers | [docs/TESTING.md](docs/TESTING.md) |
 | Release process | [docs/RELEASING.md](docs/RELEASING.md) |
-| User overview | [README.md](README.md) |
-| Published docs site (TanStack Start, static) | `website/` → https://tailscaleproxy.vercel.app · [website/README.md](website/README.md) |
+| Entry point (short; links to the site) | [README.md](README.md) |
 
-When a flag or behavior changes, update the relevant doc above **and** the README
-and `website/content/*.mdx` so all three stay in sync.
+When a flag or behavior changes, update the site page that describes it, the CLI's
+help, and ARCHITECTURE.md when internals change. The README stays short.
 
 ## Repo map
 
@@ -49,7 +47,8 @@ module** under `desktop/` that imports `core` and drives it in-process.
 | `core/cli.go` | `start`: flags, server lifecycle, signal handling, header |
 | `core/commands.go` | `list` / `status` / `reset` / `configure` + `queryConfig` |
 | `core/controller.go` | **`Controller`** (Start/Stop/Status/OnChange), `Options`/`OptionsFromConfig`, `CheckUpdate`, `CheckTailscale` — the embedder API; export only what `desktop/` uses |
-| `core/config.go` | `Config`, `defaultConfig()` overlay, `LoadConfig`/`SaveConfig`/`ConfigPath` (`~/.tailscale-proxy/config.json`), `stateDir`, `writeFileAtomic` (every state file) |
+| `core/config.go` | `Config`, `defaultConfig()` overlay, `LoadConfig`/`SaveConfig`/`ConfigPath` (`~/.tsp/config.json`), `writeFileAtomic` (every state file) |
+| `core/statedir.go` | `stateDir`: `~/.tsp`, everything tsp keeps for a user |
 | `core/discover.go` | `Service`/`Duplicate` model, runtime classification, slug from project root, `buildServices` |
 | `core/discover_unix.go` | `//go:build !windows` — `lsof`/`ps` listeners + parsers |
 | `core/discover_windows.go` | `//go:build windows` — `netstat`/`tasklist` + parsers |
@@ -60,21 +59,26 @@ module** under `desktop/` that imports `core` and drives it in-process.
 | `core/output.go` | Start header, service URLs, duplicate notes |
 | `core/poll.go` | Periodic re-scan loop + logging (CLI) |
 | `core/update.go` | Self-update: standalone replaces itself; brew/npm run their upgrade (npm first: Homebrew's Node keeps globals under `/opt/homebrew/lib/node_modules`) |
-| `core/local_routes.go` | `localRoute`, name rules, the per-route file registry (`~/.tailscale-proxy/routes`), stable port pick |
+| `core/local_routes.go` | `localRoute`, name rules, the per-route file registry (`~/.tsp/routes`), stable port pick |
 | `core/local_ca.go` | Local CA (name-constrained to `localhost`), per-name leaf issuer with a bounded cache, `caTrusted` |
-| `core/local_proxy.go` | `tsp proxy`: HTTPS on `127.0.0.1`/`[::1]:443`, routes by Host, privilege drop, `proxy.json` |
+| `core/local_proxy.go` | `tsp proxy`: `localServer` (HTTPS by Host, metrics, `selfCheck`, graceful `shutdown`), its three modes (supervisor, worker, standalone), `proxy.json` |
+| `core/supervisor_unix.go` | The boot service after the privilege drop: holds the 443 sockets, runs `~/.tsp/bin` workers, live swap on readiness, rollback, crash backoff, built-in fallback, liveness |
+| `core/metrics.go` | Per-name atomic counters + latency histogram, `meteredWriter`, connection states, the admin socket (`run/<pid>.sock`), per-minute history (`logs/stats.jsonl`) |
+| `core/applog.go` | slog JSON event log (`logs/proxy.jsonl`) with a multi-process rotating writer |
+| `core/stats_cmd.go` | `tsp stats` and `tsp logs` |
 | `core/local_run.go` | `tsp run`: package.json `"tsp"` or explicit command, env, registration, signal pass-through |
 | `core/local_service.go` | `tsp service install/uninstall/status` (launchd/systemd), sudo re-run, test seams |
-| `core/local_launch_unix.go` | The launcher: after the privilege drop, exec `~/.tailscale-proxy/bin/tsp` with the 443 sockets inherited (`TSP_LISTEN_FDS`); `inheritedListeners` on the other side |
-| `core/proxy_bin.go` | The user's proxy copy in `bin/` (+ `bin/version`), `syncProxyBin` (newer CLIs copy themselves in), `watchProxyBin` (restart on a newer copy), `versionLess` |
-| `core/autoupdate.go` | Daily release check (ETag) + checksummed install into `bin/`; `update.json`; the CLI's once-a-day notice |
+| `core/proxy_bin.go` | The proxy's copies in `bin/` (`tsp-<release>`, `state.json`: current, previous, bad), `syncProxyBin` (newer CLIs copy themselves in), `markBad`, `versionLess` |
+| `core/autoupdate.go` | Daily release check (ETag) + checksummed install into `bin/` (skips bad releases); `update.json`; the CLI's once-a-day notice |
 | `core/uninstall.go` | `tsp uninstall`: Serve/Funnel entry (only tsp's), service, CA trust, state dir, how to remove the CLI |
 | `core/local_trust.go` | `tsp trust`: per-OS trust-store commands |
 | `core/service_*.go` / `core/process_*.go` | Build-tagged init-system paths; pid liveness, stop, privilege drop |
 | `core/detach.go` (+ `detach_unix.go` / `detach_windows.go`) | `--bg` background spawn; the build-tagged files hold only `detachSysProcAttr` |
 | `desktop/` | **Separate module** — Wails v3 tray app over `core.Controller`. See [desktop/README.md](desktop/README.md) |
 
-Tests are `*_test.go` beside each file in `core/`. See [docs/TESTING.md](docs/TESTING.md).
+Tests are `*_test.go` beside each file in `core/`. The test binary doubles as tsp
+(`TSP_TEST_AS_TSP=1`, `supervisor_unix_test.go`), so the supervisor tests run real workers.
+See [docs/TESTING.md](docs/TESTING.md).
 
 ## Code style
 
@@ -117,9 +121,12 @@ Tests are `*_test.go` beside each file in `core/`. See [docs/TESTING.md](docs/TE
 - **Local HTTPS names:** a route is one file per running `tsp run`, removed on exit and
   ignored once its pid is gone; never a shared mutable file. The CA only ever signs
   `localhost` names (name constraint + issuer check). The service binary is a root-owned
-  launcher: it binds 443, drops to the user, then execs the user's `~/.tailscale-proxy/bin/tsp`
-  (root never runs a user-writable file). Updates replace only that copy: no sudo. Bump
-  `launcherRevision` only when the launcher's handoff changes (that reinstall asks sudo).
+  launcher: it binds 443, drops to the user for good and supervises workers from
+  `~/.tsp/bin` (root never runs a user-writable file). A new release serves only after its
+  readiness check; one that fails or dies within probation is marked bad and the previous
+  copy serves. Never `Shutdown` a server before closing its listeners and letting busy
+  connections finish (`localServer.shutdown`). Bump `launcherRevision` only when the
+  launcher itself changes (that reinstall asks sudo).
   Commands that need the terminal (sudo, the macOS trust dialog) go through `interactive`;
   tests pin `geteuid`/`interactive`/`serviceRunner` and never touch the real service paths.
 
