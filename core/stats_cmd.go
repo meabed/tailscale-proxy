@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -268,21 +269,21 @@ func followLog(path string, asJSON bool) int {
 }
 
 // printLogLine prints one event as "Jan 2 15:04:05  WARN  worker  msg  k=v …".
+// Every key and value is printed through safeText: a log line carries request
+// paths and error text, which must never put control sequences on a terminal.
 func printLogLine(w io.Writer, raw []byte, asJSON bool) {
 	if asJSON {
-		fmt.Fprintln(w, string(raw))
+		fmt.Fprintln(w, string(raw)) // JSON escapes control characters itself
 		return
 	}
 	var ev map[string]any
 	if json.Unmarshal(raw, &ev) != nil {
-		fmt.Fprintln(w, string(raw))
+		fmt.Fprintln(w, safeText(string(raw)))
 		return
 	}
 	ts, _ := time.Parse(time.RFC3339Nano, fmt.Sprint(ev["time"]))
 	stamp := ts.Local().Format("Jan 2 15:04:05")
-	level, _ := ev["level"].(string)
-	role, _ := ev["role"].(string)
-	msg, _ := ev["msg"].(string)
+	field := func(k string) string { s, _ := ev[k].(string); return safeText(s) }
 	keys := make([]string, 0, len(ev))
 	for k := range ev {
 		switch k {
@@ -294,7 +295,18 @@ func printLogLine(w io.Writer, raw []byte, asJSON bool) {
 	sort.Strings(keys)
 	var b strings.Builder
 	for _, k := range keys {
-		fmt.Fprintf(&b, "  %s=%v", k, ev[k])
+		fmt.Fprintf(&b, "  %s=%s", safeText(k), safeText(fmt.Sprint(ev[k])))
 	}
-	fmt.Fprintf(w, "%s  %-5s  %-10s  %s%s\n", stamp, level, role, msg, b.String())
+	fmt.Fprintf(w, "%s  %-5s  %-10s  %s%s\n", stamp, field("level"), field("role"), field("msg"), b.String())
+}
+
+// safeText is s, or s quoted (Go syntax: \x1b, \n, …) when it holds a control
+// character, so nothing read from a log can move the cursor or recolor the terminal.
+func safeText(s string) string {
+	for _, r := range s {
+		if r < 0x20 || (r >= 0x7f && r <= 0x9f) {
+			return strconv.Quote(s)
+		}
+	}
+	return s
 }

@@ -170,8 +170,8 @@ func TestLocalHandler_websocketUpgrade(t *testing.T) {
 }
 
 func TestRunStandalone_endToEnd(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
+	unixOnly(t)
+	home := shortHome(t) // the admin socket needs a short path
 	t.Setenv("USERPROFILE", home)
 	dir := filepath.Join(home, ".tsp")
 	reg := newLocalRegistry(filepath.Join(dir, "routes"))

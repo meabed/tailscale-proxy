@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
@@ -23,6 +24,14 @@ import (
 // one-minute summary to ~/.tsp/logs/stats.jsonl (historyLoop), so the history
 // outlives restarts and swaps.
 
+// The names metrics never grow past: unregistered names count as one, and a
+// machine running more than maxRouteKeys names counts the rest together.
+const (
+	maxRouteKeys = 256
+	unknownRoute = "(unknown)"
+	otherRoutes  = "(other)"
+)
+
 // latencyBoundsMs are the histogram's upper bounds; the last bucket is "slower".
 var latencyBoundsMs = [...]float64{1, 2, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 30000}
 
@@ -37,7 +46,8 @@ type routeMetrics struct {
 // proxyMetrics is one proxy's counters since it started.
 type proxyMetrics struct {
 	started time.Time
-	routes  sync.Map     // name → *routeMetrics
+	routes  sync.Map     // name → *routeMetrics, at most maxRouteKeys names
+	keys    atomic.Int64 // names in routes
 	active  atomic.Int64 // open client connections
 	busy    atomic.Int64 // of those, new (no request read yet) or mid-request: draining waits for them
 	states  sync.Map     // net.Conn → http.ConnState, to move busy on each change
@@ -58,13 +68,24 @@ func bucketFor(d time.Duration) int {
 
 // record counts one response: its status, time to first byte, and bytes written.
 // An upstream that failed (no response) is status 502 with failed set.
+// A request that matched no registered name counts under unknownRoute (the caller
+// passes ""), so a Host header can never add names; past maxRouteKeys names the
+// rest count under otherRoutes.
 func (m *proxyMetrics) record(name string, status int, ttfb time.Duration, bytes int64, failed bool) {
 	if name == "" {
-		name = "(none)"
+		name = unknownRoute
 	}
 	v, ok := m.routes.Load(name)
 	if !ok {
-		v, _ = m.routes.LoadOrStore(name, &routeMetrics{})
+		if m.keys.Add(1) > maxRouteKeys {
+			m.keys.Add(-1)
+			name = otherRoutes
+		}
+		var loaded bool
+		v, loaded = m.routes.LoadOrStore(name, &routeMetrics{})
+		if loaded && name != otherRoutes {
+			m.keys.Add(-1) // another request stored it first
+		}
 	}
 	r := v.(*routeMetrics)
 	r.requests.Add(1)
@@ -250,23 +271,50 @@ func (w *meteredWriter) result() (int, time.Duration) {
 	return w.status, w.ttfb
 }
 
-// adminSocketPath is where proxy pid answers `tsp stats` (one socket per process,
-// so a proxy being swapped out never answers for the new one): ~/.tsp/run, or a
-// per-user folder in the temp dir when that path is too long for a unix socket
-// (about 100 bytes).
-func adminSocketPath(dir string, pid int) string {
+// adminSocketPath is where proxy pid answers `tsp stats`: ~/.tsp/run/<pid>.sock,
+// one socket per process, so a proxy being swapped out never answers for the new
+// one. A unix socket path must fit in about 100 bytes (macOS); a home deeper than
+// that gets no admin socket, and tsp stats then shows the history only.
+func adminSocketPath(dir string, pid int) (string, error) {
 	p := filepath.Join(dir, "run", strconv.Itoa(pid)+".sock")
-	if len(p) < 100 {
-		return p
+	if len(p) >= 100 {
+		return "", fmt.Errorf("%s is too long for a unix socket", p)
 	}
-	return filepath.Join(os.TempDir(), "tsp-"+strconv.Itoa(os.Getuid()), strconv.Itoa(pid)+".sock")
+	return p, nil
+}
+
+// privateRunDir makes ~/.tsp/run (0700) and checks it is a real folder this user
+// owns that no one else can write, so no other user can plant or swap a socket in it.
+func privateRunDir(dir string) error {
+	run := filepath.Join(dir, "run")
+	if err := os.MkdirAll(run, 0o700); err != nil {
+		return err
+	}
+	fi, err := os.Lstat(run)
+	if err != nil {
+		return err
+	}
+	if !fi.IsDir() || fi.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("%s is not a folder", run)
+	}
+	if !ownedByMe(fi) {
+		return fmt.Errorf("%s belongs to another user", run)
+	}
+	if fi.Mode().Perm() != 0o700 {
+		return os.Chmod(run, 0o700)
+	}
+	return nil
 }
 
 // adminServer answers /health and /stats (metrics() at the time of asking) on a
 // unix socket until ctx ends.
 func adminServer(ctx context.Context, dir string, metrics func() *proxyMetrics) {
-	path := adminSocketPath(dir, os.Getpid())
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+	path, err := adminSocketPath(dir, os.Getpid())
+	if err == nil {
+		err = privateRunDir(dir)
+	}
+	if err != nil {
+		appLog().Warn("no admin socket", "err", err)
 		return
 	}
 	_ = os.Remove(path)
@@ -275,6 +323,7 @@ func adminServer(ctx context.Context, dir string, metrics func() *proxyMetrics) 
 		appLog().Warn("admin socket", "path", path, "err", err)
 		return
 	}
+	_ = os.Chmod(path, 0o600)
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ok " + Version + "\n")) })
 	mux.HandleFunc("/stats", func(w http.ResponseWriter, _ *http.Request) {
@@ -290,11 +339,17 @@ func adminServer(ctx context.Context, dir string, metrics func() *proxyMetrics) 
 	_ = srv.Serve(ln)
 }
 
-// adminClient talks HTTP to proxy pid's admin socket.
+// adminClient talks HTTP to proxy pid's admin socket (only in a private run folder).
 func adminClient(dir string, pid int, timeout time.Duration) *http.Client {
-	path := adminSocketPath(dir, pid)
 	return &http.Client{Timeout: timeout, Transport: &http.Transport{
 		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+			path, err := adminSocketPath(dir, pid)
+			if err == nil {
+				err = privateRunDir(dir)
+			}
+			if err != nil {
+				return nil, err
+			}
 			var d net.Dialer
 			return d.DialContext(ctx, "unix", path)
 		},
@@ -408,6 +463,7 @@ const slowRequest = 2 * time.Second
 // logRequestEvent logs one request per mode (the localRequestLog setting):
 // "errors" (the default) logs failed upstreams, 5xx answers and slow ones; "all"
 // logs every request; "off" none.
+// The path is logged escaped (%XX), as a request can carry any bytes in it.
 func logRequestEvent(mode, name string, r *http.Request, status int, ttfb time.Duration, failed bool) {
 	notable := failed || status >= 500 || ttfb > slowRequest
 	if mode == "off" || (mode != "all" && !notable) {
@@ -417,6 +473,6 @@ func logRequestEvent(mode, name string, r *http.Request, status int, ttfb time.D
 	if notable {
 		level = slog.LevelWarn
 	}
-	appLog().Log(r.Context(), level, "request", "name", name, "method", r.Method, "path", r.URL.Path,
+	appLog().Log(r.Context(), level, "request", "name", name, "method", r.Method, "path", r.URL.EscapedPath(),
 		"status", status, "ms", ttfb.Milliseconds(), "upstreamFailed", failed)
 }

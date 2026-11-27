@@ -425,6 +425,9 @@ func (s *supervisor) loop(ctx context.Context) {
 			if s.active == nil {
 				continue
 			}
+			if _, err := adminSocketPath(s.dir, s.active.cmd.Process.Pid); err != nil {
+				continue // no admin socket on this machine: the exit watch still covers crashes
+			}
 			if _, err := adminClient(s.dir, s.active.cmd.Process.Pid, 5*time.Second).Get("http://tsp/health"); err != nil {
 				misses++
 				appLog().Warn("worker health check failed", "worker", s.active.cmd.Process.Pid, "misses", misses, "err", err)

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -135,5 +136,41 @@ func TestCmdLogs_noEventsYet(t *testing.T) {
 	out := captureStdout(t, func() { cmdLogs(nil) })
 	if !strings.Contains(out, "No events yet") {
 		t.Errorf("output:\n%s", out)
+	}
+}
+
+func TestProxyMetrics_namesAreBounded(t *testing.T) {
+	m := newProxyMetrics()
+	m.record("", 404, time.Millisecond, 0, false) // an unregistered Host
+	m.record("", 404, time.Millisecond, 0, false)
+	for i := 0; i < maxRouteKeys+50; i++ {
+		m.record(fmt.Sprintf("app-%d", i), 200, time.Millisecond, 0, false)
+	}
+	routes := m.snapshot().Routes
+	if routes[unknownRoute].Requests != 2 {
+		t.Errorf("unregistered hosts = %+v", routes[unknownRoute])
+	}
+	if len(routes) > maxRouteKeys+1 || routes[otherRoutes].Requests == 0 {
+		t.Errorf("%d names kept (cap %d), other = %d", len(routes), maxRouteKeys, routes[otherRoutes].Requests)
+	}
+}
+
+func TestSafeText(t *testing.T) {
+	if got := safeText("/plain/path"); got != "/plain/path" {
+		t.Errorf("plain text changed: %q", got)
+	}
+	for _, evil := range []string{"\x1b[31mred", "a\nb", "\x9b2J", "bell\a"} {
+		got := safeText(evil)
+		for _, r := range got {
+			if r < 0x20 || (r >= 0x7f && r <= 0x9f) {
+				t.Errorf("safeText(%q) = %q still holds a control character", evil, got)
+			}
+		}
+	}
+	var b bytes.Buffer
+	raw, _ := json.Marshal(map[string]any{"time": "2026-11-27T13:20:01Z", "level": "WARN", "msg": "request\x1b[2J", "role": "worker", "path": "/x\x1b]0;pwned\a"})
+	printLogLine(&b, raw, false)
+	if strings.ContainsRune(b.String(), 0x1b) || strings.ContainsRune(b.String(), 0x07) {
+		t.Errorf("an escape sequence reached the output: %q", b.String())
 	}
 }

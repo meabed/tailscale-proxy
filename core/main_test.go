@@ -2,6 +2,7 @@ package core
 
 import (
 	"os"
+	"runtime"
 	"testing"
 )
 
@@ -21,4 +22,21 @@ func TestMain(m *testing.M) {
 	code := m.Run()
 	_ = os.RemoveAll(home)
 	os.Exit(code)
+}
+
+// shortHome is a HOME short enough for a unix socket under ~/.tsp/run.
+func shortHome(t *testing.T) string {
+	t.Helper()
+	base := "/tmp"
+	if runtime.GOOS == "windows" {
+		base = os.TempDir()
+	}
+	home, err := os.MkdirTemp(base, "tsp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(home) })
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	return home
 }

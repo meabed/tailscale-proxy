@@ -71,15 +71,16 @@ func newLocalHandler(reg *localRegistry, m *proxyMetrics, requestLog string) htt
 		}
 		mw := newMeteredWriter(w)
 		rt, ok := lookupWithParents(reg, name)
+		key := "" // metrics key: a registered name only, never the request's Host
 		if ok {
 			proxy.ServeHTTP(mw, r.WithContext(context.WithValue(r.Context(), localRouteKey{}, rt)))
-			name = rt.Name
+			key = rt.Name
 		} else {
 			writeLocalIndex(mw, reg, name)
 		}
 		status, ttfb := mw.result()
-		m.record(name, status, ttfb, mw.bytes, mw.failed)
-		logRequestEvent(requestLog, name, r, status, ttfb, mw.failed)
+		m.record(key, status, ttfb, mw.bytes, mw.failed)
+		logRequestEvent(requestLog, key, r, status, ttfb, mw.failed)
 	})
 }
 
