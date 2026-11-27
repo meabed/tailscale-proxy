@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"archive/zip"
 	"compress/gzip"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -55,7 +56,7 @@ func cmdUpdate(argv []string) int {
 			return 1
 		}
 		fmt.Printf("✓ updated to %s\n", normalizeVer(latest))
-		printServiceNextStep()
+		printServiceNextStep(exe)
 		return 0
 	default:
 		fmt.Printf("\nDownloading %s …\n", latest)
@@ -64,7 +65,7 @@ func cmdUpdate(argv []string) int {
 			return 1
 		}
 		fmt.Printf("✓ updated to %s\n", normalizeVer(latest))
-		printServiceNextStep()
+		printServiceNextStep(exe)
 		return 0
 	}
 }
@@ -85,27 +86,27 @@ func installMethod(path string) string {
 	return "standalone"
 }
 
-// printServiceNextStep tells an updated install that its boot service still runs
-// the old proxy, and how to move it: the new binary installs it.
-func printServiceNextStep() {
-	if s, supported := servicePlatform(); supported && s.installed() {
-		fmt.Println("Next: `tsp service install` moves the local HTTPS proxy to this version (sudo asks once).")
+// printServiceNextStep runs the updated tsp once, which copies it in as the local
+// HTTPS proxy (syncProxyBin), and says what happens to the proxy next.
+func printServiceNextStep(exe string) {
+	s, supported := servicePlatform()
+	if !supported || !s.installed() {
+		return
 	}
+	if path, err := lookPath("tsp"); err == nil {
+		exe = path
+	}
+	_, _, _ = serviceRunner.Run(exe, "--version")
+	if s.selfUpdating() {
+		fmt.Println("✓ the local HTTPS proxy restarts on it by itself (no sudo)")
+		return
+	}
+	fmt.Println("Next: `tsp service install` once (sudo asks): after that the local HTTPS proxy updates itself.")
 }
 
 // normalizeVer strips a leading v and surrounding whitespace.
 func normalizeVer(v string) string {
 	return strings.TrimPrefix(strings.TrimSpace(v), "v")
-}
-
-// releaseArchiveURL builds the GitHub release archive URL for an os/arch.
-func releaseArchiveURL(tag, goos, goarch string) string {
-	ext := "tar.gz"
-	if goos == "windows" {
-		ext = "zip"
-	}
-	return fmt.Sprintf("https://github.com/%s/releases/download/%s/tsp_%s_%s.%s",
-		repoSlug, tag, goos, goarch, ext)
 }
 
 // latestVersion returns the latest release tag from the GitHub API.
@@ -135,22 +136,22 @@ func latestVersion() (string, error) {
 	return rel.TagName, nil
 }
 
-// selfReplace downloads the release binary and atomically replaces exe.
+// selfReplace downloads the release binary (checked against checksums.txt) and
+// atomically replaces exe.
 func selfReplace(exe, tag string) error {
-	url := releaseArchiveURL(tag, runtime.GOOS, runtime.GOARCH)
-	binName := "tsp"
-	if runtime.GOOS == "windows" {
-		binName = "tsp.exe"
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	bin, err := fetchReleaseBinary(ctx, tag)
+	if err != nil {
+		return err
 	}
-
 	tmp, err := os.CreateTemp(filepath.Dir(exe), ".tsp-dl-*")
 	if err != nil {
 		return err
 	}
 	tmpName := tmp.Name()
 	defer os.Remove(tmpName)
-
-	if err := downloadBinary(url, binName, tmp); err != nil {
+	if _, err := tmp.Write(bin); err != nil {
 		tmp.Close()
 		return err
 	}
@@ -160,7 +161,6 @@ func selfReplace(exe, tag string) error {
 	if err := os.Chmod(tmpName, 0o755); err != nil {
 		return err
 	}
-
 	if runtime.GOOS == "windows" {
 		old := exe + ".old"
 		_ = os.Remove(old)
@@ -170,23 +170,6 @@ func selfReplace(exe, tag string) error {
 		return os.Rename(tmpName, exe)
 	}
 	return os.Rename(tmpName, exe) // replaces the running binary on Unix
-}
-
-// downloadBinary fetches url and writes the named binary entry into out.
-func downloadBinary(url, binName string, out *os.File) error {
-	client := &http.Client{Timeout: 120 * time.Second}
-	resp, err := client.Get(url)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		return fmt.Errorf("download %s returned %s", url, resp.Status)
-	}
-	if strings.HasSuffix(url, ".zip") {
-		return extractZipEntry(resp.Body, binName, out)
-	}
-	return extractTarGzEntry(resp.Body, binName, out)
 }
 
 // extractTarGzEntry copies the binName file out of a .tar.gz stream.

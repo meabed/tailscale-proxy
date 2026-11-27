@@ -15,10 +15,17 @@ import (
 )
 
 // `tsp service install|uninstall|status` keeps `tsp proxy` running from boot.
-// The service runs a root-owned copy of this binary (a root process never runs
-// a file its user could replace) that binds 443, then drops to that user.
+// The service runs a root-owned copy of tsp, the launcher (a root process never
+// runs a file its user could replace): it binds 443, drops to that user, then
+// hands the port to the user's own tsp in ~/.tailscale-proxy/bin, which every
+// newer tsp replaces. So the service is installed once; updates need no sudo.
 
 const serviceLabel = "com.meabed.tailscale-proxy"
+
+// launcherRevision is in the unit's environment. It changes only when the
+// launcher must change (how it hands the port over): `tsp service install` then
+// replaces the service, the one update that asks for sudo.
+const launcherRevision = "1"
 
 // checkRootOnlyPath is checkRootOnly, replaceable in tests (their temp dirs are the user's).
 var checkRootOnlyPath = checkRootOnly
@@ -66,8 +73,9 @@ After=network.target
 
 [Service]
 ExecStart=` + strings.Join(quoted, " ") + `
+Environment=TSP_LAUNCHER_REVISION=` + launcherRevision + `
 Restart=always
-RestartSec=2
+RestartSec=1
 
 [Install]
 WantedBy=multi-user.target
@@ -86,10 +94,17 @@ WantedBy=multi-user.target
 	<key>ProgramArguments</key>
 	<array>
 ` + b.String() + `	</array>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>TSP_LAUNCHER_REVISION</key>
+		<string>` + launcherRevision + `</string>
+	</dict>
 	<key>RunAtLoad</key>
 	<true/>
 	<key>KeepAlive</key>
 	<true/>
+	<key>ThrottleInterval</key>
+	<integer>1</integer>
 	<key>StandardErrorPath</key>
 	<string>` + s.logPath + `</string>
 </dict>
@@ -190,10 +205,23 @@ func (s serviceSystem) uninstall(r Runner) error {
 	return nil
 }
 
-// current reports whether the installed service already runs self for sp.
-func (s serviceSystem) current(self string, sp serviceSpec) bool {
+// current reports whether the installed service is this launcher design for sp.
+// The launcher's own release does not matter: it hands the port to bin/tsp.
+func (s serviceSystem) current(sp serviceSpec) bool {
 	unit, err := os.ReadFile(s.unitPath)
-	return err == nil && string(unit) == s.unit(sp) && sameFile(self, s.binPath)
+	if err != nil || string(unit) != s.unit(sp) {
+		return false
+	}
+	_, err = os.Stat(s.binPath)
+	return err == nil
+}
+
+// selfUpdating reports whether the installed service hands the port to the user's
+// own tsp (any user's: status reads it without knowing who installed it), so a
+// newer tsp restarts it without sudo.
+func (s serviceSystem) selfUpdating() bool {
+	unit, err := os.ReadFile(s.unitPath)
+	return err == nil && strings.Contains(string(unit), "TSP_LAUNCHER_REVISION") && strings.Contains(string(unit), launcherRevision)
 }
 
 func sameFile(a, b string) bool {
@@ -237,9 +265,12 @@ Usage:
   tsp service uninstall   stop and remove it
   tsp service status      installed, running, and trusted? (exit 1 if not)
 
-install checks what is in place first and changes only what is missing or old:
-sudo asks for your password only when the boot service itself must change.
-Run it again any time (after updating tsp, after a failed start): it is safe.
+install sets up a machine once (sudo asks for your password then). After that the
+proxy runs your own tsp from ~/.tailscale-proxy/bin and updates itself: a newer tsp
+you install (brew, npm, tsp update) or a new release it fetches (daily, checksummed;
+tsp configure --auto-update=false to stop) takes over within seconds, no sudo.
+Run install again any time: it checks what is in place and fixes only what is off.
+To remove everything tsp set up: tsp uninstall.
 `)
 }
 
@@ -318,12 +349,14 @@ func cmdServiceInstall(s serviceSystem, argv []string) int {
 }
 
 // setupLocalHTTPS makes https://*.localhost work for the calling user: the CA
-// (made as the user, so its files are theirs), the boot service when it is
-// missing, old or not running (the one step that needs sudo), then the trust.
+// (made as the user, so its files are theirs), this tsp as the user's proxy copy
+// (bin/tsp: a running proxy restarts on it by itself), the boot service only when
+// it is missing, of an older design, or not running (the one step that needs
+// sudo), then the trust.
 func setupLocalHTTPS(s serviceSystem, self string) int {
 	dir, err := stateDir()
 	if err == nil {
-		err = os.MkdirAll(dir, 0o755)
+		err = os.MkdirAll(filepath.Join(dir, "bin"), 0o755)
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "tsp service install:", err)
@@ -338,19 +371,29 @@ func setupLocalHTTPS(s serviceSystem, self string) int {
 	if release != nil {
 		defer release()
 	}
+	if _, err := syncProxyBin(dir, self); err != nil {
+		fmt.Fprintln(os.Stderr, "tsp service install: copying tsp to", proxyBinPath(dir)+":", err)
+		return 1
+	}
 	home, _ := os.UserHomeDir()
 	sp := serviceSpec{uid: os.Getuid(), gid: os.Getgid(), home: home}
 	st, running := runningProxy(dir)
+	current := s.current(sp)
+	if current && running && st.outdated() {
+		// The proxy restarts on the copy it sees in bin/ (watchProxyBin): no sudo.
+		fmt.Printf("→ the local HTTPS proxy moves from tsp %s to %s (no sudo)\n", st.Version, Version)
+		st, running = waitProxy(dir, proxyStartWait)
+	}
 	switch {
-	case running && !st.outdated() && s.current(self, sp):
-		fmt.Printf("✓ local HTTPS proxy up to date and running (tsp %s, pid %d, port %d)\n", st.Version, st.PID, st.Port)
+	case current && running && !st.outdated():
+		fmt.Printf("✓ local HTTPS proxy running (tsp %s, pid %d, port %d); it updates itself\n", st.Version, st.PID, st.Port)
 	default:
-		fmt.Println("→ " + setupReason(s, self, sp, st, running))
+		fmt.Println("→ " + setupReason(s, sp, st, running))
 		if code, _ := elevate([]string{"install", "--uid", strconv.Itoa(sp.uid), "--gid", strconv.Itoa(sp.gid), "--home", sp.home}, "installing the boot service (port 443)"); code != 0 {
 			return code
 		}
 		if st, ok := waitProxy(dir, proxyStartWait); ok {
-			fmt.Printf("✓ local HTTPS proxy running (tsp %s, pid %d, port %d)\n", st.Version, st.PID, st.Port)
+			fmt.Printf("✓ local HTTPS proxy running (tsp %s, pid %d, port %d); from now on it updates itself, no sudo\n", st.Version, st.PID, st.Port)
 		} else {
 			explainProxyDown(s)
 			return 1
@@ -360,12 +403,12 @@ func setupLocalHTTPS(s serviceSystem, self string) int {
 }
 
 // setupReason says what install is about to change, before sudo asks.
-func setupReason(s serviceSystem, self string, sp serviceSpec, st proxyState, running bool) string {
+func setupReason(s serviceSystem, sp serviceSpec, st proxyState, running bool) string {
 	switch {
 	case !s.installed():
-		return "installing the local HTTPS proxy as a boot service"
-	case !s.current(self, sp):
-		return "updating the boot service to tsp " + Version
+		return "installing the local HTTPS proxy as a boot service (once per machine)"
+	case !s.current(sp):
+		return "moving the boot service to the self-updating launcher (once: later updates need no sudo)"
 	case running && st.outdated():
 		return fmt.Sprintf("restarting the proxy on tsp %s (it runs %s)", Version, st.Version)
 	}
@@ -455,7 +498,8 @@ func elevate(args []string, why string) (code int, done bool) {
 }
 
 // localHTTPSChecks reports whether https://<name>.localhost works in a browser: the
-// boot service (where tsp has one), the proxy, and the CA's trust.
+// boot service (where tsp has one), the proxy, the CA's trust, and whether the
+// proxy keeps itself current.
 func localHTTPSChecks(s serviceSystem, supported bool) ([]check, error) {
 	dir, err := stateDir()
 	if err != nil {
@@ -463,20 +507,45 @@ func localHTTPSChecks(s serviceSystem, supported bool) ([]check, error) {
 	}
 	var checks []check
 	if supported {
-		checks = append(checks, check{Name: "boot service " + s.unitPath, OK: s.installed(), Fix: "tsp service install"})
+		svc := check{Name: "boot service " + s.unitPath, OK: s.installed(), Fix: "tsp service install"}
+		if svc.OK && !s.selfUpdating() {
+			svc.Note = "it predates self-updating: `tsp service install` once (sudo), and updates need no sudo after that"
+		}
+		checks = append(checks, svc)
 	}
 	st, running := runningProxy(dir)
 	proxy := check{Name: "local HTTPS proxy not running", Fix: "tsp service install (or `tsp proxy` in a terminal)"}
 	if running {
 		proxy = check{Name: fmt.Sprintf("proxy running (tsp %s, pid %d, port %d)", st.Version, st.PID, st.Port), OK: true}
 		if st.outdated() {
-			proxy.Note = fmt.Sprintf("the proxy runs tsp %s, this is %s: tsp service install updates it", st.Version, Version)
+			proxy.Note = fmt.Sprintf("the proxy runs tsp %s, this is %s: tsp service install moves it", st.Version, Version)
+			if s.selfUpdating() {
+				proxy.Note = fmt.Sprintf("the proxy runs tsp %s, this is %s: it restarts on %s within seconds", st.Version, Version, proxyBinPath(dir))
+			}
 		}
 	}
 	checks = append(checks, proxy)
 	ca, err := loadCA(caFiles(dir))
 	checks = append(checks, check{Name: "local CA trusted by the OS", OK: err == nil && caTrusted(ca), Fix: "tsp trust (macOS: in a terminal at the Mac's screen)"})
+	checks = append(checks, autoUpdateCheck(dir, time.Now()))
 	return checks, nil
+}
+
+// autoUpdateCheck is advisory: whether new releases install themselves, and what
+// the last look found.
+func autoUpdateCheck(dir string, now time.Time) check {
+	if !autoUpdateEnabled() {
+		return check{Name: "auto-update off", OK: true, Note: "tsp configure --auto-update turns it on (TSP_NO_UPDATE and CI keep it off)"}
+	}
+	st := loadUpdateState(dir)
+	if st.CheckedAt.IsZero() {
+		return check{Name: "auto-update on (the running proxy checks once a day)", OK: true}
+	}
+	name := fmt.Sprintf("auto-update on (checked %s ago", now.Sub(st.CheckedAt).Round(time.Minute))
+	if st.Latest != "" {
+		name += ", latest " + normalizeVer(st.Latest)
+	}
+	return check{Name: name + ")", OK: true}
 }
 
 // cmdServiceStatus prints the proxy's state; exit 0 only when names work in a browser.

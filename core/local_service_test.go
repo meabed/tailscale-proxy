@@ -114,7 +114,7 @@ func TestServiceInstallUninstall_launchd(t *testing.T) {
 	if fi, err := os.Stat(s.binPath); err != nil || (runtime.GOOS != "windows" && fi.Mode().Perm() != 0o755) {
 		t.Errorf("binary %v %v, want 0755", fi, err)
 	}
-	if !s.installed() || !s.current(src, testUser) {
+	if !s.installed() || !s.current(testUser) {
 		t.Error("not installed and current after install")
 	}
 	if got := strings.Join(r.calls, "; "); got != "launchctl enable "+target+"; launchctl print "+target+"; launchctl bootstrap system "+s.unitPath {
@@ -134,7 +134,7 @@ func TestServiceInstallUninstall_launchd(t *testing.T) {
 	if err := s.install(r, src, other); err != nil {
 		t.Fatalf("install through two failed bootstraps: %v", err)
 	}
-	if got := strings.Count(strings.Join(r.calls, "; "), "bootstrap"); got != 3 || !r.loaded || !s.current(src, other) {
+	if got := strings.Count(strings.Join(r.calls, "; "), "bootstrap"); got != 3 || !r.loaded || !s.current(other) {
 		t.Errorf("bootstraps = %d, loaded = %v: %v", got, r.loaded, r.calls)
 	}
 
@@ -420,7 +420,7 @@ func TestCmdServiceInstall_upToDateNeedsNoSudo(t *testing.T) {
 			t.Errorf("the boot service was reinstalled although everything is current: %v", c)
 		}
 	}
-	if !strings.Contains(out, "✓ local HTTPS proxy up to date and running (tsp "+Version+", pid 7, port 443)") {
+	if !strings.Contains(out, "✓ local HTTPS proxy running (tsp "+Version+", pid 7, port 443); it updates itself") {
 		t.Errorf("output:\n%s", out)
 	}
 }
@@ -447,19 +447,19 @@ func TestSetupLocalHTTPS_proxyDoesNotStart(t *testing.T) {
 
 func TestSetupReason(t *testing.T) {
 	s, src := testService(t, "launchd")
-	if got := setupReason(s, src, testUser, proxyState{}, false); !strings.HasPrefix(got, "installing") {
+	if got := setupReason(s, testUser, proxyState{}, false); !strings.HasPrefix(got, "installing") {
 		t.Errorf("not installed: %s", got)
 	}
 	_ = copyExecutable(src, s.binPath)
 	_ = os.WriteFile(s.unitPath, []byte("old"), 0o644)
-	if got := setupReason(s, src, testUser, proxyState{}, false); !strings.HasPrefix(got, "updating") {
+	if got := setupReason(s, testUser, proxyState{}, false); !strings.HasPrefix(got, "moving the boot service to the self-updating launcher") {
 		t.Errorf("old unit: %s", got)
 	}
 	_ = os.WriteFile(s.unitPath, []byte(s.unit(testUser)), 0o644)
-	if got := setupReason(s, src, testUser, proxyState{Version: "0.0.1"}, true); !strings.Contains(got, "it runs 0.0.1") && Version != "dev" {
+	if got := setupReason(s, testUser, proxyState{Version: "0.0.1"}, true); !strings.Contains(got, "it runs 0.0.1") && Version != "dev" {
 		t.Errorf("old proxy: %s", got)
 	}
-	if got := setupReason(s, src, testUser, proxyState{}, false); !strings.Contains(got, "not running") {
+	if got := setupReason(s, testUser, proxyState{}, false); !strings.Contains(got, "not running") {
 		t.Errorf("stopped: %s", got)
 	}
 }
@@ -575,7 +575,7 @@ func TestLocalHTTPSChecks_outdatedProxyNotes(t *testing.T) {
 	}
 	for _, c := range checks {
 		if strings.HasPrefix(c.Name, "proxy running") {
-			if Version != "dev" && !strings.Contains(c.Note, "tsp service install updates it") {
+			if Version != "dev" && !strings.Contains(c.Note, "tsp service install moves it") {
 				t.Errorf("outdated proxy note = %q", c.Note)
 			}
 			return

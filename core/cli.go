@@ -33,12 +33,14 @@ Commands:
   reset      Remove the Serve/Funnel entry and exit
   doctor     Check everything: Tailscale exposure and local HTTPS names, each ✗ with its fix
   configure  Save defaults to ~/.tailscale-proxy/config.json
-  update     Update tsp to the latest release (or show the brew/npm command)
+  update     Update tsp to the latest release (runs brew or npm when that installed it)
+  uninstall  Remove everything tsp set up: Serve/Funnel entry, boot service, CA trust, state
 
 Local HTTPS names (https://<name>.localhost):
   run        Run an app on a free port at https://<name>.localhost
   routes     Print the running names (--json)
-  service    install | uninstall | status — the local HTTPS proxy, from boot
+  service    install | uninstall | status — the local HTTPS proxy, from boot (once per
+             machine: it then updates itself, no sudo)
   trust      Add the local CA to the OS trust store (browsers, curl)
   proxy      Run the local HTTPS proxy in the foreground (what the service runs)
 
@@ -47,8 +49,12 @@ Examples:
   tsp --private              # start privately (Serve) this once
   tsp configure --ports 3000-9000 --private   # save, then just run "tsp"
   tsp list                   # see discovered services + URLs
-  tsp service install                # once per machine: https://*.localhost
+  tsp service install        # once per machine: https://*.localhost, then it updates itself
   tsp run                    # in an app folder: package.json "tsp" {name, script}
+  tsp uninstall              # take it all back (asks first)
+
+New releases: the local HTTPS proxy installs them itself (daily, checksummed); the CLI
+says once a day how to update it. Off: tsp configure --auto-update=false or TSP_NO_UPDATE=1.
 
 Run "tsp start --help" for all flags. Global: -h/--help, -v/--version
 Docs: https://github.com/meabed/tailscale-proxy

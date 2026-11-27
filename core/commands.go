@@ -25,6 +25,7 @@ func cmdConfigure(argv []string) int {
 	fs.BoolVar(&cfg.MatchSeparators, "match-separators", cfg.MatchSeparators, "match slugs with '-' and '_' interchangeably")
 	fs.BoolVar(&cfg.Docker, "docker", cfg.Docker, "also query Docker API for containers")
 	fs.StringVar(&cfg.AcceptDNS, "accept-dns", cfg.AcceptDNS, "set Tailscale MagicDNS (true|false) on start; empty = leave it alone")
+	fs.BoolVar(&cfg.AutoUpdate, "auto-update", cfg.AutoUpdate, "the local HTTPS proxy installs new releases itself (--auto-update=false to stop)")
 	if err := fs.Parse(argv); err != nil {
 		if err == flag.ErrHelp {
 			return 0

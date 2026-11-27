@@ -184,7 +184,7 @@ func TestServeLocal_endToEnd(t *testing.T) {
 	addr := ln.Addr().String()
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan int, 1)
-	go func() { done <- serveLocal(ctx, []net.Listener{ln}, 443) }()
+	go func() { done <- serveLocal(ctx, []net.Listener{ln}, 443, "") }()
 
 	var st proxyState
 	for i := 0; i < 100; i++ {
@@ -262,7 +262,7 @@ func TestServeLocal_secondProxyRefused(t *testing.T) {
 	_ = os.MkdirAll(dir, 0o755)
 	release, _, _ := tryLock(proxyLockPath(dir))
 	defer release()
-	if code := serveLocal(context.Background(), nil, 443); code != 1 {
+	if code := serveLocal(context.Background(), nil, 443, ""); code != 1 {
 		t.Errorf("a second proxy for the same user = %d, want 1", code)
 	}
 }

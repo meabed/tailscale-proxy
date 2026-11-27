@@ -24,7 +24,8 @@ import (
 // `tsp proxy` serves https://<name>.localhost on 127.0.0.1:443 and [::1]:443,
 // routing by host to the port `tsp run` registered. It is what the boot service
 // runs: started as root to bind 443, it drops to the owner (--uid/--gid) before
-// touching any file, so the CA and routes stay the user's.
+// touching any file, so the CA and routes stay the user's, then hands the sockets
+// to the user's own tsp (local_launch_unix.go), which serves and updates itself.
 
 const localProxyPort = 443
 
@@ -95,13 +96,14 @@ func writeLocalIndex(w http.ResponseWriter, reg *localRegistry, name string) {
 // proxyState is ~/.tailscale-proxy/proxy.json: which proxy serves this user's
 // names. The proxy holds proxy.lock while it runs (see tryLock).
 type proxyState struct {
-	PID     int    `json:"pid"`
-	Version string `json:"version"`
-	Port    int    `json:"port"`
+	PID      int    `json:"pid"`
+	Version  string `json:"version"`
+	Port     int    `json:"port"`
+	Launcher string `json:"launcher,omitempty"` // the boot service's tsp that handed the port over
 }
 
-// outdated reports whether the running proxy is another tsp version than this one.
-func (st proxyState) outdated() bool { return st.Version != Version && Version != "dev" }
+// outdated reports whether the running proxy is an older tsp than this one.
+func (st proxyState) outdated() bool { return Version != "dev" && versionLess(st.Version, Version) }
 
 func proxyStatePath(dir string) string { return filepath.Join(dir, "proxy.json") }
 func proxyLockPath(dir string) string  { return filepath.Join(dir, "proxy.lock") }
@@ -174,8 +176,14 @@ func cmdProxy(argv []string) int {
 		return 2
 	}
 
-	lns, err := listenLoopback(*port)
+	lns, inheritedPort, launcher, inherited, err := inheritedListeners()
 	if err != nil {
+		fmt.Fprintln(os.Stderr, "tsp proxy:", err)
+		return 1
+	}
+	if inherited {
+		*port = inheritedPort
+	} else if lns, err = listenLoopback(*port); err != nil {
 		fmt.Fprintf(os.Stderr, "cannot listen on 127.0.0.1:%d: %v\n", *port, err)
 		if *port < 1024 && os.Geteuid() != 0 {
 			fmt.Fprintln(os.Stderr, "Ports below 1024 need root: install the boot service with `tsp service install`.")
@@ -190,14 +198,21 @@ func cmdProxy(argv []string) int {
 			return 1
 		}
 		_ = os.Setenv("HOME", *home)
+		if dir, err := stateDir(); err == nil {
+			// Returns only when it did not exec: this launcher then serves itself.
+			log.Printf("tsp %s serves the port itself: %v", Version, handOff(lns, dir, *port))
+		}
+		launcher = Version
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-	return serveLocal(ctx, lns, *port)
+	return serveLocal(ctx, lns, *port, launcher)
 }
 
-// serveLocal runs the HTTPS proxy on lns until ctx ends.
-func serveLocal(ctx context.Context, lns []net.Listener, port int) int {
+// serveLocal runs the HTTPS proxy on lns until ctx ends. Under the boot service
+// (launcher set) it also installs new releases (autoUpdateLoop) and exits when a
+// newer tsp lands in bin/ (watchProxyBin), so the service restarts on it.
+func serveLocal(ctx context.Context, lns []net.Listener, port int, launcher string) int {
 	dir, err := stateDir()
 	if err == nil {
 		err = os.MkdirAll(dir, 0o755)
@@ -226,7 +241,7 @@ func serveLocal(ctx context.Context, lns []net.Listener, port int) int {
 	srv.TLSConfig = &tls.Config{GetCertificate: iss.GetCertificate, MinVersion: tls.VersionTLS12}
 	srv.ErrorLog = log.New(io.Discard, "", 0) // per-connection TLS noise: an untrusted CA, a port scan
 
-	state, _ := json.Marshal(proxyState{PID: os.Getpid(), Version: Version, Port: port})
+	state, _ := json.Marshal(proxyState{PID: os.Getpid(), Version: Version, Port: port, Launcher: launcher})
 	if err := writeFileAtomic(proxyStatePath(dir), state, 0o644); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
@@ -238,6 +253,13 @@ func serveLocal(ctx context.Context, lns []net.Listener, port int) int {
 		go func(ln net.Listener) { errc <- srv.ServeTLS(ln, "", "") }(ln)
 	}
 	log.Printf("tsp proxy %s: https://*.%s on port %d (CA %s)", Version, localTLD, port, ca.certPEM)
+	if launcher != "" {
+		var restart context.CancelFunc
+		ctx, restart = context.WithCancel(ctx)
+		defer restart()
+		go watchProxyBin(ctx, dir, restart)
+		go autoUpdateLoop(ctx, dir)
+	}
 
 	select {
 	case err := <-errc:

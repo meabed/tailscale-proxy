@@ -65,6 +65,10 @@ module** under `desktop/` that imports `core` and drives it in-process.
 | `core/local_proxy.go` | `tsp proxy`: HTTPS on `127.0.0.1`/`[::1]:443`, routes by Host, privilege drop, `proxy.json` |
 | `core/local_run.go` | `tsp run`: package.json `"tsp"` or explicit command, env, registration, signal pass-through |
 | `core/local_service.go` | `tsp service install/uninstall/status` (launchd/systemd), sudo re-run, test seams |
+| `core/local_launch_unix.go` | The launcher: after the privilege drop, exec `~/.tailscale-proxy/bin/tsp` with the 443 sockets inherited (`TSP_LISTEN_FDS`); `inheritedListeners` on the other side |
+| `core/proxy_bin.go` | The user's proxy copy in `bin/` (+ `bin/version`), `syncProxyBin` (newer CLIs copy themselves in), `watchProxyBin` (restart on a newer copy), `versionLess` |
+| `core/autoupdate.go` | Daily release check (ETag) + checksummed install into `bin/`; `update.json`; the CLI's once-a-day notice |
+| `core/uninstall.go` | `tsp uninstall`: Serve/Funnel entry (only tsp's), service, CA trust, state dir, how to remove the CLI |
 | `core/local_trust.go` | `tsp trust`: per-OS trust-store commands |
 | `core/service_*.go` / `core/process_*.go` | Build-tagged init-system paths; pid liveness, stop, privilege drop |
 | `core/detach.go` (+ `detach_unix.go` / `detach_windows.go`) | `--bg` background spawn; the build-tagged files hold only `detachSysProcAttr` |
@@ -113,7 +117,9 @@ Tests are `*_test.go` beside each file in `core/`. See [docs/TESTING.md](docs/TE
 - **Local HTTPS names:** a route is one file per running `tsp run`, removed on exit and
   ignored once its pid is gone; never a shared mutable file. The CA only ever signs
   `localhost` names (name constraint + issuer check). The service binary is a root-owned
-  copy, and `tsp proxy` drops to the user right after binding 443, before touching files.
+  launcher: it binds 443, drops to the user, then execs the user's `~/.tailscale-proxy/bin/tsp`
+  (root never runs a user-writable file). Updates replace only that copy: no sudo. Bump
+  `launcherRevision` only when the launcher's handoff changes (that reinstall asks sudo).
   Commands that need the terminal (sudo, the macOS trust dialog) go through `interactive`;
   tests pin `geteuid`/`interactive`/`serviceRunner` and never touch the real service paths.
 

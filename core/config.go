@@ -24,6 +24,7 @@ type Config struct {
 	AcceptDNS        string `json:"acceptDns"`        // "" = leave Tailscale DNS alone; "true"/"false" = set on start
 	MatchSeparators  bool   `json:"matchSeparators"`  // match slugs with '-' and '_' interchangeably
 	Docker           bool   `json:"docker"`           // also query Docker API for containers
+	AutoUpdate       bool   `json:"autoUpdate"`       // the local HTTPS proxy updates itself; the CLI says when a release is out
 }
 
 // defaultLocalPort is the local proxy's port. It is never one of Funnel's public
@@ -35,7 +36,7 @@ const defaultLocalPort = 18443
 func defaultConfig() Config {
 	return Config{
 		Ports: "3000-6000", Bind: "127.0.0.1", Port: defaultLocalPort, Interval: 20,
-		HTTPSPort: 443, LogRequests: true, DeregisterCycles: 5, MatchSeparators: true,
+		HTTPSPort: 443, LogRequests: true, DeregisterCycles: 5, MatchSeparators: true, AutoUpdate: true,
 	}
 }
 

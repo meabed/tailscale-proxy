@@ -1,7 +1,6 @@
 package core
 
 import (
-	"strings"
 	"testing"
 )
 
@@ -34,13 +33,11 @@ func TestNormalizeVer(t *testing.T) {
 	}
 }
 
-func TestReleaseArchiveURL(t *testing.T) {
-	got := releaseArchiveURL("v0.2.0", "darwin", "arm64")
-	want := "https://github.com/meabed/tailscale-proxy/releases/download/v0.2.0/tsp_darwin_arm64.tar.gz"
-	if got != want {
+func TestReleaseArchiveName(t *testing.T) {
+	if got := releaseArchiveName("darwin", "arm64"); got != "tsp_darwin_arm64.tar.gz" {
 		t.Errorf("got %q", got)
 	}
-	if got := releaseArchiveURL("v0.2.0", "windows", "amd64"); !strings.HasSuffix(got, "tsp_windows_amd64.zip") {
+	if got := releaseArchiveName("windows", "amd64"); got != "tsp_windows_amd64.zip" {
 		t.Errorf("windows should be .zip, got %q", got)
 	}
 }

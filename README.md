@@ -113,10 +113,12 @@ npx tailscale-proxy
 Supported: **macOS, Linux, Windows, WSL** (amd64 + arm64).
 (`go install github.com/meabed/tailscale-proxy@latest` also works if you have Go.)
 
-Update later with **`tsp update`** — it self-updates a standalone binary, and runs
-`brew upgrade tsp` or `npm i -g tailscale-proxy@latest` for you on a managed install.
-If the local HTTPS boot service is installed, it then tells you to run `tsp service install`
-once, which moves the proxy to the new version.
+Update with **`tsp update`**: it self-updates a standalone binary (checked against the
+release's checksums), and runs `brew upgrade tsp` or `npm i -g tailscale-proxy@latest` for
+you on a managed install. In a terminal, tsp says once a day when a release is out.
+The local HTTPS proxy needs nothing: it installs new releases itself (daily, checksummed)
+and moves to any newer `tsp` you run, without sudo. `tsp configure --auto-update=false` or
+`TSP_NO_UPDATE=1` turns that off. **`tsp uninstall`** removes everything tsp set up.
 
 ---
 
@@ -146,7 +148,8 @@ tsp list            Discovered services (slug → runtime, port, project, URL)
 tsp reset           Remove the Serve/Funnel entry and exit
 tsp doctor          Check everything: Tailscale exposure and local HTTPS names, each ✗ with its fix
 tsp configure       Save defaults to ~/.tailscale-proxy/config.json
-tsp update          Update to the latest release
+tsp update          Update to the latest release (runs brew or npm when they installed it)
+tsp uninstall       Remove everything tsp set up (--yes, --all also config + standalone binary)
 
 tsp run             Run an app at https://<name>.localhost (local HTTPS names)
 tsp routes          Running local names (--json)
@@ -201,7 +204,7 @@ Request logs are colorized by status on a terminal (set `NO_COLOR` to disable).
 its own trusted certificate and the original `Host`:
 
 ```bash
-tsp service install                       # once per machine (safe to re-run: fixes what is off)
+tsp service install                       # once per machine; the proxy then updates itself (no sudo)
 tsp run api.acme -- bun --hot src/index.ts
 # or package.json: "dev": "tsp run", "tsp": {"name": "api.acme", "script": "dev:app"}
 ```
