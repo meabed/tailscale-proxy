@@ -224,7 +224,9 @@ func (u *ui) startDashboard() (string, error) {
 	mux.HandleFunc("/api/checkupdate", auth(func(w http.ResponseWriter, r *http.Request) { writeJSON(w, core.CheckUpdate()) }))
 	mux.HandleFunc("GET /api/config", auth(func(w http.ResponseWriter, r *http.Request) { writeJSON(w, u.configState()) }))
 	mux.HandleFunc("POST /api/config", act(func(r *http.Request) {
-		var cfg core.Config
+		u.mu.Lock()
+		cfg := u.cfg // keys the settings form does not send (autoUpdate) keep their value
+		u.mu.Unlock()
 		if json.NewDecoder(r.Body).Decode(&cfg) == nil {
 			go u.applyConfig(cfg)
 		}
