@@ -30,9 +30,26 @@ function fromOptionalDep() {
   }
 }
 
+function cacheRoot() {
+  return path.join(process.env.XDG_CACHE_HOME || path.join(os.homedir(), ".cache"), "tailscale-proxy");
+}
+
 function cacheDir() {
-  const base = process.env.XDG_CACHE_HOME || path.join(os.homedir(), ".cache");
-  return path.join(base, "tailscale-proxy", `v${VERSION}`);
+  return path.join(cacheRoot(), `v${VERSION}`);
+}
+
+// Downloaded binaries of other versions go: an update leaves only the one this
+// launcher runs (or none, when the platform package supplies it).
+function pruneCache(keep) {
+  let entries;
+  try {
+    entries = fs.readdirSync(cacheRoot());
+  } catch {
+    return;
+  }
+  for (const entry of entries) {
+    if (entry !== keep) fs.rmSync(path.join(cacheRoot(), entry), { recursive: true, force: true });
+  }
 }
 
 function fromCache() {
@@ -79,7 +96,14 @@ function downloadToCache() {
 }
 
 function resolveBinary() {
-  return fromOptionalDep() || fromCache() || downloadToCache();
+  const bundled = fromOptionalDep();
+  if (bundled) {
+    pruneCache(null);
+    return bundled;
+  }
+  const bin = fromCache() || downloadToCache();
+  pruneCache(`v${VERSION}`);
+  return bin;
 }
 
 // Runs the binary with this process's arguments and exits with its code. Ctrl-C
