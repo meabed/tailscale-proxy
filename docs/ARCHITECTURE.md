@@ -62,11 +62,11 @@ name, `com.meabed.tailscale-proxy` / `tailscale-proxy.service`) that runs a root
 
 ```
 launchd/systemd ── tsp proxy --uid --gid --home  (root)
-                     │ bind 127.0.0.1:443 and [::1]:443
+                     │ bind 127.0.0.1:443 and [::1]:443, and :80 when free (http → https)
                      │ drop to the user for good (setgroups, setgid, setuid)
                      ▼
                    supervisor (the user)            holds the sockets, proxy.lock, proxy.json
-                     ├─ worker: ~/.tsp/bin/tsp-1.14.0 proxy   inherits the sockets (TSP_LISTEN_FDS)
+                     ├─ worker: ~/.tsp/bin/tsp-1.14.0 proxy   inherits the sockets (TSP_LISTEN_FDS, TSP_HTTP_FDS)
                      └─ worker: ~/.tsp/bin/tsp-1.15.0 proxy   during a swap, both accept
 ```
 
@@ -106,3 +106,11 @@ sudo.
   request path beyond a `sync.Map` read. Each proxy answers `/stats` and `/health` on `run/<pid>.sock`, and appends a
   per-minute delta to `logs/stats.jsonl` (2 MB × 3; a quiet proxy writes a heartbeat every 10 minutes). The online
   proxy writes the same lines with `"proxy":"start"`. `tsp stats` (`stats_cmd.go`) adds them up over a window.
+
+### What the proxy answers itself
+
+`local_pages.go`: `tsp.localhost` (reserved) is a read-only dashboard and `/api/status`; an unknown name gets a 404
+with the running names and a way to run an app there per stack; a registered name whose app does not answer gets a
+502 with its port, pid and folder. Browsers (`Accept: text/html`) get HTML via `html/template`, other clients plain
+text. Port 80 answers every `http://*.localhost` with a 308 to the same URL over https. `tsp run <name> -- '<one
+command>'` runs it with `/bin/sh -c` (`exec` for a simple command, so signals and exit codes pass straight through).

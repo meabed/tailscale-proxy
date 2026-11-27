@@ -36,12 +36,20 @@ tsp stats               # how the proxies run: health, requests per name, p50/p9
 tsp uninstall           # remove everything tsp set up
 ```
 
-`tsp run` reads the app's name and real dev script from `package.json`:
+`tsp run` reads the app's name and real dev script from `package.json`, or takes any command, on any stack:
 
 ```jsonc
 "scripts": { "dev": "tsp run", "dev:app": "vite --port $PORT --host $HOST" },
 "tsp": { "name": "web.acme", "script": "dev:app" }
 ```
+
+```bash
+tsp run api -- 'uvicorn main:app --reload --port $PORT --host $HOST'   # one quoted command: the shell expands $PORT
+tsp run api -- node server.js                                          # an app that reads PORT itself
+```
+
+`https://tsp.localhost` lists what runs, with requests and latency per name (`/api/status` as JSON), and
+`http://*.localhost` redirects to https.
 
 The local HTTPS proxy updates itself: a newer tsp (from brew, npm or its own daily, checksum-verified check)
 takes over live once it proves it serves, and one that fails is set aside while the previous one keeps serving.

@@ -19,7 +19,7 @@ import (
 	"time"
 )
 
-// The boot service runs as root only to bind 443. It then drops to the user for
+// The boot service runs as root only to bind 443 (and 80, for the http redirect). It then drops to the user for
 // good and stays as the supervisor: it holds the listening sockets for its whole
 // life and runs the user's own tsp (~/.tsp/bin) as a worker that inherits them.
 // Root never runs a file the user can write.
@@ -35,7 +35,8 @@ import (
 
 // The environment a supervisor hands its worker.
 const (
-	envListenFDs  = "TSP_LISTEN_FDS"  // comma-separated inherited listener fds
+	envListenFDs  = "TSP_LISTEN_FDS"  // comma-separated inherited listener fds (https)
+	envHTTPFDs    = "TSP_HTTP_FDS"    // the same for port 80: http://*.localhost, redirected
 	envListenPort = "TSP_LISTEN_PORT" // the port they listen on
 	envLauncher   = "TSP_LAUNCHER"    // the supervisor's own release
 	envReadyFD    = "TSP_READY_FD"    // the worker writes "ready" here once it serves
@@ -55,6 +56,7 @@ var (
 type inherited struct {
 	ok       bool
 	lns      []net.Listener
+	httpLns  []net.Listener
 	port     int
 	launcher string
 	ready    *os.File // nil when not started by a supervisor
@@ -77,23 +79,39 @@ func inheritedSockets() (inherited, error) {
 		return nil
 	}
 	in.ready, in.parent = fdFile(envReadyFD), fdFile(envParentFD)
-	for _, k := range []string{envListenFDs, envListenPort, envLauncher, envReadyFD, envParentFD} {
+	httpSpec := os.Getenv(envHTTPFDs)
+	for _, k := range []string{envListenFDs, envHTTPFDs, envListenPort, envLauncher, envReadyFD, envParentFD} {
 		_ = os.Unsetenv(k)
 	}
+	var err error
+	if in.lns, err = fileListeners(envListenFDs, spec); err != nil {
+		return in, err
+	}
+	if httpSpec != "" {
+		if in.httpLns, err = fileListeners(envHTTPFDs, httpSpec); err != nil {
+			return in, err
+		}
+	}
+	return in, nil
+}
+
+// fileListeners turns a comma-separated list of inherited fds into listeners.
+func fileListeners(key, spec string) ([]net.Listener, error) {
+	var lns []net.Listener
 	for _, s := range strings.Split(spec, ",") {
 		fd, err := strconv.Atoi(s)
 		if err != nil || fd < 3 {
-			return in, fmt.Errorf("bad %s %q", envListenFDs, spec)
+			return nil, fmt.Errorf("bad %s %q", key, spec)
 		}
 		f := os.NewFile(uintptr(fd), "tsp-listener-"+s)
 		ln, err := net.FileListener(f) // dups the fd
 		_ = f.Close()
 		if err != nil {
-			return in, fmt.Errorf("inherited fd %d: %v", fd, err)
+			return nil, fmt.Errorf("inherited fd %d: %v", fd, err)
 		}
-		in.lns = append(in.lns, ln)
+		lns = append(lns, ln)
 	}
-	return in, nil
+	return lns, nil
 }
 
 // runWorker serves on the inherited sockets: it proves itself (selfCheck), says
@@ -128,6 +146,7 @@ func runWorker(ctx context.Context, in inherited) int {
 		return 1
 	}
 	errc := ls.serve(in.lns)
+	ls.serveRedirect(in.httpLns)
 	say("ready")
 	appLog().Info("worker serving", "port", in.port, "launcher", in.launcher)
 	go adminServer(ctx, dir, func() *proxyMetrics { return ls.metrics })
@@ -160,7 +179,7 @@ type worker struct {
 
 // startWorker runs release version from bin/ on the sockets and waits for it to
 // report ready (or fail, or time out: then it is stopped and the error returned).
-func startWorker(dir string, lns []net.Listener, port int, version string) (*worker, error) {
+func startWorker(dir string, sk sockets, version string) (*worker, error) {
 	bin := proxyBinPath(dir, version)
 	readyR, readyW, err := os.Pipe()
 	if err != nil {
@@ -172,22 +191,33 @@ func startWorker(dir string, lns []net.Listener, port int, version string) (*wor
 		_ = readyW.Close()
 		return nil, err
 	}
-	files, err := listenerFiles(lns)
+	files, err := listenerFiles(sk.tls)
+	var httpFiles []*os.File
+	if err == nil {
+		httpFiles, err = listenerFiles(sk.http)
+	}
 	if err != nil {
-		_ = readyW.Close()
-		_ = parentR.Close()
-		_ = parentW.Close()
+		for _, f := range append(files, readyW, parentR, parentW) {
+			_ = f.Close()
+		}
 		return nil, err
 	}
-	fds := make([]string, len(files))
-	for i := range files {
-		fds[i] = strconv.Itoa(3 + i)
+	fdList := func(first, n int) string {
+		fds := make([]string, n)
+		for i := range fds {
+			fds[i] = strconv.Itoa(first + i)
+		}
+		return strings.Join(fds, ",")
 	}
 	cmd := exec.Command(bin, "proxy")
-	cmd.ExtraFiles = append(files, readyW, parentR)
-	cmd.Env = append(withoutEnv(os.Environ(), envListenFDs, envListenPort, envLauncher, envReadyFD, envParentFD),
-		envListenFDs+"="+strings.Join(fds, ","), envListenPort+"="+strconv.Itoa(port), envLauncher+"="+Version,
-		envReadyFD+"="+strconv.Itoa(3+len(files)), envParentFD+"="+strconv.Itoa(4+len(files)))
+	cmd.ExtraFiles = append(append(files, httpFiles...), readyW, parentR)
+	next := 3 + len(files) + len(httpFiles)
+	cmd.Env = append(withoutEnv(os.Environ(), envListenFDs, envHTTPFDs, envListenPort, envLauncher, envReadyFD, envParentFD),
+		envListenFDs+"="+fdList(3, len(files)), envListenPort+"="+strconv.Itoa(sk.port), envLauncher+"="+Version,
+		envReadyFD+"="+strconv.Itoa(next), envParentFD+"="+strconv.Itoa(next+1))
+	if len(httpFiles) > 0 {
+		cmd.Env = append(cmd.Env, envHTTPFDs+"="+fdList(3+len(files), len(httpFiles)))
+	}
 	cmd.Stdout, cmd.Stderr = os.Stderr, os.Stderr
 	cmd.SysProcAttr = workerSysProcAttr()
 	err = cmd.Start()
@@ -275,8 +305,7 @@ func dupListeners(lns []net.Listener) ([]net.Listener, error) {
 // supervisor keeps one release serving on lns.
 type supervisor struct {
 	dir     string
-	lns     []net.Listener
-	port    int
+	sk      sockets
 	state   proxyState
 	active  *worker
 	builtin *localServer // the supervisor serving by itself (no worker)
@@ -284,7 +313,7 @@ type supervisor struct {
 }
 
 // runSupervisor is the boot service after the privilege drop.
-func runSupervisor(ctx context.Context, lns []net.Listener, port int) int {
+func runSupervisor(ctx context.Context, sk sockets) int {
 	dir, err := stateDir()
 	if err == nil {
 		err = os.MkdirAll(dir, 0o755)
@@ -305,11 +334,17 @@ func runSupervisor(ctx context.Context, lns []net.Listener, port int) int {
 		return 1
 	}
 	defer release()
-	s := &supervisor{dir: dir, lns: lns, port: port,
-		state: proxyState{PID: os.Getpid(), Port: port, Launcher: Version, Started: time.Now().UTC()}}
+	s := &supervisor{dir: dir, sk: sk,
+		state: proxyState{PID: os.Getpid(), Port: sk.port, Launcher: Version, Started: time.Now().UTC(), HTTPError: sk.httpErr}}
+	if len(sk.http) > 0 {
+		s.state.HTTPPort = localHTTPPort
+	}
 	defer os.Remove(proxyStatePath(dir))
-	appLog().Info("supervisor started", "port", port)
-	log.Printf("tsp %s supervises https://*.%s on port %d", Version, localTLD, port)
+	appLog().Info("supervisor started", "port", sk.port, "httpPort", s.state.HTTPPort)
+	if sk.httpErr != "" {
+		appLog().Warn("http redirect off: port 80 is taken", "err", sk.httpErr)
+	}
+	log.Printf("tsp %s supervises https://*.%s on port %d", Version, localTLD, sk.port)
 	s.startBest()
 	s.loop(ctx)
 	if s.active != nil {
@@ -340,7 +375,7 @@ func (s *supervisor) startBest() {
 		if v == "" {
 			break
 		}
-		w, err := startWorker(s.dir, s.lns, s.port, v)
+		w, err := startWorker(s.dir, s.sk, v)
 		if err == nil {
 			s.serveWith(w)
 			return
@@ -367,7 +402,11 @@ func (s *supervisor) serveBuiltin(why string) {
 	if s.builtin != nil {
 		return
 	}
-	lns, err := dupListeners(s.lns)
+	lns, err := dupListeners(s.sk.tls)
+	var httpLns []net.Listener
+	if err == nil {
+		httpLns, err = dupListeners(s.sk.http)
+	}
 	var ls *localServer
 	if err == nil {
 		ls, err = newLocalServer(s.dir)
@@ -378,6 +417,7 @@ func (s *supervisor) serveBuiltin(why string) {
 		return
 	}
 	ls.serve(lns)
+	ls.serveRedirect(httpLns)
 	s.builtin = ls
 	s.state.Worker, s.state.Version, s.state.Mode = os.Getpid(), Version, "builtin"
 	s.saveState()
@@ -456,7 +496,7 @@ func (s *supervisor) maybeSwap() {
 		return
 	}
 	from := s.state.Version
-	w, err := startWorker(s.dir, s.lns, s.port, v)
+	w, err := startWorker(s.dir, s.sk, v)
 	if err != nil {
 		s.rollback(v, err)
 		return
@@ -509,7 +549,7 @@ func (s *supervisor) workerExited(ctx context.Context) {
 	if v == "" {
 		return
 	}
-	if nw, err := startWorker(s.dir, s.lns, s.port, v); err == nil {
+	if nw, err := startWorker(s.dir, s.sk, v); err == nil {
 		s.serveWith(nw)
 	} else {
 		s.rollback(v, err)

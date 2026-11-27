@@ -34,7 +34,7 @@ func backend(t *testing.T) (port int) {
 func TestLocalHandler_routesByHost(t *testing.T) {
 	reg := testRegistry(t)
 	running(t, reg, localRoute{Name: "api.acme", Port: backend(t), PID: 1, Dir: "/src/api"})
-	h := newLocalHandler(reg, newProxyMetrics(), "errors")
+	h := newLocalHandler(t.TempDir(), reg, newProxyMetrics(), "errors")
 
 	req := httptest.NewRequest("GET", "https://api.acme.localhost/v1/items?q=1", nil)
 	req.Host = "api.acme.localhost"
@@ -58,7 +58,7 @@ func TestLocalHandler_routesByHost(t *testing.T) {
 func TestLocalHandler_subdomainsReachTheirParent(t *testing.T) {
 	reg := testRegistry(t)
 	running(t, reg, localRoute{Name: "help-chat", Port: backend(t), PID: 1})
-	h := newLocalHandler(reg, newProxyMetrics(), "errors")
+	h := newLocalHandler(t.TempDir(), reg, newProxyMetrics(), "errors")
 	for host, want := range map[string]int{"acme.help-chat.localhost": 200, "a.b.help-chat.localhost": 200, "help-chat.localhost": 200, "other.localhost": 404, "chat.localhost": 404} {
 		req := httptest.NewRequest("GET", "/", nil)
 		req.Host = host
@@ -76,7 +76,7 @@ func TestLocalHandler_subdomainsReachTheirParent(t *testing.T) {
 func TestLocalHandler_unknownNameLists(t *testing.T) {
 	reg := testRegistry(t)
 	running(t, reg, localRoute{Name: "web", Port: 4100, PID: 1, Dir: "/src/web"})
-	h := newLocalHandler(reg, newProxyMetrics(), "errors")
+	h := newLocalHandler(t.TempDir(), reg, newProxyMetrics(), "errors")
 
 	for host, want := range map[string]string{
 		"nope.localhost": "nothing runs at https://nope.localhost",
@@ -91,7 +91,7 @@ func TestLocalHandler_unknownNameLists(t *testing.T) {
 		}
 	}
 
-	empty := newLocalHandler(testRegistry(t), newProxyMetrics(), "errors")
+	empty := newLocalHandler(t.TempDir(), testRegistry(t), newProxyMetrics(), "errors")
 	req := httptest.NewRequest("GET", "/", nil)
 	req.Host = "localhost"
 	rec := httptest.NewRecorder()
@@ -108,7 +108,7 @@ func TestLocalHandler_deadAppIs502AndForgotten(t *testing.T) {
 
 	reg := testRegistry(t)
 	stop := running(t, reg, localRoute{Name: "gone", Port: port, PID: 7, Dir: "/src/gone"})
-	h := newLocalHandler(reg, newProxyMetrics(), "errors")
+	h := newLocalHandler(t.TempDir(), reg, newProxyMetrics(), "errors")
 	req := httptest.NewRequest("GET", "/", nil)
 	req.Host = "gone.localhost"
 
@@ -148,7 +148,7 @@ func TestLocalHandler_websocketUpgrade(t *testing.T) {
 
 	reg := testRegistry(t)
 	running(t, reg, localRoute{Name: "hmr", Port: app.Addr().(*net.TCPAddr).Port, PID: 1})
-	front := httptest.NewServer(newLocalHandler(reg, newProxyMetrics(), "errors"))
+	front := httptest.NewServer(newLocalHandler(t.TempDir(), reg, newProxyMetrics(), "errors"))
 	t.Cleanup(front.Close)
 
 	c, err := net.Dial("tcp", front.Listener.Addr().String())

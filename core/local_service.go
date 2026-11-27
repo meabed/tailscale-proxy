@@ -27,7 +27,7 @@ const serviceLabel = "com.meabed.tailscale-proxy"
 // launcherRevision is in the unit's environment. It changes only when the
 // launcher must change (how it hands the port over): `tsp service install` then
 // replaces the service, the one update that asks for sudo.
-const launcherRevision = "2"
+const launcherRevision = "3"
 
 // checkRootOnlyPath is checkRootOnly, replaceable in tests (their temp dirs are the user's).
 var checkRootOnlyPath = checkRootOnly
@@ -546,6 +546,14 @@ func localHTTPSChecks(s serviceSystem, supported bool) ([]check, error) {
 		}
 	}
 	checks = append(checks, proxy)
+	if running {
+		// Advisory: https serves either way; http://*.localhost redirects when port 80 was free.
+		redirect := check{Name: "http://*.localhost redirects to https", OK: true}
+		if note := httpRedirectNote(st); note != "" {
+			redirect = check{Name: "http://*.localhost not redirected (https works)", OK: true, Note: note}
+		}
+		checks = append(checks, redirect)
+	}
 	ca, err := loadCA(caFiles(dir))
 	checks = append(checks, check{Name: "local CA trusted by the OS", OK: err == nil && caTrusted(ca), Fix: "tsp trust (macOS: in a terminal at the Mac's screen)"})
 	checks = append(checks, autoUpdateCheck(dir, time.Now()))

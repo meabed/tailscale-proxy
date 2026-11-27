@@ -21,7 +21,7 @@ func inheritedSockets() (inherited, error) { return inherited{}, nil }
 
 func runWorker(context.Context, inherited) int { return 1 }
 
-func runSupervisor(context.Context, []net.Listener, int) int {
+func runSupervisor(context.Context, sockets) int {
 	fmt.Fprintln(os.Stderr, "tsp proxy: --uid is not supported on Windows")
 	return 1
 }

@@ -18,24 +18,33 @@ import (
 // `tsp run` starts an app on a free port and serves it at https://<name>.localhost
 // while it runs:
 //
-//	tsp run                          # package.json "tsp": {"name": "api.acme", "script": "dev:app"}
-//	tsp run api.acme -- bun src/index.ts
-//	TSP=0 tsp run                    # run the script as is: no port, no name
+//	tsp run                                       # package.json "tsp": {"name": "api.acme", "script": "dev:app"}
+//	tsp run api.acme -- node server.js            # an app that reads PORT itself
+//	tsp run web -- 'vite --port $PORT --host $HOST'   # one quoted command: run by the shell, so $PORT expands
+//	TSP=0 tsp run                                 # run the script as is: no port, no name
 //
 // The app gets PORT, HOST=127.0.0.1 and (unless set) NODE_EXTRA_CA_CERTS.
 
 func runUsage() {
-	fmt.Print(`tsp run — run an app at https://<name>.localhost
+	fmt.Print(`tsp run — run an app at https://<name>.localhost, on any stack
 
 Usage:
-  tsp run [--force]                     name and script from package.json "tsp"
-  tsp run [--force] <name> -- <cmd...>  any command
-
-  package.json:  "scripts": { "dev": "tsp run", "dev:app": "bun --hot src/index.ts" },
-                 "tsp": { "name": "api.acme", "script": "dev:app" }
+  tsp run [--force]                       name and script from package.json "tsp"
+  tsp run [--force] <name> -- <cmd...>    a command that reads $PORT itself
+  tsp run [--force] <name> -- '<command>' one quoted command, run by the shell:
+                                          $PORT and $HOST expand when it runs
 
 The app gets PORT (stable per name, 4000-4999), HOST=127.0.0.1 and
-NODE_EXTRA_CA_CERTS (the local CA). TSP=0 runs the script unchanged (its own port).
+NODE_EXTRA_CA_CERTS (the local CA). Its server must listen on $PORT and $HOST.
+
+package.json (npm, pnpm, yarn, bun):
+  "scripts": { "dev": "tsp run", "dev:app": "vite --port $PORT --host $HOST" },
+  "tsp": { "name": "web.acme", "script": "dev:app" }
+  then: npm run dev        TSP=0 npm run dev runs dev:app unchanged (its own port)
+
+Examples:
+` + examplesText("api") + `
+  Running names: tsp routes, or https://tsp.localhost (the dashboard).
 
 Flags:
   --force   take the name over from another running "tsp run"
@@ -65,9 +74,9 @@ func resolveRun(args []string, dir string, getenv func(string) string) (runSpec,
 			args = append(args[:1], args[2:]...)
 		}
 		if len(args) < 2 {
-			return runSpec{}, errors.New("give a command after the name: tsp run <name> -- <cmd...>")
+			return runSpec{}, errors.New("give a command after the name: tsp run <name> -- <cmd...> (or one quoted command: tsp run <name> -- 'vite --port $PORT')")
 		}
-		return runSpec{name: args[0], argv: args[1:]}, validateName(args[0])
+		return runSpec{name: args[0], argv: commandArgv(args[1:])}, validateName(args[0])
 	}
 	data, err := os.ReadFile(filepath.Join(dir, "package.json"))
 	if err != nil {
@@ -88,6 +97,38 @@ func resolveRun(args []string, dir string, getenv func(string) string) (runSpec,
 		pm = "npm"
 	}
 	return runSpec{name: pkg.TSP.Name, argv: []string{pm, "run", pkg.TSP.Script}}, validateName(pkg.TSP.Name)
+}
+
+// commandArgv is the process to start for the words after the name. One word
+// with spaces in it is a shell command (`tsp run web -- 'vite --port $PORT'`):
+// the platform shell runs it, so $PORT and $HOST expand when it runs, in the
+// app's environment, not in the caller's shell before tsp sets them. Several
+// words run as they are (an app that reads PORT itself).
+func commandArgv(words []string) []string {
+	if len(words) != 1 || !strings.ContainsAny(words[0], " \t\n") {
+		return words
+	}
+	return shellArgv(words[0])
+}
+
+// shellBuiltins start scripts `exec` cannot run (a builtin or a keyword).
+var shellBuiltins = map[string]bool{
+	"exit": true, "cd": true, "export": true, "set": true, "unset": true, "source": true, ".": true, "alias": true,
+	"eval": true, "exec": true, "trap": true, "wait": true, "read": true, "shift": true, "return": true, "local": true,
+	"if": true, "for": true, "while": true, "until": true, "case": true, "function": true, "{": true, "!": true, "[[": true,
+}
+
+// execScript prefixes a simple command with exec, so the shell becomes the app:
+// signals reach it directly and its exit code is tsp's. A script with control
+// operators, redirections, an assignment or a builtin first runs as written.
+func execScript(script string) string {
+	trimmed := strings.TrimSpace(script)
+	first, _, _ := strings.Cut(trimmed, " ")
+	if strings.ContainsAny(trimmed, ";&|<>()`\n{}") || strings.Contains(trimmed, "$(") ||
+		strings.Contains(first, "=") || shellBuiltins[first] {
+		return script
+	}
+	return "exec " + trimmed
 }
 
 // runEnv is the app's environment: the caller's plus the port, the loopback
@@ -184,7 +225,7 @@ func cmdRun(argv []string) int {
 	if ca, err := ensureCA(dir); err == nil {
 		caPath = ca.certPEM
 	}
-	fmt.Fprintf(os.Stderr, "tsp: %s → 127.0.0.1:%d\n", rt.URL(), port)
+	fmt.Fprintf(os.Stderr, "tsp: %s → 127.0.0.1:%d (PORT=%d HOST=127.0.0.1); all names: %s\n", rt.URL(), port, port, dashboardURL)
 	healProxy(dir, rt)
 	return runChild(spec.argv, runEnv(os.Environ(), port, caPath, os.Getenv))
 }

@@ -89,7 +89,7 @@ func runSupervisorFor(t *testing.T, dir string, ln net.Listener) (stop func()) {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan int, 1)
-	go func() { done <- runSupervisor(ctx, []net.Listener{ln}, 443) }()
+	go func() { done <- runSupervisor(ctx, sockets{tls: []net.Listener{ln}, port: 443}) }()
 	stopped := false
 	stop = func() {
 		if !stopped {
@@ -296,4 +296,35 @@ func processAlive(pid int) error {
 		return err
 	}
 	return p.Signal(syscallZero)
+}
+
+func TestSupervisor_redirectsHTTPThroughTheWorker(t *testing.T) {
+	dir, ln := superviseFor(t)
+	httpLn, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = httpLn.Close() })
+	installSelf(t, dir, "1.14.0")
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan int, 1)
+	go func() {
+		done <- runSupervisor(ctx, sockets{tls: []net.Listener{ln}, http: []net.Listener{httpLn}, port: 443})
+	}()
+	t.Cleanup(func() { cancel(); <-done })
+	st := waitState(t, dir, "the worker", func(st proxyState) bool { return st.Mode == "worker" })
+	if st.HTTPPort != localHTTPPort {
+		t.Errorf("proxy.json httpPort = %d", st.HTTPPort)
+	}
+	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	req, _ := http.NewRequest("GET", "http://"+httpLn.Addr().String()+"/a?b=1", nil)
+	req.Host = "api.localhost"
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusPermanentRedirect || resp.Header.Get("Location") != "https://api.localhost/a?b=1" {
+		t.Errorf("http: %s %q", resp.Status, resp.Header.Get("Location"))
+	}
 }

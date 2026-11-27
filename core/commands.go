@@ -191,7 +191,9 @@ func cmdRoutes(argv []string) int {
 		return 0
 	}
 	if len(routes) == 0 {
-		fmt.Println("No apps are running. `tsp run` in an app's folder serves it at https://<name>.localhost.")
+		fmt.Println("No apps are running. Start one in its folder: your usual dev command with package.json \"tsp\": {\"name\", \"script\"},")
+		fmt.Println("or tsp run <name> -- '<command using $PORT and $HOST>' (tsp run --help has one per stack).")
+		fmt.Println("All names, live: " + dashboardURL)
 		return 0
 	}
 	for _, rt := range routes {

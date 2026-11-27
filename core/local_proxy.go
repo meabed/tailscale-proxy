@@ -30,7 +30,18 @@ import (
 //   - a worker the supervisor started (the sockets inherited, TSP_READY_FD set);
 //   - in a terminal (`tsp proxy --port 8443`): it serves by itself.
 
-const localProxyPort = 443
+const (
+	localProxyPort = 443
+	localHTTPPort  = 80 // http://*.localhost, redirected to https
+)
+
+// sockets are what the boot service bound as root and serves on for its life.
+type sockets struct {
+	tls     []net.Listener // 127.0.0.1:443 and [::1]:443
+	http    []net.Listener // 127.0.0.1:80 and [::1]:80, when they were free
+	httpErr string         // why port 80 was not bound
+	port    int
+}
 
 type localRouteKey struct{}
 
@@ -40,7 +51,8 @@ const healthName = "tsp-health"
 // newLocalHandler proxies <name>.localhost to the registered app port. The app
 // sees the original Host (its configured URL) and X-Forwarded-Proto: https. Every
 // response is counted in m, and logged per requestLog ("errors", "all", "off").
-func newLocalHandler(reg *localRegistry, m *proxyMetrics, requestLog string) http.Handler {
+// tsp.localhost is the dashboard (dir's state, reg's names, m's traffic).
+func newLocalHandler(dir string, reg *localRegistry, m *proxyMetrics, requestLog string) http.Handler {
 	proxy := &httputil.ReverseProxy{
 		Transport:     newUpstreamTransport(),
 		BufferPool:    copyBuffers,
@@ -58,15 +70,17 @@ func newLocalHandler(reg *localRegistry, m *proxyMetrics, requestLog string) htt
 			if mw, ok := w.(*meteredWriter); ok {
 				mw.failed = true
 			}
-			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-			w.WriteHeader(http.StatusBadGateway)
-			fmt.Fprintf(w, "tsp: %s is registered on port %d but not answering: %v\nIs its dev server still starting? Check the terminal running `tsp run` (%s).\n", rt.URL(), rt.Port, err, rt.Dir)
+			writeBadGateway(w, r, rt, err)
 		},
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		name := nameFromHost(r.Host)
-		if name == healthName {
+		switch name {
+		case healthName:
 			_, _ = io.WriteString(w, "ok "+Version+"\n")
+			return
+		case dashboardName:
+			serveDashboard(w, r, dir, reg, m)
 			return
 		}
 		mw := newMeteredWriter(w)
@@ -76,7 +90,7 @@ func newLocalHandler(reg *localRegistry, m *proxyMetrics, requestLog string) htt
 			proxy.ServeHTTP(mw, r.WithContext(context.WithValue(r.Context(), localRouteKey{}, rt)))
 			key = rt.Name
 		} else {
-			writeLocalIndex(mw, reg, name)
+			writeNotFound(mw, r, reg, name)
 		}
 		status, ttfb := mw.result()
 		m.record(key, status, ttfb, mw.bytes, mw.failed)
@@ -95,38 +109,22 @@ func lookupWithParents(reg *localRegistry, name string) (localRoute, bool) {
 	return localRoute{}, false
 }
 
-// writeLocalIndex answers an unknown name with 404 and the names that are running.
-func writeLocalIndex(w http.ResponseWriter, reg *localRegistry, name string) {
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	w.WriteHeader(http.StatusNotFound)
-	if name != "" {
-		fmt.Fprintf(w, "tsp: nothing runs at https://%s.%s — start it with `tsp run` (bun dev) in its folder.\n\n", name, localTLD)
-	}
-	routes := reg.list()
-	if len(routes) == 0 {
-		fmt.Fprintln(w, "No apps are running. `tsp run` in an app's folder registers its https://<name>.localhost.")
-		return
-	}
-	fmt.Fprintln(w, "Running:")
-	for _, rt := range routes {
-		fmt.Fprintf(w, "  %s  →  127.0.0.1:%d  (%s)\n", rt.URL(), rt.Port, rt.Dir)
-	}
-}
-
 // proxyState is ~/.tsp/proxy.json: which proxy serves this user's names. The
 // supervisor (or a standalone `tsp proxy`) holds proxy.lock while it runs and
 // rewrites the file on every change: a swap, a rollback, a fallback.
 type proxyState struct {
-	PID       int       `json:"pid"`                // the supervisor (or standalone proxy)
-	Worker    int       `json:"worker"`             // the process serving now: the worker, else PID
-	Version   string    `json:"version"`            // the release serving now
-	Port      int       `json:"port"`               //
-	Launcher  string    `json:"launcher,omitempty"` // the boot service's own release
-	Mode      string    `json:"mode"`               // "worker", "builtin" (the launcher serves), "standalone"
-	Started   time.Time `json:"started"`            // when the supervisor started
-	Swaps     int       `json:"swaps"`              // live moves to a newer release
-	Rollbacks int       `json:"rollbacks"`          // releases that failed and were set aside
-	Crashes   int       `json:"crashes"`            // workers that exited on their own
+	PID       int       `json:"pid"`                 // the supervisor (or standalone proxy)
+	Worker    int       `json:"worker"`              // the process serving now: the worker, else PID
+	Version   string    `json:"version"`             // the release serving now
+	Port      int       `json:"port"`                //
+	Launcher  string    `json:"launcher,omitempty"`  // the boot service's own release
+	Mode      string    `json:"mode"`                // "worker", "builtin" (the launcher serves), "standalone"
+	Started   time.Time `json:"started"`             // when the supervisor started
+	Swaps     int       `json:"swaps"`               // live moves to a newer release
+	Rollbacks int       `json:"rollbacks"`           // releases that failed and were set aside
+	Crashes   int       `json:"crashes"`             // workers that exited on their own
+	HTTPPort  int       `json:"httpPort,omitempty"`  // 80 when http://*.localhost redirects to https
+	HTTPError string    `json:"httpError,omitempty"` // why port 80 could not be bound
 }
 
 // outdated reports whether the running proxy is an older tsp than this one.
@@ -145,12 +143,7 @@ func runningProxy(dir string) (proxyState, bool) {
 		release()
 		return proxyState{}, false
 	}
-	var st proxyState
-	data, err := os.ReadFile(proxyStatePath(dir))
-	if err != nil || json.Unmarshal(data, &st) != nil {
-		return proxyState{}, false
-	}
-	return st, true
+	return readProxyState(dir)
 }
 
 // listenLoopback binds port on 127.0.0.1 and, where the host has IPv6, on [::1]
@@ -224,12 +217,19 @@ func cmdProxy(argv []string) int {
 		return 1
 	}
 	if *uid >= 0 {
+		// http://*.localhost redirects to https when port 80 is free; when it is
+		// taken, https still serves and doctor names the holder.
+		httpLns, herr := listenLoopback(localHTTPPort)
+		httpErr := ""
+		if herr != nil {
+			httpErr = herr.Error()
+		}
 		if err := dropPrivileges(*uid, *gid); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			return 1
 		}
 		_ = os.Setenv("HOME", *home)
-		return runSupervisor(ctx, lns, *port)
+		return runSupervisor(ctx, sockets{tls: lns, http: httpLns, httpErr: httpErr, port: *port})
 	}
 	return runStandalone(ctx, lns, *port)
 }
@@ -239,11 +239,12 @@ var drainTimeout = 10 * time.Second
 
 // localServer is the HTTPS proxy for *.localhost, ready to serve on any listeners.
 type localServer struct {
-	dir     string
-	ca      *localCA
-	srv     *http.Server
-	metrics *proxyMetrics
-	lns     []net.Listener // what serve accepts on: shutdown closes them first
+	dir      string
+	ca       *localCA
+	srv      *http.Server
+	redirect *http.Server // http://*.localhost → https
+	metrics  *proxyMetrics
+	lns      []net.Listener // what serve accepts on: shutdown closes them first
 }
 
 func newLocalServer(dir string) (*localServer, error) {
@@ -261,11 +262,13 @@ func newLocalServer(dir string) (*localServer, error) {
 	m := newProxyMetrics()
 	iss.onIssue = func() { m.certs.Add(1) }
 	cfg, _, _, _ := LoadConfig()
-	srv := newServer("", newLocalHandler(newLocalRegistry(filepath.Join(dir, "routes")), m, cfg.LocalRequestLog))
+	srv := newServer("", newLocalHandler(dir, newLocalRegistry(filepath.Join(dir, "routes")), m, cfg.LocalRequestLog))
 	srv.TLSConfig = &tls.Config{GetCertificate: iss.GetCertificate, MinVersion: tls.VersionTLS12}
 	srv.ErrorLog = log.New(io.Discard, "", 0) // per-connection TLS noise: an untrusted CA, a port scan
 	srv.ConnState = m.connState
-	return &localServer{dir: dir, ca: ca, srv: srv, metrics: m}, nil
+	rd := newServer("", redirectHandler())
+	rd.ErrorLog = srv.ErrorLog
+	return &localServer{dir: dir, ca: ca, srv: srv, redirect: rd, metrics: m}, nil
 }
 
 // serve accepts on lns; the channel gets each listener's end.
@@ -276,6 +279,14 @@ func (ls *localServer) serve(lns []net.Listener) <-chan error {
 		go func(ln net.Listener) { errc <- ls.srv.ServeTLS(ln, "", "") }(ln)
 	}
 	return errc
+}
+
+// serveRedirect answers http://*.localhost on lns with a redirect to https.
+func (ls *localServer) serveRedirect(lns []net.Listener) {
+	ls.lns = append(ls.lns, lns...)
+	for _, ln := range lns {
+		go func(ln net.Listener) { _ = ls.redirect.Serve(ln) }(ln)
+	}
 }
 
 // selfCheck proves this proxy serves before it takes traffic: a real HTTPS request
@@ -333,6 +344,7 @@ func (ls *localServer) shutdown(d time.Duration) {
 	}
 	ctx, cancel := context.WithDeadline(context.Background(), deadline)
 	defer cancel()
+	_ = ls.redirect.Shutdown(ctx)
 	_ = ls.srv.Shutdown(ctx)
 }
 

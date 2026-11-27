@@ -52,6 +52,9 @@ func validateName(name string) error {
 	if strings.HasSuffix(name, "."+localTLD) || name == localTLD {
 		return fmt.Errorf("invalid name %q: leave out .%s (tsp adds it)", name, localTLD)
 	}
+	if why, ok := reservedNames[name]; ok {
+		return fmt.Errorf("the name %q is reserved: %s. Pick another (e.g. %s.app)", name, why, name)
+	}
 	return nil
 }
 
