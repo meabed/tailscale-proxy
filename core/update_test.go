@@ -7,13 +7,16 @@ import (
 
 func TestInstallMethod(t *testing.T) {
 	cases := map[string]string{
-		"/opt/homebrew/Cellar/tsp/0.1.0/bin/tsp":                           "brew",
-		"/opt/homebrew/Caskroom/tsp/0.1.0/tsp":                             "brew",
-		"/usr/local/Homebrew/bin/tsp":                                      "brew",
-		"/Users/me/.npm/_npx/abc/node_modules/.bin/tsp":                    "npm",
-		"/Users/me/proj/node_modules/tailscale-proxy-darwin-arm64/bin/tsp": "npm",
-		"/Users/me/bin/tsp":                                                "standalone",
-		"/usr/local/bin/tsp":                                               "standalone",
+		"/opt/homebrew/Cellar/tsp/0.1.0/bin/tsp":                                   "brew",
+		"/opt/homebrew/Caskroom/tsp/0.1.0/tsp":                                     "brew",
+		"/usr/local/Homebrew/bin/tsp":                                              "brew",
+		"/Users/me/.npm/_npx/abc/node_modules/.bin/tsp":                            "npx",
+		"/opt/homebrew/lib/node_modules/tailscale-proxy/bin/launcher.js":           "npm",
+		"/Users/me/.cache/tailscale-proxy/v1.11.0/tsp":                             "npm",
+		`C:\Users\me\AppData\Roaming\npm\node_modules\tailscale-proxy\bin\tsp.exe`: "npm",
+		"/Users/me/proj/node_modules/tailscale-proxy-darwin-arm64/bin/tsp":         "npm",
+		"/Users/me/bin/tsp":  "standalone",
+		"/usr/local/bin/tsp": "standalone",
 	}
 	for path, want := range cases {
 		if got := installMethod(path); got != want {

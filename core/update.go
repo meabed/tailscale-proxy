@@ -40,12 +40,22 @@ func cmdUpdate(argv []string) int {
 		exe = resolved
 	}
 
-	switch installMethod(exe) {
-	case "brew":
-		fmt.Println("\nInstalled via Homebrew — update with:\n  brew upgrade tsp")
+	switch method := installMethod(exe); method {
+	case "npx":
+		fmt.Println("\nRun through npx: `npx tailscale-proxy@latest` fetches the latest release each time.")
 		return 0
-	case "npm":
-		fmt.Println("\nInstalled via npm — update with:\n  npm i -g tailscale-proxy@latest")
+	case "brew", "npm":
+		argv := []string{"brew", "upgrade", "tsp"}
+		if method == "npm" {
+			argv = []string{"npm", "install", "-g", "tailscale-proxy@latest"}
+		}
+		fmt.Printf("\nInstalled via %s: running %s\n", method, strings.Join(argv, " "))
+		if err := interactive(argv); err != nil {
+			fmt.Fprintf(os.Stderr, "%s failed: %v\nRun it yourself: %s\n", argv[0], err, strings.Join(argv, " "))
+			return 1
+		}
+		fmt.Printf("✓ updated to %s\n", normalizeVer(latest))
+		printServiceNextStep()
 		return 0
 	default:
 		fmt.Printf("\nDownloading %s …\n", latest)
@@ -53,21 +63,34 @@ func cmdUpdate(argv []string) int {
 			fmt.Fprintf(os.Stderr, "self-update failed: %v\n", err)
 			return 1
 		}
-		fmt.Printf("updated to %s\n", latest)
+		fmt.Printf("✓ updated to %s\n", normalizeVer(latest))
+		printServiceNextStep()
 		return 0
 	}
 }
 
-// installMethod classifies how the binary at path was installed.
+// installMethod classifies how the binary at path was installed: "npx", "npm"
+// (a global install, or the npm launcher's download cache), "brew" or "standalone".
+// npm comes first: Homebrew's Node keeps global packages under /opt/homebrew/lib/node_modules.
 func installMethod(path string) string {
-	p := strings.ToLower(path)
-	if strings.Contains(p, "/cellar/") || strings.Contains(p, "/caskroom/") || strings.Contains(p, "/homebrew/") {
+	p := strings.ToLower(strings.ReplaceAll(path, `\`, "/"))
+	switch {
+	case strings.Contains(p, "/_npx/"):
+		return "npx"
+	case strings.Contains(p, "/node_modules/") || strings.Contains(p, "/.cache/tailscale-proxy/"):
+		return "npm"
+	case strings.Contains(p, "/cellar/") || strings.Contains(p, "/caskroom/") || strings.Contains(p, "/homebrew/"):
 		return "brew"
 	}
-	if strings.Contains(p, "/node_modules/") || strings.Contains(p, "/_npx/") {
-		return "npm"
-	}
 	return "standalone"
+}
+
+// printServiceNextStep tells an updated install that its boot service still runs
+// the old proxy, and how to move it: the new binary installs it.
+func printServiceNextStep() {
+	if s, supported := servicePlatform(); supported && s.installed() {
+		fmt.Println("Next: `tsp service install` moves the local HTTPS proxy to this version (sudo asks once).")
+	}
 }
 
 // normalizeVer strips a leading v and surrounding whitespace.
