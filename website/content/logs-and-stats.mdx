@@ -1,0 +1,66 @@
+# Logs and stats
+
+The local HTTPS proxy keeps a short record of what it does and how fast it answers, so you can see how it ran
+yesterday or after an update without turning anything on. It costs a few counters per request and one summary line a
+minute.
+
+## How it is running
+
+```bash
+tsp stats                 # the proxy now, and requests per name in the last 24h
+tsp stats --since 1h      # a shorter window (or 7d)
+tsp stats --json          # the same for scripts and agents
+```
+
+```
+Local HTTPS proxy (https://*.localhost)
+  serving   tsp 1.14.0, pid 4321 (worker), up 3h12m; boot service 1.14.0, pid 4300, since Nov 27 15:10
+  process   18 MB, 41 goroutines, 3 open connections, CPU 12.3s, 4 certificates issued
+  changes   0 live updates, 0 set aside, 0 crashes
+  updates   auto-update on (checked 1h20m ago, latest 1.14.0)
+
+Requests per name, last 24h
+  NAME               REQUESTS  FAILED    4XX    5XX      P50      P95      P99
+  api.acme               1204       0      3      0     10ms    100ms    250ms
+```
+
+P50, P95 and P99 are the time to the first byte of your app's answer: half, 95% and 99% of requests were at least
+that fast. **Failed** counts requests that never reached the app (it was down or not listening on `$PORT`). Names
+that don't exist are counted together as `(unknown)`.
+
+`tsp status` shows the same numbers for the online side: requests per project in the last hour.
+
+## What happened
+
+```bash
+tsp logs                  # the last 40 events
+tsp logs -f               # follow new ones (Ctrl-C stops)
+tsp logs -n 200 --json    # raw JSON lines
+```
+
+```
+Nov 27 15:10:02  INFO   supervisor  supervisor started  pid=4300  port=443  version=1.14.0
+Nov 28 09:41:16  INFO   supervisor  worker ready  pid=4300  release=1.15.0  version=1.14.0  worker=5120
+Nov 28 09:41:17  INFO   supervisor  swapped  from=1.14.0  pid=4300  to=1.15.0  version=1.14.0
+Nov 28 11:03:55  WARN   worker      request  method=GET  ms=2410  name=api.acme  path=/reports  pid=5120  status=200  upstreamFailed=false  version=1.15.0
+```
+
+Events: starts and stops, live updates and rollbacks, update checks, and requests that failed, answered 5xx or took
+over 2 seconds. To log every request while you chase a problem, then go back:
+
+```bash
+tsp configure --local-request-log=all      # errors is the default; off logs none
+tsp configure --local-request-log=errors
+```
+
+## Where it is kept
+
+| File | What | Kept |
+| --- | --- | --- |
+| `~/.tsp/logs/proxy.jsonl` | events, one JSON object a line | 5 MB, three files |
+| `~/.tsp/logs/stats.jsonl` | a summary per name each minute with traffic | 5 MB, three files |
+| `/var/log/tailscale-proxy.log` (macOS) | the boot service's own output | until you delete it |
+| `journalctl -u tailscale-proxy` (Linux) | the same | the journal's settings |
+
+Everything stays on your machine. The stats socket a running proxy answers on is in `~/.tsp/run`, readable only by
+you.

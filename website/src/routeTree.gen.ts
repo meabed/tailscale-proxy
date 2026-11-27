@@ -18,6 +18,7 @@ import { Route as DesktopRouteImport } from './routes/desktop'
 import { Route as HowItWorksRouteImport } from './routes/how-it-works'
 import { Route as InstallationRouteImport } from './routes/installation'
 import { Route as LocalHttpsRouteImport } from './routes/local-https'
+import { Route as LogsAndStatsRouteImport } from './routes/logs-and-stats'
 import { Route as ShareRouteImport } from './routes/share'
 import { Route as TroubleshootingRouteImport } from './routes/troubleshooting'
 import { Route as WebhooksRouteImport } from './routes/webhooks'
@@ -67,6 +68,11 @@ const LocalHttpsRoute = LocalHttpsRouteImport.update({
   path: '/local-https',
   getParentRoute: () => rootRouteImport,
 } as any)
+const LogsAndStatsRoute = LogsAndStatsRouteImport.update({
+  id: '/logs-and-stats',
+  path: '/logs-and-stats',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ShareRoute = ShareRouteImport.update({
   id: '/share',
   path: '/share',
@@ -93,6 +99,7 @@ export interface FileRoutesByFullPath {
   '/how-it-works': typeof HowItWorksRoute
   '/installation': typeof InstallationRoute
   '/local-https': typeof LocalHttpsRoute
+  '/logs-and-stats': typeof LogsAndStatsRoute
   '/share': typeof ShareRoute
   '/troubleshooting': typeof TroubleshootingRoute
   '/webhooks': typeof WebhooksRoute
@@ -107,6 +114,7 @@ export interface FileRoutesByTo {
   '/how-it-works': typeof HowItWorksRoute
   '/installation': typeof InstallationRoute
   '/local-https': typeof LocalHttpsRoute
+  '/logs-and-stats': typeof LogsAndStatsRoute
   '/share': typeof ShareRoute
   '/troubleshooting': typeof TroubleshootingRoute
   '/webhooks': typeof WebhooksRoute
@@ -122,6 +130,7 @@ export interface FileRoutesById {
   '/how-it-works': typeof HowItWorksRoute
   '/installation': typeof InstallationRoute
   '/local-https': typeof LocalHttpsRoute
+  '/logs-and-stats': typeof LogsAndStatsRoute
   '/share': typeof ShareRoute
   '/troubleshooting': typeof TroubleshootingRoute
   '/webhooks': typeof WebhooksRoute
@@ -138,6 +147,7 @@ export interface FileRouteTypes {
     | '/how-it-works'
     | '/installation'
     | '/local-https'
+    | '/logs-and-stats'
     | '/share'
     | '/troubleshooting'
     | '/webhooks'
@@ -152,6 +162,7 @@ export interface FileRouteTypes {
     | '/how-it-works'
     | '/installation'
     | '/local-https'
+    | '/logs-and-stats'
     | '/share'
     | '/troubleshooting'
     | '/webhooks'
@@ -166,6 +177,7 @@ export interface FileRouteTypes {
     | '/how-it-works'
     | '/installation'
     | '/local-https'
+    | '/logs-and-stats'
     | '/share'
     | '/troubleshooting'
     | '/webhooks'
@@ -181,6 +193,7 @@ export interface RootRouteChildren {
   HowItWorksRoute: typeof HowItWorksRoute
   InstallationRoute: typeof InstallationRoute
   LocalHttpsRoute: typeof LocalHttpsRoute
+  LogsAndStatsRoute: typeof LogsAndStatsRoute
   ShareRoute: typeof ShareRoute
   TroubleshootingRoute: typeof TroubleshootingRoute
   WebhooksRoute: typeof WebhooksRoute
@@ -251,6 +264,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LocalHttpsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/logs-and-stats': {
+      id: '/logs-and-stats'
+      path: '/logs-and-stats'
+      fullPath: '/logs-and-stats'
+      preLoaderRoute: typeof LogsAndStatsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/share': {
       id: '/share'
       path: '/share'
@@ -285,6 +305,7 @@ const rootRouteChildren: RootRouteChildren = {
   HowItWorksRoute: HowItWorksRoute,
   InstallationRoute: InstallationRoute,
   LocalHttpsRoute: LocalHttpsRoute,
+  LogsAndStatsRoute: LogsAndStatsRoute,
   ShareRoute: ShareRoute,
   TroubleshootingRoute: TroubleshootingRoute,
   WebhooksRoute: WebhooksRoute,

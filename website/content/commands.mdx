@@ -9,6 +9,8 @@ version.
 | --- | --- |
 | `tsp doctor` | Check Tailscale and local HTTPS; each ✗ with the command that fixes it; exit 1 when one fails |
 | `tsp update` | Update to the latest release, the way tsp was installed (brew, npm or the binary itself, checksum-verified) |
+| `tsp stats [--since 24h] [--json]` | How the local proxy runs: health, updates, and requests, failures and p50/p95/p99 per name ([Logs and stats](/logs-and-stats)) |
+| `tsp logs [-n 40] [-f] [--json]` | The local proxy's events: starts, live updates, rollbacks, failed or slow requests |
 | `tsp uninstall [--yes] [--all]` | Remove everything tsp set up: the Tailscale entry it created, the boot service, the CA and `~/.tsp`; `--all` also the config and a standalone binary |
 
 ## Local HTTPS names
@@ -32,7 +34,7 @@ version.
 | `tsp` | `tsp start` with your saved settings: share every dev server found |
 | `tsp start [flags]` | Find dev servers, run the routing proxy, publish it through Funnel or Serve |
 | `tsp list` | What would be shared, with each link, without sharing |
-| `tsp status` | The Funnel or Serve entry and the current map |
+| `tsp status` | The Funnel or Serve entry, the current map, and requests per project in the last hour |
 | `tsp reset` | Remove the Funnel or Serve entry (`--private` for Serve) |
 | `tsp configure [flags]` | Save flags as defaults in `~/.tsp/config.json` |
 

@@ -29,7 +29,8 @@ Each run takes the built-in defaults, then the file, then the flags you pass, so
   "matchSeparators": true,
   "docker": false,
   "acceptDns": "",
-  "autoUpdate": true
+  "autoUpdate": true,
+  "localRequestLog": "errors"
 }
 ```
 
@@ -49,6 +50,7 @@ Each run takes the built-in defaults, then the file, then the flags you pass, so
 | `matchSeparators` | Treat `-` and `_` as interchangeable in the path slug, so `/module-api/` and `/module_api/` both route (default on) |
 | `docker` | Also discover Docker containers via the local Docker API (read-only, over `/var/run/docker.sock`) |
 | `autoUpdate` | The local HTTPS proxy installs new releases itself, checksum-verified, and the CLI says once a day when one is out (default on; `TSP_NO_UPDATE=1` or `CI` turns both off) |
+| `localRequestLog` | What the local HTTPS proxy logs per request: `"errors"` (failed, 5xx, over 2 s; the default), `"all"` or `"off"` ([Logs and stats](/logs-and-stats)) |
 | `acceptDns` | `""` leaves Tailscale DNS alone; `"true"`/`"false"` runs `tailscale set --accept-dns` on start |
 
 ## Host header behavior
@@ -66,3 +68,17 @@ Slugs are canonically dash-separated. With `matchSeparators` on (the default),
 `tsp` folds `_` to `-` when an exact route lookup misses, so `/module_api_foo/`
 and `/module-api-foo/` reach the same dev server. Set `matchSeparators: false`
 (or `--match-separators=false`) to route only the exact dash form.
+
+## Files
+
+Everything tsp keeps is in `~/.tsp`; `tsp uninstall` removes it.
+
+| Path | What |
+| --- | --- |
+| `config.json` | the settings on this page |
+| `ca/` | the local certificate authority (`ca.pem`, and its key readable only by you) |
+| `routes/` | one file per running `tsp run` name |
+| `bin/` | the tsp releases the local proxy runs, and `state.json` (which one serves, which were set aside) |
+| `logs/` | `proxy.jsonl` events and `stats.jsonl` summaries ([Logs and stats](/logs-and-stats)) |
+| `run/` | the socket a running proxy answers `tsp stats` on |
+| `proxy.json`, `update.json` | the running proxy's address and the last release check |

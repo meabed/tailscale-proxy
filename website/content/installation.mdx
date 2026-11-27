@@ -120,8 +120,11 @@ Each ✗ is followed by the command that fixes it, and the last line says which 
 
 ## Updates
 
-The local proxy updates itself: once a day it checks for a release, verifies the download against the release's
-checksums and restarts on it, finishing the requests in flight. In a terminal, tsp tells you once a day when a release
+The local proxy updates itself without dropping a request: once a day it checks for a release and verifies the
+download against the release's checksums. The new version starts beside the running one and must answer a real HTTPS
+request before it takes over; then the old one finishes its requests and stops. A version that fails that check, or
+crashes in its first minute, is set aside and skipped, and the previous one keeps serving. `tsp logs` shows each
+swap. In a terminal, tsp tells you once a day when a release
 is out for the command itself.
 
 ```bash

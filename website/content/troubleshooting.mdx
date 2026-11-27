@@ -17,6 +17,7 @@ Find your symptom below; the rest of the page has the details.
 | `https://<name>.localhost` answers 404 "nothing runs at" | start the app (`bun dev` / `tsp run` in its folder); `tsp routes` lists what runs |
 | It answers 502 "not answering" | the app is still starting, or doesn't listen on `$PORT` and `$HOST` |
 | "already runs (pid …)" | stop the other terminal's run, or `tsp run --force` |
+| Something was slow or failed earlier | `tsp stats` (per name, p50/p95/p99) and `tsp logs` ([Logs and stats](/logs-and-stats)) |
 | Every `*.localhost` hangs | another program holds port 443: `lsof -nP -iTCP:443 -sTCP:LISTEN` ([Funnel next to the proxy](#funnel-on-443-next-to-tsp-proxy-macos)) |
 
 ## Online links (`*.ts.net`)

@@ -24,6 +24,7 @@ export const pageGroups = [
     pages: [
       { path: '/commands', title: 'Commands', summary: 'Every command and flag.' },
       { path: '/configuration', title: 'Configuration', summary: 'Saved defaults in ~/.tsp/config.json and the host header.' },
+      { path: '/logs-and-stats', title: 'Logs and stats', summary: 'tsp stats and tsp logs: requests, failures and latency per name, updates and rollbacks, kept on your machine.' },
       { path: '/how-it-works', title: 'How it works', summary: 'Discovery, routing, the local proxy, certificates and the boot service.' },
       { path: '/troubleshooting', title: 'Troubleshooting', summary: 'Symptoms and the command that fixes each.' },
     ],

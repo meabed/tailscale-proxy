@@ -82,21 +82,23 @@ Requests reach the app with the original `Host` (`api.acme.localhost`) and
   The CA carries a name constraint for `localhost`: it cannot sign a certificate for any
   other domain that a browser would accept. Names outside `.localhost` get no certificate,
   and the cache is bounded.
-- **The service** is a small launcher that runs as root for one job: opening
+- **The service** is a small supervisor that runs as root for one job: opening
   `127.0.0.1:443` and `[::1]:443`, which an ordinary process cannot do. It then switches to
-  your user for good and starts your own copy of tsp, `~/.tsp/bin/tsp`, handing
-  it the open sockets. Root never runs a file you can write, and every file the proxy writes
-  stays yours. If that copy is missing or fails to start, the launcher serves the names
-  itself, so they keep working. macOS: a launchd daemon
+  your user for good, keeps the sockets open for its whole life, and runs the proxy as a
+  worker from your own copy of tsp in `~/.tsp/bin`. Root never runs a file you can write,
+  and every file the proxy writes stays yours. While no worker runs, the supervisor serves
+  the names itself, so they keep working. macOS: a launchd daemon
   (`/Library/LaunchDaemons/com.meabed.tailscale-proxy.plist`, log
   `/var/log/tailscale-proxy.log`). Linux: a systemd unit (`tailscale-proxy.service`,
   `journalctl -u tailscale-proxy`).
-- **Updates without a password**: any newer tsp you run copies itself to
-  `~/.tsp/bin/tsp` (never an older one), and the proxy checks for a release once a
-  day and verifies it against the release's `checksums.txt`. The running proxy sees the new
-  copy within seconds, finishes its requests and exits; launchd or systemd start it again on
-  the new one. sudo is needed again only if the launcher itself changes, which
-  `tsp doctor` says. `tsp run` in a terminal sets up a machine that has no proxy yet; in CI or
+- **Updates without a password or a dropped request**: any newer tsp you run copies itself
+  into `~/.tsp/bin` (never an older one), and the proxy checks for a release once a day and
+  verifies it against the release's `checksums.txt`. The supervisor starts the new version
+  beside the serving one on the same sockets; once it answers a real HTTPS request it takes
+  over and the old worker drains. A version that fails, or crashes within its first minute,
+  is recorded as set aside in `bin/state.json` and never used again; the previous worker
+  keeps serving. A crashing worker restarts with backoff. sudo is needed again only if the
+  supervisor itself changes, which `tsp doctor` says. `tsp run` in a terminal sets up a machine that has no proxy yet; in CI or
   a pipe it only warns.
 - **Trust**: `tsp service install` ends with it (or `tsp trust` alone). macOS adds the CA
   to your login keychain (one password dialog at the screen; over SSH it is left as a
