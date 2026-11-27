@@ -9,8 +9,11 @@ import (
 	"testing"
 )
 
+// everyOption is the local proxy with the dashboard and the catch-all on.
+func everyOption() localOptions { return localOptions{Dashboard: true, CatchAll: true} }
+
 func TestRedirectHandler_httpAnswersWhatHTTPSAnswers(t *testing.T) {
-	h := redirectHandler()
+	h := redirectHandler(func(string) bool { return true }, everyOption)
 	for _, tc := range []struct{ host, target, want string }{
 		{"api.localhost", "/x?y=1", "https://api.localhost/x?y=1"},
 		{"api.localhost:80", "/x?y=1", "https://api.localhost/x?y=1"},
@@ -38,7 +41,7 @@ func TestRedirectHandler_httpAnswersWhatHTTPSAnswers(t *testing.T) {
 }
 
 func TestLocalHandler_bareLocalhostOpensTheDashboard(t *testing.T) {
-	h := newLocalHandler(t.TempDir(), testRegistry(t), nil, newProxyMetrics(), "errors")
+	h := newLocalHandler(t.TempDir(), testRegistry(t), nil, newProxyMetrics(), "errors", everyOption)
 	rec := get(h, "localhost", "/", "text/html")
 	if rec.Code != http.StatusTemporaryRedirect || rec.Header().Get("Location") != dashboardURL+"/" {
 		t.Errorf("https://localhost: %d %q", rec.Code, rec.Header().Get("Location"))
@@ -74,7 +77,7 @@ func get(h http.Handler, host, path, accept string) *httptest.ResponseRecorder {
 func TestNotFound_textForClientsHTMLForBrowsers(t *testing.T) {
 	reg := testRegistry(t)
 	running(t, reg, localRoute{Name: "web", Port: 4100, PID: 1, Dir: "/src/<web>"})
-	h := newLocalHandler(t.TempDir(), reg, nil, newProxyMetrics(), "errors")
+	h := newLocalHandler(t.TempDir(), reg, nil, newProxyMetrics(), "errors", everyOption)
 
 	text := get(h, "nope.localhost", "/", "")
 	body := text.Body.String()
@@ -114,7 +117,7 @@ func TestBadGateway_namesTheExpectedPort(t *testing.T) {
 	_ = ln.Close()
 	reg := testRegistry(t)
 	running(t, reg, localRoute{Name: "gone", Port: port, PID: 7, Dir: "/src/gone"})
-	h := newLocalHandler(t.TempDir(), reg, nil, newProxyMetrics(), "errors")
+	h := newLocalHandler(t.TempDir(), reg, nil, newProxyMetrics(), "errors", everyOption)
 
 	text := get(h, "gone.localhost", "/", "")
 	if text.Code != 502 || !strings.Contains(text.Body.String(), "PORT=") || !strings.Contains(text.Body.String(), "tsp logs") {
@@ -131,7 +134,7 @@ func TestDashboard_pageAndStatus(t *testing.T) {
 	running(t, reg, localRoute{Name: "api", Port: 4200, PID: 42, Dir: `/src/"><script>alert(1)</script>`})
 	m := newProxyMetrics()
 	m.record("api", 200, 0, 10, false)
-	h := newLocalHandler(t.TempDir(), reg, nil, m, "errors")
+	h := newLocalHandler(t.TempDir(), reg, nil, m, "errors", everyOption)
 
 	page := get(h, "tsp.localhost", "/", "text/html")
 	html := page.Body.String()

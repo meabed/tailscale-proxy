@@ -24,6 +24,8 @@ version.
 | `tsp routes [--json]` | The names running now: how each started (`run` or `found`), port, folder |
 | `tsp stop <name\|port>` | Stop the app behind a name, or what listens on a port: SIGTERM (Windows: `taskkill /T`), like Ctrl-C; asks first. `--force` ends it and every process it started at once (a hung app), `--pid <n>` stops one process, `--yes` skips the question ([Stop an app](/local-https#stop-an-app)) |
 | `tsp configure --discover=false` | Stop finding dev servers; only `tsp run` names remain |
+| `tsp configure --catch-all` | Answer every `.localhost` name: one nothing serves shows what runs (default off: no answer) |
+| `tsp configure --dashboard=false` | Turn `https://tsp.localhost` off (default on) |
 | `https://tsp.localhost` | The dashboard: what runs, requests and latency per name, CPU and memory and a Stop button per app, the proxy's state (JSON at `/api/status`) |
 | `tsp service install` | Once per machine (your password once): the proxy from boot, its CA trusted; it updates itself afterwards. Safe to repeat |
 | `tsp service status` | Three ✓/✗ lines; exit 1 when one is off |

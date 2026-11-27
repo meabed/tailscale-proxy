@@ -219,7 +219,8 @@ runs the `dev:app` script as it is, without tsp. The name `tsp` is reserved for 
 `https://tsp.localhost` shows what runs (how each was started, port, folder, uptime), the CPU and memory of each app
 with every process it started (macOS, Linux), requests, failures and p50/p95 per name, the proxy's version, live updates and set-aside releases, discovery and update status, and any config file
 it skipped, with how to fix it. It updates itself every few seconds and is reachable only from this machine. The same
-data as JSON for scripts and agents: `https://tsp.localhost/api/status`.
+data as JSON for scripts and agents: `https://tsp.localhost/api/status`. It is on by default; `tsp configure
+--dashboard=false` turns it off, and `tsp.localhost` then answers like any name nothing serves.
 
 ## Stop an app
 
@@ -257,15 +258,23 @@ there the dashboard shows the commands to copy, and `tsp stop` does the stopping
 tsp never stops itself, a process another user owns, or Docker: for a container's port it names the container to
 `docker stop` instead.
 
-Opening a name that nothing runs under shows the names that do run and how to start an app under that one; a name
-whose app stopped answering shows its port, process, folder and the likely cause. A browser gets a page, curl gets the
-same as text.
+## Names nothing serves
+
+By default tsp answers only the names it serves: the apps it found or runs (and their subdomains) and the dashboard. A
+name nothing serves gets no answer, as if nothing listened, so a typo looks like a server that is not running. tsp
+still looks again before it gives up, so a server started a moment ago answers on the first request.
+
+With the catch-all on (`tsp configure --catch-all`), tsp answers every `.localhost` name: one nothing serves shows the
+names that do run and how to start an app under that one. Either way, a name whose app stopped answering shows its
+port, process, folder and the likely cause. A browser gets a page, curl gets the same as text. Both settings apply to
+the running proxy within a second, without a restart.
 
 ## Plain HTTP
 
-`http://` gets what `https://` gets. Every `http://<name>.localhost`, the reserved `tsp` included, redirects to the same
-URL over https (308: the method and body are kept), so a browser shows the very same page. `http://localhost/` and
-`http://127.0.0.1/` open the dashboard, like `https://localhost/`. Any other host that reaches port 80 gets a short 404
+`http://` gets what `https://` gets. Every `http://<name>.localhost` that https answers, `tsp` included, redirects to
+the same URL over https (308: the method and body are kept), so a browser shows the very same page.
+`http://localhost/` and `http://127.0.0.1/` open the dashboard, like `https://localhost/`. A name https does not
+answer gets no answer on http either. With the catch-all on, any other host that reaches port 80 gets a short 404
 that lists nothing, so a website whose name was re-pointed at 127.0.0.1 (DNS rebinding) learns nothing about this
 machine. If another program holds port 80, HTTPS keeps
 working and `tsp doctor` names the program.

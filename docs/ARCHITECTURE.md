@@ -109,10 +109,14 @@ sudo.
 
 ### What the proxy answers itself
 
+`local_options.go`: what the proxy answers besides the names it serves, re-read from config.json within a second:
+`localDashboard` (default on) and `localCatchAll` (default off). With the catch-all off, a name nothing serves gets no
+certificate (the TLS handshake fails, as if nothing listened) after one rescan, and port 80 closes the connection.
+
 `local_pages.go`: `tsp.localhost` (reserved) is the dashboard and `/api/status`, plus `GET /api/apps/{name}` (what a
 stop would end) and `POST /api/apps/{name}/stop`, behind `http.CrossOriginProtection`, a JSON body and (unix) `requestFromOwner`: lsof must show the
 client's end of this exact connection (client->proxy) as a process of this uid; Windows refuses, and the page shows
-the commands instead; an unknown name gets a 404
+the commands instead; with the catch-all on, an unknown name gets a 404
 with the running names and a way to run an app there per stack; a registered name whose app does not answer gets a
 502 with its port, pid and folder. Browsers (`Accept: text/html`) get HTML via `html/template`, other clients plain
 text. Port 80 answers every `http://*.localhost` (reserved names too) with a 308 to the same URL over https, the bare

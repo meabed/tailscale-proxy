@@ -104,13 +104,15 @@ func hostOnly(host string) string {
 }
 
 // httpTarget is where http://host goes over https: the same URL for a
-// .localhost name (the reserved ones too), the dashboard for the bare
-// localhost and the loopback addresses; "" for any other host.
-func httpTarget(host, uri string) string {
+// .localhost name https answers, the dashboard for the bare localhost and the
+// loopback addresses while it is on; "" when https would not answer.
+func httpTarget(host, uri string, answers func(name string) bool, o localOptions) string {
 	switch name, ok := strings.CutSuffix(host, "."+localTLD); {
 	case host == localTLD || host == "127.0.0.1" || host == "::1":
-		return dashboardURL + uri
-	case ok && len(name) <= 200 && nameRe.MatchString(name):
+		if o.Dashboard {
+			return dashboardURL + uri
+		}
+	case ok && len(name) <= 200 && nameRe.MatchString(name) && answers(name):
 		return "https://" + host + uri
 	}
 	return ""
@@ -118,17 +120,23 @@ func httpTarget(host, uri string) string {
 
 // redirectHandler answers http:// on port 80 with what https answers: a
 // .localhost name moves to https with 308 (a browser then shows the very same
-// page). A host outside .localhost gets a 404 that names nothing that runs: a
-// site whose name was re-pointed at 127.0.0.1 (DNS rebinding) must not read what
-// this machine serves.
-func redirectHandler() http.Handler {
+// page). A name https does not answer (the catch-all off) gets no answer here
+// either: the connection closes. A host outside .localhost gets a 404 that names
+// nothing that runs, with the catch-all on: a site whose name was re-pointed at
+// 127.0.0.1 (DNS rebinding) must not read what this machine serves.
+func redirectHandler(answers func(name string) bool, opts func() localOptions) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		host := hostOnly(r.Host)
-		target := httpTarget(host, r.URL.RequestURI())
+		o := opts()
+		target := httpTarget(host, r.URL.RequestURI(), answers, o)
+		if target == "" && !o.CatchAll {
+			closeUnanswered(w)
+			return
+		}
 		if target == "" {
 			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 			w.WriteHeader(http.StatusNotFound)
-			fmt.Fprintf(w, "tsp: http://%s reached tsp's http port on this machine, but tsp serves only https://<name>.%s names: open %s for what runs\n", safeText(host), localTLD, dashboardURL)
+			fmt.Fprintf(w, "tsp: http://%s reached tsp's http port on this machine, but tsp serves only https://<name>.%s names\n", safeText(host), localTLD)
 			return
 		}
 		w.Header().Set("Location", target)
@@ -144,6 +152,18 @@ func redirectHandler() http.Handler {
 	})
 }
 
+// closeUnanswered drops the connection without a response, as a port nothing
+// listens on would give none.
+func closeUnanswered(w http.ResponseWriter) {
+	if hj, ok := w.(http.Hijacker); ok {
+		if conn, _, err := hj.Hijack(); err == nil {
+			_ = conn.Close()
+			return
+		}
+	}
+	w.WriteHeader(http.StatusMisdirectedRequest)
+}
+
 // ---------------------------------------------------------------- unknown names (404)
 
 type notFoundPage struct {
@@ -155,8 +175,8 @@ type notFoundPage struct {
 	Board    string
 }
 
-func newNotFoundPage(running []localRoute, name string) notFoundPage {
-	p := notFoundPage{Name: name, Running: running, Examples: examplesFor(name), Docs: docsURL, Board: dashboardURL}
+func newNotFoundPage(running []localRoute, name, board string) notFoundPage {
+	p := notFoundPage{Name: name, Running: running, Examples: examplesFor(name), Docs: docsURL, Board: board}
 	if name != "" {
 		p.URL = localRoute{Name: name}.URL()
 	}
@@ -165,8 +185,8 @@ func newNotFoundPage(running []localRoute, name string) notFoundPage {
 
 // writeNotFound answers a name no run registered: what runs, and how to run an
 // app under this name, for any stack.
-func writeNotFound(w http.ResponseWriter, r *http.Request, running []localRoute, name string) {
-	p := newNotFoundPage(running, name)
+func writeNotFound(w http.ResponseWriter, r *http.Request, running []localRoute, name, board string) {
+	p := newNotFoundPage(running, name, board)
 	if wantsHTML(r) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.WriteHeader(http.StatusNotFound)
@@ -195,7 +215,10 @@ func writeNotFoundText(w io.Writer, p notFoundPage) {
 	fmt.Fprintf(w, "  or through tsp tsp run %s -- '<command>' sets PORT and HOST for it:\n\n", shown)
 	fmt.Fprint(w, examplesText(shown))
 	fmt.Fprintf(w, "\nThe server must listen on $PORT and $HOST: tsp sets both. Quote a command that uses them,\nso they expand when it runs.\n")
-	fmt.Fprintf(w, "Dashboard: %s   Docs: %s\n", p.Board, p.Docs)
+	if p.Board != "" {
+		fmt.Fprintf(w, "Dashboard: %s   ", p.Board)
+	}
+	fmt.Fprintf(w, "Docs: %s\n", p.Docs)
 }
 
 func writeRunningText(w io.Writer, routes []localRoute) {
@@ -220,8 +243,8 @@ type badGatewayPage struct {
 
 // writeBadGateway answers a registered name whose app refused or dropped the
 // request: where it should be listening, and the likely reasons.
-func writeBadGateway(w http.ResponseWriter, r *http.Request, rt localRoute, err error) {
-	p := badGatewayPage{Route: rt, Err: err.Error(), Example: fmt.Sprintf(runExamples[0].Command, rt.Name), Board: dashboardURL}
+func writeBadGateway(w http.ResponseWriter, r *http.Request, rt localRoute, err error, board string) {
+	p := badGatewayPage{Route: rt, Err: err.Error(), Example: fmt.Sprintf(runExamples[0].Command, rt.Name), Board: board}
 	if wantsHTML(r) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.WriteHeader(http.StatusBadGateway)
@@ -237,7 +260,11 @@ func writeBadGateway(w http.ResponseWriter, r *http.Request, rt localRoute, err 
 	fmt.Fprintln(w, "  - it is still starting: reload in a moment")
 	fmt.Fprintf(w, "  - it does not listen on $PORT and $HOST: start it with them, e.g. %s\n", p.Example)
 	fmt.Fprintln(w, "  - it stopped: see the terminal running tsp run")
-	fmt.Fprintf(w, "Events: tsp logs   Dashboard: %s\n", dashboardURL)
+	fmt.Fprint(w, "Events: tsp logs")
+	if board != "" {
+		fmt.Fprint(w, "   Dashboard: "+board)
+	}
+	fmt.Fprintln(w)
 }
 
 // ---------------------------------------------------------------- the dashboard
@@ -277,6 +304,7 @@ type proxyStatus struct {
 	Crashes         int               `json:"crashes"`
 	SetAside        map[string]string `json:"setAside,omitempty"` // release → why
 	Discovery       watchStatus       `json:"discovery"`          // the watcher: on/off, interval, range, problems (routes are in apps)
+	CatchAll        bool              `json:"catchAll"`           // a name nothing serves gets a page (off: no answer)
 	HTTPRedirect    bool              `json:"httpRedirect"`
 	HTTPNote        string            `json:"httpNote,omitempty"`
 	AutoUpdate      bool              `json:"autoUpdate"`
@@ -303,6 +331,9 @@ func newDashboardStatus(dir string, reg *localRegistry, w *localWatcher, m *prox
 		Swaps: st.Swaps, Rollbacks: st.Rollbacks, Crashes: st.Crashes, SetAside: loadBinState(dir).Bad,
 		HTTPRedirect: st.HTTPPort > 0, HTTPNote: httpRedirectNote(st), AutoUpdate: autoUpdateEnabled(),
 		Discovery: w.status(),
+	}
+	if cfg, _, _, _ := LoadConfig(); cfg.LocalCatchAll {
+		ps.CatchAll = true
 	}
 	ps.Discovery.Routes = nil
 	if ps.Mode == "" {
@@ -573,7 +604,7 @@ dialog:not([data-state=ready]) #sd-stop,dialog:not([data-state=ready]):not([data
 <p>or a <code>"tsp"</code> section in the file your stack already has: package.json, deno.json, pyproject.toml (<code>[tool.tsp]</code>), Cargo.toml (<code>[package.metadata.tsp]</code>), composer.json (<code>"extra"</code>). Or start it through tsp, which sets <code>$PORT</code> and <code>$HOST</code>:</p>
 {{template "examples" .Examples}}
 <p>The server must listen on <code>$PORT</code> and <code>$HOST</code>: tsp sets both. Quote a command that uses them, so they expand when it runs.</p>
-<footer><a href="{{.Board}}">All names: {{.Board}}</a> &nbsp; <a href="{{.Docs}}">Docs</a></footer>
+<footer>{{if .Board}}<a href="{{.Board}}">All names: {{.Board}}</a> &nbsp; {{end}}<a href="{{.Docs}}">Docs</a></footer>
 </main></body></html>{{end}}
 
 {{define "badgateway"}}<!doctype html><html lang="en"><head>{{template "style"}}<title>{{.Route.URL}} is not answering</title></head><body><main>
@@ -584,7 +615,7 @@ dialog:not([data-state=ready]) #sd-stop,dialog:not([data-state=ready]):not([data
 <h2>Likely</h2><ul><li>It is still starting: reload in a moment.</li>
 <li>It does not listen on <code>$PORT</code> and <code>$HOST</code>: start it with them, e.g. <code>{{.Example}}</code>.</li>
 <li>It stopped: see the terminal running <code>tsp run</code>, and <code>tsp logs</code>.</li></ul>
-<footer><a href="{{.Board}}">All names: {{.Board}}</a></footer>
+{{if .Board}}<footer><a href="{{.Board}}">All names: {{.Board}}</a></footer>{{end}}
 </main></body></html>{{end}}
 
 {{define "dashboard"}}<!doctype html><html lang="en"><head>{{template "style"}}<title>tsp: local HTTPS names</title></head><body><main>
@@ -602,6 +633,7 @@ dialog:not([data-state=ready]) #sd-stop,dialog:not([data-state=ready]):not([data
 {{with .Proxy.SetAside}}<dt>Set aside</dt><dd>{{range $v := keys .}}<div class="mono">{{$v}}: {{index $.Proxy.SetAside $v}}</div>{{end}}</dd>{{end}}
 <dt>Discovery</dt><dd>{{if .Proxy.Discovery.Enabled}}finds dev servers on ports {{.Proxy.Discovery.Range}}: scans every {{.Proxy.Discovery.Every}}, and at once for a name it does not know{{else}}off: only tsp run apps (tsp configure --discover turns it on){{end}}</dd>
 {{range .Proxy.Discovery.Problems}}<dt>Skipped</dt><dd class="warn">{{.}}</dd>{{end}}
+<dt>Other names</dt><dd>{{if .Proxy.CatchAll}}a name nothing serves gets a page listing what runs (tsp configure --catch-all=false: no answer){{else}}a name nothing serves gets no answer, as if nothing listened (tsp configure --catch-all: a page listing what runs){{end}}</dd>
 <dt>http://</dt><dd>{{if .Proxy.HTTPRedirect}}<span class="ok">redirects to https</span>: http://&lt;name&gt;.localhost opens the same page over https{{else}}<span class="warn">not redirected</span>: {{.Proxy.HTTPNote}}{{end}}</dd>
 <dt>Updates</dt><dd>{{if .Proxy.AutoUpdate}}automatic{{if .Proxy.UpdateChecked}}, checked {{.Proxy.UpdateChecked}}{{end}}{{if .Proxy.Latest}}, latest {{.Proxy.Latest}}{{end}}{{else}}off (tsp configure --auto-update turns them on){{end}}</dd>
 </dl>

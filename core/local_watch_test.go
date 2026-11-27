@@ -39,7 +39,7 @@ func TestLocalWatcher_aNewServerAnswersOnTheFirstRequest(t *testing.T) {
 		}
 		return []Service{{Slug: "web", Name: "web", Port: port, PID: 9, Dir: "/src/web", Runtime: "node"}}
 	})
-	h := newLocalHandler(t.TempDir(), reg, w, newProxyMetrics(), "errors")
+	h := newLocalHandler(t.TempDir(), reg, w, newProxyMetrics(), "errors", everyOption)
 	w.scan()
 
 	started.Store(true) // the server starts after the last scan
@@ -71,7 +71,7 @@ func TestLocalWatcher_tspRunWinsOverAFoundName(t *testing.T) {
 		return []Service{{Slug: "api", Name: "api", Port: 1, PID: 2}, {Slug: "docs", Name: "docs", Port: 2, PID: 3}}
 	})
 	w.scan()
-	h := newLocalHandler(t.TempDir(), reg, w, newProxyMetrics(), "errors")
+	h := newLocalHandler(t.TempDir(), reg, w, newProxyMetrics(), "errors", everyOption)
 	if rec := get(h, "api.localhost", "/", ""); rec.Body.String() != "run" {
 		t.Errorf("api: %d %q, want the tsp run app", rec.Code, rec.Body.String())
 	}

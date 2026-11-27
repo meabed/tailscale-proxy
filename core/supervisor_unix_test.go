@@ -318,13 +318,13 @@ func TestSupervisor_redirectsHTTPThroughTheWorker(t *testing.T) {
 	}
 	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	req, _ := http.NewRequest("GET", "http://"+httpLn.Addr().String()+"/a?b=1", nil)
-	req.Host = "api.localhost"
+	req.Host = "tsp.localhost" // the dashboard: on by default, unlike an unknown name (the catch-all is off)
 	resp, err := client.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}
 	_ = resp.Body.Close()
-	if resp.StatusCode != http.StatusPermanentRedirect || resp.Header.Get("Location") != "https://api.localhost/a?b=1" {
+	if resp.StatusCode != http.StatusPermanentRedirect || resp.Header.Get("Location") != "https://tsp.localhost/a?b=1" {
 		t.Errorf("http: %s %q", resp.Status, resp.Header.Get("Location"))
 	}
 }

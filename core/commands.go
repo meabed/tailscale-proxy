@@ -28,6 +28,8 @@ func cmdConfigure(argv []string) int {
 	fs.StringVar(&cfg.AcceptDNS, "accept-dns", cfg.AcceptDNS, "set Tailscale MagicDNS (true|false) on start; empty = leave it alone")
 	fs.BoolVar(&cfg.AutoUpdate, "auto-update", cfg.AutoUpdate, "the local HTTPS proxy installs new releases itself (--auto-update=false to stop)")
 	fs.BoolVar(&cfg.Discover, "discover", cfg.Discover, "the local HTTPS proxy serves every dev server it finds at https://<name>.localhost (--discover=false: only tsp run apps)")
+	fs.BoolVar(&cfg.LocalDashboard, "dashboard", cfg.LocalDashboard, "the local HTTPS proxy serves its dashboard at https://tsp.localhost (--dashboard=false: no dashboard)")
+	fs.BoolVar(&cfg.LocalCatchAll, "catch-all", cfg.LocalCatchAll, "the local HTTPS proxy answers every .localhost name: one nothing serves gets a page listing what runs (default off: no answer)")
 	fs.StringVar(&cfg.LocalRequestLog, "local-request-log", cfg.LocalRequestLog, "the local HTTPS proxy's request log: errors (failed, 5xx, slow), all, off")
 	if err := fs.Parse(argv); err != nil {
 		if err == flag.ErrHelp {
@@ -118,7 +120,7 @@ func cmdDoctor(argv []string) int {
 	fmt.Println()
 	switch {
 	case exposeOK && localOK:
-		fmt.Println("All checks passed: your dev servers answer at https://<name>.localhost (" + dashboardURL + "), and `tsp start` shares them online.")
+		fmt.Println("All checks passed: your dev servers answer at https://<name>.localhost" + boardNote(" (%s)") + ", and `tsp start` shares them online.")
 		return 0
 	case exposeOK:
 		fmt.Println("`tsp start` is ready. Local HTTPS names need the fixes above (usually one `tsp service install`).")
@@ -207,6 +209,8 @@ func cmdRoutes(argv []string) int {
 	for _, n := range notes {
 		fmt.Println("note: " + n)
 	}
-	fmt.Println("Live, with requests per name: " + dashboardURL)
+	if note := boardNote("Live, with requests per name: %s"); note != "" {
+		fmt.Println(note)
+	}
 	return 0
 }

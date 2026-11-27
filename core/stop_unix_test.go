@@ -71,7 +71,7 @@ func TestDashboardStop_showsThePlanThenStops(t *testing.T) {
 	cmd, port := startListener(t, false)
 	reg := testRegistry(t)
 	running(t, reg, localRoute{Name: "web", Port: port, PID: cmd.Process.Pid, Dir: "/src/web"})
-	h := newLocalHandler(t.TempDir(), reg, nil, newProxyMetrics(), "errors")
+	h := newLocalHandler(t.TempDir(), reg, nil, newProxyMetrics(), "errors", everyOption)
 
 	rec := dashboardRequest(h, "GET", "/api/apps/web", "", nil)
 	var plan stopPlan
@@ -97,7 +97,7 @@ func TestDashboardStop_refusesOtherSitesAndForms(t *testing.T) {
 	cmd, port := startListener(t, false)
 	reg := testRegistry(t)
 	running(t, reg, localRoute{Name: "web", Port: port, PID: cmd.Process.Pid, Dir: "/src/web"})
-	h := newLocalHandler(t.TempDir(), reg, nil, newProxyMetrics(), "errors")
+	h := newLocalHandler(t.TempDir(), reg, nil, newProxyMetrics(), "errors", everyOption)
 
 	for _, tc := range []struct {
 		name   string

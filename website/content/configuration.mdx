@@ -34,7 +34,9 @@ Each run takes the built-in defaults, then the file, then the flags you pass, so
   "acceptDns": "",
   "autoUpdate": true,
   "localRequestLog": "errors",
-  "discover": true
+  "discover": true,
+  "localDashboard": true,
+  "localCatchAll": false
 }
 ```
 
@@ -55,6 +57,8 @@ Each run takes the built-in defaults, then the file, then the flags you pass, so
 | `docker` | Also discover Docker containers via the local Docker API (read-only, over `/var/run/docker.sock`) |
 | `autoUpdate` | The local HTTPS proxy installs new releases itself, checksum-verified, and the CLI says once a day when one is out (default on; `TSP_NO_UPDATE=1` or `CI` turns both off) |
 | `discover` | The local HTTPS proxy finds dev servers and names them, with no `tsp run` (default on). Each project's own settings live in its config: [Pick the name](/local-https#pick-the-name) |
+| `localDashboard` | `https://tsp.localhost` is the dashboard: what runs, CPU, memory, requests, a Stop per app (default on; `tsp configure --dashboard=false` turns it off) |
+| `localCatchAll` | A `.localhost` name nothing serves gets a page listing what runs and how to start an app there (default off: no answer, as if nothing listened; `tsp configure --catch-all` turns it on) |
 | `localRequestLog` | What the local HTTPS proxy logs per request: `"errors"` (failed, 5xx, over 2 s; the default), `"all"` or `"off"` ([Logs and stats](/logs-and-stats)) |
 | `acceptDns` | `""` leaves Tailscale DNS alone; `"true"`/`"false"` runs `tailscale set --accept-dns` on start |
 

@@ -55,7 +55,7 @@ const healthName = "tsp-health"
 // Names come from tsp run (reg) first, then from what the watcher found (w, nil
 // when discovery is off). tsp.localhost is the dashboard (dir's state, the names,
 // m's traffic).
-func newLocalHandler(dir string, reg *localRegistry, w *localWatcher, m *proxyMetrics, requestLog string) http.Handler {
+func newLocalHandler(dir string, reg *localRegistry, w *localWatcher, m *proxyMetrics, requestLog string, opts func() localOptions) http.Handler {
 	proxy := &httputil.ReverseProxy{
 		Transport:     newUpstreamTransport(),
 		BufferPool:    copyBuffers,
@@ -79,24 +79,23 @@ func newLocalHandler(dir string, reg *localRegistry, w *localWatcher, m *proxyMe
 			if mw, ok := rw.(*meteredWriter); ok {
 				mw.failed = true
 			}
-			writeBadGateway(rw, r, rt, err)
+			writeBadGateway(rw, r, rt, err, opts().boardURL())
 		},
 	}
 	board := dashboardHandler(dir, reg, w, m)
 	return http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
 		name := nameFromHost(r.Host)
-		switch name {
-		case healthName:
+		o := opts()
+		switch {
+		case name == healthName:
 			_, _ = io.WriteString(rw, "ok "+Version+"\n")
 			return
-		case dashboardName:
+		case name == dashboardName && o.Dashboard:
 			board.ServeHTTP(rw, r)
 			return
-		case "":
-			if hostOnly(r.Host) == localTLD { // https://localhost: the dashboard
-				http.Redirect(rw, r, dashboardURL+r.URL.RequestURI(), http.StatusTemporaryRedirect)
-				return
-			}
+		case name == "" && hostOnly(r.Host) == localTLD && o.Dashboard: // https://localhost: the dashboard
+			http.Redirect(rw, r, dashboardURL+r.URL.RequestURI(), http.StatusTemporaryRedirect)
+			return
 		}
 		mw := newMeteredWriter(rw)
 		w.touch()
@@ -109,8 +108,10 @@ func newLocalHandler(dir string, reg *localRegistry, w *localWatcher, m *proxyMe
 		if ok {
 			proxy.ServeHTTP(mw, r.WithContext(context.WithValue(r.Context(), localRouteKey{}, rt)))
 			key = rt.Name
-		} else {
-			writeNotFound(mw, r, allRoutes(reg, w), name)
+		} else if o.CatchAll {
+			writeNotFound(mw, r, allRoutes(reg, w), name, o.boardURL())
+		} else { // only a client that sent another name in TLS gets here
+			http.Error(mw, "tsp: no app at this name", http.StatusMisdirectedRequest)
 		}
 		status, ttfb := mw.result()
 		m.record(key, status, ttfb, mw.bytes, mw.failed)
@@ -308,11 +309,19 @@ func newLocalServer(dir string) (*localServer, error) {
 	cfg, _, _, _ := LoadConfig()
 	reg := newLocalRegistry(filepath.Join(dir, "routes"))
 	w := newLocalWatcher(reg, execRunner{})
-	srv := newServer("", newLocalHandler(dir, reg, w, m, cfg.LocalRequestLog))
-	srv.TLSConfig = &tls.Config{GetCertificate: iss.GetCertificate, MinVersion: tls.VersionTLS12}
+	opts := newLiveOptions()
+	srv := newServer("", newLocalHandler(dir, reg, w, m, cfg.LocalRequestLog, opts.get))
+	// A name the proxy does not answer gets no certificate: the browser sees no
+	// site there, as if nothing listened (the catch-all off, the dashboard off).
+	srv.TLSConfig = &tls.Config{MinVersion: tls.VersionTLS12, GetCertificate: func(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
+		if name := nameFromHost(hello.ServerName); !answers(reg, w, opts.get(), name) {
+			return nil, fmt.Errorf("tsp answers no app at %q", hello.ServerName)
+		}
+		return iss.GetCertificate(hello)
+	}}
 	srv.ErrorLog = log.New(io.Discard, "", 0) // per-connection TLS noise: an untrusted CA, a port scan
 	srv.ConnState = m.connState
-	rd := newServer("", redirectHandler())
+	rd := newServer("", redirectHandler(func(name string) bool { return answers(reg, w, opts.get(), name) }, opts.get))
 	rd.ErrorLog = srv.ErrorLog
 	return &localServer{dir: dir, ca: ca, srv: srv, redirect: rd, metrics: m, watcher: w}, nil
 }

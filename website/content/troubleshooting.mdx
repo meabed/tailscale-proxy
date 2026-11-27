@@ -14,7 +14,8 @@ Find your symptom below; the rest of the page has the details.
 | --- | --- |
 | `tsp run` warns "the local HTTPS proxy is not running" | `tsp service install` (it prints the proxy's log when it cannot start) |
 | Browser: "not private"; curl: certificate error | `tsp trust` (macOS: at the screen, not over SSH), then restart the browser |
-| `https://<name>.localhost` answers 404 "nothing runs at" | start the app; the page lists what does run, and the name a server gets is its folder's name unless its config says otherwise ([Pick the name](/local-https#pick-the-name)) |
+| `https://<name>.localhost` can't be reached (no answer, a TLS error) | nothing serves that name: start the app, or check its name with `tsp routes`; a server gets its folder's name unless its config says otherwise ([Pick the name](/local-https#pick-the-name)). `tsp configure --catch-all` makes such names show a page listing what runs |
+| `https://<name>.localhost` answers 404 "nothing runs at" | the catch-all is on and nothing serves that name: the page lists what does run |
 | A server runs but has no name | it listens outside the port range (`tsp configure --ports …`), its runtime isn't a web one (`--all`), discovery is off, or its config was skipped: `tsp routes` and `https://tsp.localhost` say which file and how to fix it |
 | It answers 502 "not answering" | the app is still starting, stopped, or (with `tsp run`) doesn't listen on `$PORT` and `$HOST`; the page shows the port, process and folder |
 | `http://<name>.localhost` doesn't redirect | another program holds port 80 (`tsp doctor` names it), or the boot service predates the redirect: `tsp service install` once |

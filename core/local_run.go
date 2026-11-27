@@ -240,7 +240,7 @@ func cmdRun(argv []string) int {
 	if ca, err := ensureCA(dir); err == nil {
 		caPath = ca.certPEM
 	}
-	fmt.Fprintf(os.Stderr, "tsp: %s → 127.0.0.1:%d (PORT=%d HOST=127.0.0.1); all names: %s\n", rt.URL(), port, port, dashboardURL)
+	fmt.Fprintf(os.Stderr, "tsp: %s → 127.0.0.1:%d (PORT=%d HOST=127.0.0.1)%s\n", rt.URL(), port, port, boardNote("; all names: %s"))
 	healProxy(dir, rt)
 	return runChild(spec.argv, runEnv(os.Environ(), port, caPath, os.Getenv))
 }

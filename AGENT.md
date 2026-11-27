@@ -72,6 +72,7 @@ module** under `desktop/` that imports `core` and drives it in-process.
 | `core/project_config.go` | The project config resolver (`.tsp.json`, package.json, deno.json(c), pyproject.toml, Cargo.toml, composer.json), cached per file; minimal TOML table reader |
 | `core/local_watch.go` | The local proxy's watcher: discovery into an in-memory store keyed by name, adaptive interval, on-demand rescan for unknown names |
 | `core/local_pages.go` | What the local proxy answers itself: the `tsp.localhost` dashboard, `/api/status` and the stop API, 404/502 pages (HTML or text), port 80 (same pages over https) |
+| `core/local_options.go` | What the local proxy answers besides served names, live from config.json: `localDashboard` (on), `localCatchAll` (off: unknown names get no certificate, port 80 closes) |
 | `core/stop.go` | `tsp stop <name\|port\|--pid>` and the dashboard's Stop: verify, signal, wait, per-OS commands (`process_*.go` signals) |
 | `core/local_service.go` | `tsp service install/uninstall/status` (launchd/systemd), sudo re-run, test seams |
 | `core/proxy_bin.go` | The proxy's copies in `bin/` (`tsp-<release>`, `state.json`: current, previous, bad), `syncProxyBin` (newer CLIs copy themselves in), `markBad`, `versionLess` |
