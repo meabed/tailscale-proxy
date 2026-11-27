@@ -17,10 +17,13 @@ version.
 
 | Command | What it does |
 | --- | --- |
-| `tsp run` | Run the app in this folder at `https://<name>.localhost`, from package.json `"tsp": { "name", "script" }` |
-| `tsp run <name> -- <cmd...>` | Run any command at `https://<name>.localhost` |
+| (nothing) | Every dev server found gets `https://<name>.localhost`: its folder's name, or `name` from its project config ([Local HTTPS names](/local-https#start-your-app-as-usual)) |
+| `tsp run` | Run the app in this folder from package.json or `.tsp.json` `"tsp": { "name", "script" }` |
+| `tsp run <name> -- '<command>'` | Run any command at `https://<name>.localhost`; one quoted string runs through the shell, after `PORT` and `HOST` are set |
 | `tsp run --force` | Take a name over from a run in another terminal |
-| `tsp routes [--json]` | The names running now, with port, process and folder |
+| `tsp routes [--json]` | The names running now: how each started (`run` or `found`), port, folder |
+| `tsp configure --discover=false` | Stop finding dev servers; only `tsp run` names remain |
+| `https://tsp.localhost` | The dashboard: what runs, requests and latency per name, the proxy's state (JSON at `/api/status`) |
 | `tsp service install` | Once per machine (your password once): the proxy from boot, its CA trusted; it updates itself afterwards. Safe to repeat |
 | `tsp service status` | Three ✓/✗ lines; exit 1 when one is off |
 | `tsp service uninstall` | Stop and remove the boot service |

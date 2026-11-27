@@ -55,7 +55,8 @@ takes over within seconds, with no password and no command to run. Running `tsp 
 it checks what is in place and fixes only what is missing. `tsp service status` prints the same lines and exits 1 if
 any is off.
 
-Then run an app at its name: [Local HTTPS names](/local-https).
+That's all: start a dev server the way you always do and it answers at `https://<folder>.localhost`. Open
+`https://tsp.localhost` to see the names. Naming apps and other ways to run them: [Local HTTPS names](/local-https).
 
 ## 3. Tailscale, for online links
 
@@ -108,12 +109,15 @@ Tailscale (tsp start: https://<node>.ts.net/<project>)
 ✓ funnel enabled
 ✓ service discovery  (6 service(s) in 3000-6000)
 
-Local HTTPS names (tsp run: https://<name>.localhost)
+Local HTTPS names (https://<name>.localhost: every dev server found, and tsp run apps)
 ✓ boot service /Library/LaunchDaemons/com.meabed.tailscale-proxy.plist
-✓ proxy running (tsp 1.12.0, pid 57001, port 443)
+✓ proxy running (tsp 1.16.2, pid 57001, port 443)
+✓ http://*.localhost redirects to https
 ✓ local CA trusted by the OS
+✓ finds dev servers on ports 3000-6000 (2 found now; scans every 10s while in use, 1m0s idle)
+✓ auto-update on (checked 2h ago, latest 1.16.2)
 
-All checks passed: `tsp start` exposes your servers, `tsp run` serves an app at https://<name>.localhost.
+All checks passed: your dev servers answer at https://<name>.localhost (https://tsp.localhost), and `tsp start` shares them online.
 ```
 
 Each ✗ is followed by the command that fixes it, and the last line says which half is ready. Then share your dev servers: [Share online](/share).

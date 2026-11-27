@@ -1,5 +1,8 @@
 # Configuration
 
+These are your machine's settings. A project's own (its name, port, whether to share it) live in the project, in
+`.tsp.json` or the `tsp` key of the manifest it already has: [Pick the name](/local-https#pick-the-name).
+
 `tsp configure [flags]` writes `~/.tsp/config.json` (created on first
 use). Flags always override the config for a single run; the file is the source
 of defaults, and a bare `tsp` runs `start` with it.
@@ -30,7 +33,8 @@ Each run takes the built-in defaults, then the file, then the flags you pass, so
   "docker": false,
   "acceptDns": "",
   "autoUpdate": true,
-  "localRequestLog": "errors"
+  "localRequestLog": "errors",
+  "discover": true
 }
 ```
 
@@ -50,6 +54,7 @@ Each run takes the built-in defaults, then the file, then the flags you pass, so
 | `matchSeparators` | Treat `-` and `_` as interchangeable in the path slug, so `/module-api/` and `/module_api/` both route (default on) |
 | `docker` | Also discover Docker containers via the local Docker API (read-only, over `/var/run/docker.sock`) |
 | `autoUpdate` | The local HTTPS proxy installs new releases itself, checksum-verified, and the CLI says once a day when one is out (default on; `TSP_NO_UPDATE=1` or `CI` turns both off) |
+| `discover` | The local HTTPS proxy finds dev servers and names them, with no `tsp run` (default on). Each project's own settings live in its config: [Pick the name](/local-https#pick-the-name) |
 | `localRequestLog` | What the local HTTPS proxy logs per request: `"errors"` (failed, 5xx, over 2 s; the default), `"all"` or `"off"` ([Logs and stats](/logs-and-stats)) |
 | `acceptDns` | `""` leaves Tailscale DNS alone; `"true"`/`"false"` runs `tailscale set --accept-dns` on start |
 

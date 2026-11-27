@@ -59,6 +59,16 @@ The project name is the folder that holds the nearest `package.json`, `go.mod`, 
 `.git`. If one folder runs two servers, the lower port gets `/<project>/` and the other `/<project>-<port>/`, and
 `tsp` prints the map.
 
+A project can choose its own path and whether it is shared, in the same config that names it locally
+([Pick the name](/local-https#pick-the-name)):
+
+```json
+{ "name": "api.acme", "path": "api", "share": "private" }
+```
+
+`share: "private"` keeps it to your tailnet even while `tsp` runs public: Funnel callers get a 404 and never see it
+listed. `share: false` leaves it out of `tsp` entirely.
+
 ## What your app sees
 
 Requests arrive the way they would on localhost: `Host: localhost:<port>`, the `/<project>` prefix removed, so CORS,

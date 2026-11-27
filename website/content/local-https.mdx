@@ -1,13 +1,14 @@
 # Local HTTPS names
 
-`tsp run` starts an app on a free port and serves it at a stable HTTPS name on this machine, for as long as it runs.
+Every dev server on this machine gets a stable HTTPS name, for as long as it runs. Start it the way you always do:
+tsp finds it and names it after its folder, or after the name in your project's config.
 
 <Address
   reach="local"
-  command="tsp run"
+  command="tsp"
   parts={[
     { text: "https://", note: "A certificate signed by a certificate authority that only this machine trusts." },
-    { text: "web.acme", note: "The name in package.json, or the one you pass to tsp run." },
+    { text: "web.acme", note: "The folder's name, or the one your project's config gives it." },
     { text: ".localhost", note: "Every OS sends *.localhost to this machine itself; nothing leaves it." },
   ]}
 />
@@ -16,8 +17,8 @@
 
 - **HTTPS like production.** Secure cookies, `SameSite=None`, service workers, passkeys, the clipboard API and OAuth
   libraries that refuse plain HTTP all work.
-- **No port bookkeeping.** tsp picks a free port in 4000–4999 (the same one for a name, run after run, while it is
-  free). Two projects that both want port 3000 stop colliding.
+- **Names, not ports.** You open `web.acme.localhost`, whatever port the server picked today; with `tsp run`, tsp picks
+  a free port for it, so two projects that both want port 3000 stop colliding.
 - **Names that say what they are.** `api.acme.localhost` and `web.acme.localhost` instead of two numbers; cookies
   scoped to `.acme.localhost` are shared between them.
 - **Subdomains per tenant.** With `help-chat` running, `https://acme.help-chat.localhost` reaches it too.
@@ -29,41 +30,212 @@ tsp service install    # the proxy from boot + the CA trusted; re-run any time, 
 tsp service status     # three ✓ lines, exit 1 when one is off
 ```
 
-## Run an app
-
-```jsonc
-// package.json
-"scripts": { "dev": "tsp run", "dev:app": "bun --hot src/index.ts" },
-"tsp": { "name": "api.acme", "script": "dev:app" }
-```
+## Start your app as usual
 
 ```bash
-bun dev                                   # → https://api.acme.localhost
-tsp run api.acme -- bun src/index.ts      # any command, no package.json needed
-tsp run --force                           # take the name over from another terminal
-TSP=0 bun dev                             # run dev:app as is, on its own port
-tsp routes                                # running names (--json for scripts)
+cd ~/acme/web && npm run dev          # Vite on 5173, as always
 ```
 
-The app gets:
+```
+$ tsp routes
+NAME                                         FROM   PORT   FOLDER
+https://web.localhost                        found  5173   ~/acme/web (node)
+Live, with requests per name: https://tsp.localhost
+```
 
-| Variable              | Value                                                                    |
-| --------------------- | ------------------------------------------------------------------------ |
-| `PORT`                | a port in 4000–4999, the same for a name run after run while it is free  |
-| `HOST`                | `127.0.0.1`                                                              |
-| `NODE_EXTRA_CA_CERTS` | the local CA, unless already set (Bun/Node calls to other `.localhost` names) |
+No script changes, and nobody else on the project needs tsp. The local proxy looks for dev servers in your port range
+(the one in [Configuration](/configuration), plus 4000–4999) and gives each the name of its project folder. It looks
+every 10 seconds while you use the names and every minute otherwise, and it looks again the moment you open a name it
+doesn't know yet, so a server you just started answers on the first request. A server that stops loses its name after a
+few scans.
 
-The app's script must listen on `$PORT` and `$HOST` (`vite --port $PORT --host $HOST`,
-`next dev -p $PORT -H $HOST`; Bun and Hono servers read `PORT`). The script runs with the
-package manager that ran `tsp run` (`npm_execpath`), so `bun dev` runs `bun run dev:app`.
+### Pick the name
+
+Put the name in the project's config, in whichever file the project already has. The first one found in the project
+folder wins.
+
+<Tabs items={[".tsp.json", "package.json", "pyproject.toml", "Cargo.toml", "composer.json", "deno.json"]}>
+  <Tabs.Tab>
+    ```json
+    { "name": "web.acme" }
+    ```
+
+    Any language. Use it for Go, Ruby, PHP without Composer, or to keep the setting out of a shared manifest.
+
+  </Tabs.Tab>
+  <Tabs.Tab>
+    ```jsonc
+    "tsp": { "name": "web.acme" }
+    ```
+  </Tabs.Tab>
+  <Tabs.Tab>
+    ```toml
+    [tool.tsp]
+    name = "api.acme"
+    share = "private"
+    ```
+  </Tabs.Tab>
+  <Tabs.Tab>
+    ```toml
+    [package.metadata.tsp]
+    name = "svc.acme"
+    port = 8080
+    ```
+  </Tabs.Tab>
+  <Tabs.Tab>
+    ```json
+    "extra": { "tsp": { "name": "shop.acme" } }
+    ```
+  </Tabs.Tab>
+  <Tabs.Tab>
+    ```jsonc
+    "tsp": { "name": "edge.acme" }   // deno.json or deno.jsonc
+    ```
+  </Tabs.Tab>
+</Tabs>
+
+| Field | Default | What it does |
+| --- | --- | --- |
+| `name` | the folder's name | the app's address, `https://<name>.localhost` |
+| `port` | the lowest port | which listener is the app, when the project runs several servers |
+| `share` | your global mode | online with `tsp`: `"public"`, `"private"` (your tailnet only) or `false` (never) |
+| `path` | the name's first label | the app's path online, `https://<machine>.ts.net/<path>/` |
+| `enabled` | `true` | `false` keeps tsp away from the project entirely |
+| `script` | none | for `tsp run` only (below) |
+
+tsp reads a config file only if you own it and nobody else can write it, and never looks above your home folder or
+inside a folder everyone can write, such as `/tmp`. A file it refuses or can't parse leaves the project out (nothing
+falls back to defaults), and `tsp doctor`, `tsp routes` and the dashboard say which file and the command that fixes
+it. To turn discovery off: `tsp configure --discover=false`.
+
+The app receives the request with its own name as the host (`Host: web.acme.localhost`) and `X-Forwarded-Proto:
+https`, `X-Forwarded-Host` and `X-Forwarded-For`. Vite and Next.js accept `*.localhost` as they come; Django and Rails
+check the host:
+
+```python
+# Django settings.py
+ALLOWED_HOSTS = [".localhost"]
+CSRF_TRUSTED_ORIGINS = ["https://*.localhost"]
+```
+
+```ruby
+# Rails config/environments/development.rb
+config.hosts << ".localhost"
+```
+
+## Or run it through tsp
+
+`tsp run` starts the server for you on a free port it keeps for that name (4000–4999), sets `PORT` and `HOST`, and
+holds the name while the command runs: useful when two projects want the same port, or in scripts.
+
+**In a `package.json` project**, keep the real command as its own script and point `dev` at tsp. `npm run dev`,
+`pnpm dev`, `yarn dev` and `bun dev` all work: the script runs with the package manager that started it.
+
+```jsonc
+"scripts": { "dev": "tsp run", "dev:app": "vite --port $PORT --host $HOST --strictPort" },
+"tsp": { "name": "web.acme", "script": "dev:app" }
+```
+
+**Anything else**: give the name and the command. A command in one quoted string runs through the shell after tsp
+sets `PORT` and `HOST`; several arguments run as they are, for servers that read `PORT` themselves.
+
+<Tabs items={["Vite", "Next.js", "Python", "Django", "Rails", "PHP", "Node / Bun / Deno", "Go", "Docker"]}>
+  <Tabs.Tab>
+    ```bash
+    tsp run web.acme -- 'vite --port $PORT --host $HOST'
+    ```
+
+    Astro, SvelteKit, Nuxt and React Router take the same `--port $PORT --host $HOST`.
+
+  </Tabs.Tab>
+  <Tabs.Tab>
+    ```bash
+    tsp run web.acme -- 'next dev -p $PORT -H $HOST'
+    ```
+  </Tabs.Tab>
+  <Tabs.Tab>
+    ```bash
+    tsp run api.acme -- 'uvicorn main:app --reload --port $PORT --host $HOST'   # FastAPI
+    tsp run api.acme -- 'flask run --port $PORT --host $HOST'                    # Flask
+    ```
+  </Tabs.Tab>
+  <Tabs.Tab>
+    ```bash
+    tsp run web.acme -- 'python manage.py runserver $HOST:$PORT'
+    ```
+  </Tabs.Tab>
+  <Tabs.Tab>
+    ```bash
+    tsp run web.acme -- 'bin/rails server -p $PORT -b $HOST'
+    ```
+  </Tabs.Tab>
+  <Tabs.Tab>
+    ```bash
+    tsp run web.acme -- 'php -S $HOST:$PORT -t public'                    # plain PHP
+    tsp run web.acme -- 'php artisan serve --host=$HOST --port=$PORT'     # Laravel
+    ```
+  </Tabs.Tab>
+  <Tabs.Tab>
+    ```bash
+    tsp run api.acme -- node server.js               # reads process.env.PORT
+    tsp run api.acme -- bun --hot src/index.ts       # Bun.serve reads PORT
+    tsp run api.acme -- deno run -A --watch main.ts  # Deno.env.get("PORT")
+    ```
+  </Tabs.Tab>
+  <Tabs.Tab>
+    ```bash
+    tsp run api.acme -- go run .
+    ```
+
+    ```go
+    addr := net.JoinHostPort(os.Getenv("HOST"), os.Getenv("PORT"))
+    log.Fatal(http.ListenAndServe(addr, mux))
+    ```
+
+    A Rust server reads them the same way: `tsp run api.acme -- cargo run`.
+
+  </Tabs.Tab>
+  <Tabs.Tab>
+    ```bash
+    tsp run api.acme -- 'docker run --rm -p $HOST:$PORT:8080 acme/api'
+    ```
+
+    The container keeps its own port (8080 here); Docker publishes it on the port tsp picked.
+
+  </Tabs.Tab>
+</Tabs>
+
+| `tsp run` sets | Value |
+| --- | --- |
+| `PORT` | a port in 4000–4999, the same for a name run after run while it is free |
+| `HOST` | `127.0.0.1` |
+| `NODE_EXTRA_CA_CERTS` | the local CA, unless already set, so Node and Bun trust other `.localhost` names |
+
+A `tsp run` name wins over a found one. `tsp run --force` takes a name over from another terminal; `TSP=0 npm run dev`
+runs the `dev:app` script as it is, without tsp. The name `tsp` is reserved for the dashboard.
+
+## The dashboard
+
+`https://tsp.localhost` shows what runs (how each was started, port, folder, uptime), requests, failures and p50/p95
+per name, the proxy's version, live updates and set-aside releases, discovery and update status, and any config file
+it skipped, with how to fix it. It is read-only and reachable only from this machine. The same data as JSON for
+scripts and agents: `https://tsp.localhost/api/status`.
+
+Opening a name that nothing runs under shows the names that do run and how to start an app under that one; a name
+whose app stopped answering shows its port, process, folder and the likely cause. A browser gets a page, curl gets the
+same as text.
+
+## Plain HTTP
+
+`http://<name>.localhost` redirects to `https://<name>.localhost` (308: the method and body are kept), and
+`http://localhost/` to the dashboard, so a name typed without `https://` still works. If another program holds port 80,
+HTTPS keeps working and `tsp doctor` names the program.
+
+## Subdomains
 
 A name also answers for its subdomains: with `help-chat` running,
 `https://acme.help-chat.localhost` reaches it too (the nearest registered parent wins),
 for apps that serve one tenant per subdomain.
-
-Requests reach the app with the original `Host` (`api.acme.localhost`) and
-`X-Forwarded-Proto: https`, `X-Forwarded-Host`, `X-Forwarded-For`. HTTP/2, streaming
-(SSE) and WebSockets (Vite/Next hot reload) pass through.
 
 <Callout type="info">
   Need the same app online, for a webhook or a phone? A `tsp run` app is a dev server like any other: `tsp` finds it and
@@ -72,11 +244,13 @@ Requests reach the app with the original `Host` (`api.acme.localhost`) and
 
 ## Technical details
 
-- **Routes** are one JSON file per running app in `~/.tsp/routes/<name>.json`
-  (`{name, port, pid, dir}`), written atomically by its `tsp run` and removed when it
-  exits. A route whose `tsp run` process is gone is ignored and deleted on the next read,
-  so a crash or `kill -9` never leaves a name behind. The proxy re-reads the folder only
-  when it changes.
+- **Found servers** live in the proxy's memory: each scan lists the listening sockets in the port range with their
+  process (reusing what it learned about each process, so an idle scan costs one `lsof`), keeps the web runtimes, finds
+  each one's project folder and config, and maps names to ports. A project that runs several servers gets its main name
+  on the lowest port (or the config's `port`) and `<name>-<port>` for the others.
+- **`tsp run` names** are one JSON file per running app in `~/.tsp/routes/<name>.json` (`{name, port, pid, dir}`) and a
+  lock its process holds. Both go when the run ends, and the proxy drops the name of a run killed with `kill -9` the next
+  time it reads the folder, which it does only when the folder changes.
 - **Certificates**: a local CA in `~/.tsp/ca/` (ECDSA P-256, 10 years, key
   `0600`) signs one certificate per exact name on first use (90 days, renewed in memory).
   The CA carries a name constraint for `localhost`: it cannot sign a certificate for any

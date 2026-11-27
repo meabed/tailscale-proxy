@@ -40,7 +40,7 @@ const uses: { problem: string; detail: string; answer: string; reach: 'local' | 
   },
   {
     problem: 'Three services, and nobody remembers which port is which',
-    detail: 'Each app gets a name; tsp picks a free port and the name never changes.',
+    detail: 'Each app is named after its folder, or the name in its config, whatever port it runs on today.',
     answer: 'https://api.acme.localhost',
     reach: 'local',
     to: '/local-https',
@@ -94,17 +94,19 @@ function Command({ children }: { children: string }) {
   );
 }
 
-// What the two commands print, as tsp prints them: a name on this machine, then the online links.
+// A dev server started as usual, the name tsp found for it, then the online links: as tsp prints them.
 const terminal: { prompt?: string; command?: string; out?: string; tone?: 'local' | 'online' | 'muted' }[] = [
-  { prompt: '~/acme/web', command: 'bun dev' },
-  { out: 'tsp: https://web.acme.localhost → 127.0.0.1:4417', tone: 'local' },
-  { out: '  VITE ready in 412 ms', tone: 'muted' },
+  { prompt: '~/acme/web', command: 'npm run dev' },
+  { out: '  VITE ready in 412 ms  ➜  Local: http://localhost:5173/', tone: 'muted' },
+  {},
+  { prompt: '~/acme', command: 'tsp routes' },
+  { out: 'https://web.acme.localhost   found  5173  ~/acme/web (node)', tone: 'local' },
   {},
   { prompt: '~/acme', command: 'tsp' },
   { out: 'public (Funnel) → 127.0.0.1:18443 (port 443)', tone: 'muted' },
   {},
   { out: 'Services:' },
-  { out: '  https://bigfoot.tail1234.ts.net/web/  →  127.0.0.1:4417', tone: 'online' },
+  { out: '  https://bigfoot.tail1234.ts.net/web/  →  127.0.0.1:5173', tone: 'online' },
   { out: '  https://bigfoot.tail1234.ts.net/api/  →  127.0.0.1:4100', tone: 'online' },
 ];
 
@@ -112,7 +114,7 @@ const lineTone = { local: 'text-local', online: 'text-accent', muted: 'text-mute
 
 function HeroTerminal() {
   return (
-    <figure className='border-border-strong overflow-hidden rounded-xl border bg-(--code-bg) shadow-(--shadow)' aria-label='A terminal: bun dev prints the local name, tsp prints the online links'>
+    <figure className='border-border-strong overflow-hidden rounded-xl border bg-(--code-bg) shadow-(--shadow)' aria-label='A terminal: npm run dev starts Vite, tsp routes shows its local name, tsp prints the online links'>
       <div className='border-border flex items-center gap-1.5 border-b px-3.5 py-2.5' aria-hidden='true'>
         {[0, 1, 2].map((dot) => (
           <span key={dot} className='bg-border-strong size-2.5 rounded-full' />
@@ -178,10 +180,10 @@ function Home() {
         <div className='mt-10 grid gap-y-10'>
           <Address
             reach='local'
-            command='tsp run'
+            command='tsp'
             parts={[
               { text: 'https://', note: 'A real certificate your browser and curl trust, signed on this machine.' },
-              { text: 'api.acme', note: 'The name you give the app in package.json. You never type a port again.' },
+              { text: 'api.acme', note: "The project folder's name, or the one in its config. You never type a port again." },
               { text: '.localhost', note: 'Reachable only from this machine.' },
             ]}
           />
@@ -228,13 +230,16 @@ function Home() {
             <p>It starts the local proxy from boot and trusts its certificate. Run it again any time: it checks what is in place and fixes only what is missing.</p>
             <Command>tsp service install</Command>
           </Step>
-          <Step title='Run an app at its name'>
+          <Step title='Start your app as usual'>
             <p>
-              Name the app in <code>package.json</code> and keep your real dev command as another script. It must listen on <code>$PORT</code>.
+              Any dev server, any language, with no script changes: tsp finds it and serves it at <code>https://&lt;folder&gt;.localhost</code>. To pick the name, put it in the project, in <code>.tsp.json</code> or the <code>tsp</code> key
+              of the manifest it already has.
             </p>
-            <pre className='border-border mt-2.5 overflow-x-auto rounded-lg border bg-(--code-bg) px-3.5 py-2.5 font-mono text-[0.84rem] text-(--code-fg)'>{`"scripts": { "dev": "tsp run", "dev:app": "vite --port $PORT --host $HOST" },
-"tsp": { "name": "web.acme", "script": "dev:app" }`}</pre>
-            <Command>{'bun dev            # https://web.acme.localhost'}</Command>
+            <Command>{`echo '{ "name": "web.acme" }' > .tsp.json`}</Command>
+            <Command>{'npm run dev        # https://web.acme.localhost'}</Command>
+            <p className='mt-3'>
+              <Link to='/local-https'>Every config file, and running apps through tsp</Link>. Open <code>https://tsp.localhost</code> to see what runs.
+            </p>
           </Step>
           <Step title='Share it online when you need to'>
             <p>
