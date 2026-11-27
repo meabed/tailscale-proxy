@@ -17,7 +17,7 @@
     "browser": true,
     "es2024": true
   },
-  "ignorePatterns": ["dist/**", ".output/**", "src/routeTree.gen.ts"],
+  "ignorePatterns": ["dist/**", "src/routeTree.gen.ts"],
   "rules": {
     "typescript/no-for-in-array": "error",
     "typescript/no-deprecated": "error",

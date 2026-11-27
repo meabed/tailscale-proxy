@@ -11,7 +11,7 @@
   "bracketSameLine": false,
   "bracketSpacing": true,
   "endOfLine": "lf",
-  "ignorePatterns": ["dist/**", ".output/**", "src/routeTree.gen.ts", "content/**"],
+  "ignorePatterns": ["dist/**", "src/routeTree.gen.ts", "content/**"],
   "sortImports": {
     "groups": [["value-builtin", "value-external"], "value-internal", ["value-parent", "value-sibling", "value-index"], "type-import", "unknown"],
     "internalPattern": ["@/", "~/"],
