@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 "use strict";
 
-// Resolves the native `tsp` binary and execs it. Primary path: the per-platform
+// Resolves the native `tsp` binary and runs it. Primary path: the per-platform
 // optionalDependency package (installed automatically by npm). Fallback: download
 // the matching binary from the GitHub release and cache it — so `npx
 // tailscale-proxy` always just works, even if the optional package was skipped.
 
-const { spawnSync } = require("node:child_process");
+const { spawn, spawnSync } = require("node:child_process");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -82,22 +82,33 @@ function resolveBinary() {
   return fromOptionalDep() || fromCache() || downloadToCache();
 }
 
-let bin;
-try {
-  bin = resolveBinary();
-} catch (err) {
-  console.error(
-    `tailscale-proxy: could not obtain a binary for ${PLATFORM}-${ARCH} (v${VERSION}).\n` +
-      `${err.message}\n` +
-      `Install from source instead: go install github.com/${REPO}@latest\n` +
-      `Releases: https://github.com/${REPO}/releases`
-  );
-  process.exit(1);
+// Runs the binary with this process's arguments and exits with its code. Ctrl-C
+// from the terminal reaches the binary directly (one process group), so this
+// process only waits for it; a SIGTERM or SIGHUP sent to this process alone is
+// passed on, so `tsp run` still releases its name and stops its app.
+function main() {
+  let bin;
+  try {
+    bin = resolveBinary();
+  } catch (err) {
+    console.error(
+      `tailscale-proxy: could not obtain a binary for ${PLATFORM}-${ARCH} (v${VERSION}).\n` +
+        `${err.message}\n` +
+        `Install from source instead: go install github.com/${REPO}@latest\n` +
+        `Releases: https://github.com/${REPO}/releases`
+    );
+    process.exit(1);
+  }
+  const child = spawn(bin, process.argv.slice(2), { stdio: "inherit" });
+  process.on("SIGINT", () => {});
+  for (const signal of ["SIGTERM", "SIGHUP"]) {
+    process.on(signal, () => child.kill(signal));
+  }
+  child.on("error", (err) => {
+    console.error(err.message);
+    process.exit(1);
+  });
+  child.on("exit", (code, signal) => process.exit(code ?? (signal ? 128 + (os.constants.signals[signal] ?? 0) : 1)));
 }
 
-const res = spawnSync(bin, process.argv.slice(2), { stdio: "inherit" });
-if (res.error) {
-  console.error(res.error.message);
-  process.exit(1);
-}
-process.exit(res.status === null ? 1 : res.status);
+main();
