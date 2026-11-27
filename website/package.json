@@ -41,6 +41,9 @@
     "typescript": "^7.0.2",
     "vite": "8.4.0"
   },
+  "overrides": {
+    "mermaid": "^12.4.0"
+  },
   "engines": {
     "bun": ">=1.4.5"
   },

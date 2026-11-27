@@ -1,5 +1,6 @@
 import { Link } from '@tanstack/react-router';
 
+import { MobileNav } from '@/components/mobile-nav';
 import { SiteSearch } from '@/components/site-search';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { siteName } from '@/lib/pages';
@@ -23,6 +24,7 @@ export function SiteHeader() {
             </svg>
           </a>
           <ThemeToggle />
+          <MobileNav />
         </nav>
       </div>
     </header>
