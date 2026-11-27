@@ -63,14 +63,19 @@ var configCache sync.Map // path → configCacheEntry
 
 // loadProjectConfig returns root's tsp settings (defaults when it has none). An
 // error names the file and what is wrong with it; the caller skips the project.
-func loadProjectConfig(root string) (projectConfig, error) {
+// skipped are config files it would not read (owned by someone else, writable by
+// others, a link out of the project), each with why: the caller reports them.
+func loadProjectConfig(root string) (cfg projectConfig, skipped []string, err error) {
 	if root == "" {
-		return projectConfig{Enabled: true}, nil
+		return projectConfig{Enabled: true}, nil, nil
 	}
 	for _, name := range projectConfigFiles {
 		path := filepath.Join(root, name)
-		fi, err := os.Stat(path)
-		if err != nil || fi.IsDir() {
+		fi, why := trustedConfigFile(root, path)
+		if fi == nil {
+			if why != "" {
+				skipped = append(skipped, path+": not read: "+why)
+			}
 			continue
 		}
 		var e configCacheEntry
@@ -82,13 +87,49 @@ func loadProjectConfig(root string) (projectConfig, error) {
 			configCache.Store(path, e)
 		}
 		if e.err != nil {
-			return projectConfig{}, e.err
+			return projectConfig{}, skipped, e.err
 		}
 		if e.ok {
-			return e.cfg, nil
+			return e.cfg, skipped, nil
 		}
 	}
-	return projectConfig{Enabled: true}, nil
+	return projectConfig{Enabled: true}, skipped, nil
+}
+
+// trustedConfigFile returns path's info when tsp may read it: a regular file this
+// user owns that no one else can write, in a folder no one else can write; a link
+// is followed only to a file inside the project. nil and why when it is not; nil
+// and "" when there is no such file.
+func trustedConfigFile(root, path string) (os.FileInfo, string) {
+	li, err := os.Lstat(path)
+	if err != nil {
+		return nil, ""
+	}
+	if li.Mode()&os.ModeSymlink != 0 {
+		target, err := filepath.EvalSymlinks(path)
+		realRoot, rerr := filepath.EvalSymlinks(root)
+		if err != nil || rerr != nil {
+			return nil, "a link tsp cannot follow"
+		}
+		if rel, err := filepath.Rel(realRoot, target); err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return nil, "a link to a file outside the project"
+		}
+	}
+	fi, err := os.Stat(path)
+	switch {
+	case err != nil:
+		return nil, ""
+	case fi.IsDir():
+		return nil, ""
+	case !ownedByMe(fi):
+		return nil, "owned by another user"
+	case othersCanWrite(fi):
+		return nil, fmt.Sprintf("others can change it (mode %v): chmod go-w %s", fi.Mode().Perm(), path)
+	}
+	if di, err := os.Stat(root); err != nil || worldWritable(di) {
+		return nil, "its folder is writable by anyone"
+	}
+	return fi, ""
 }
 
 // parseProjectConfigFile reads the tsp section of one file (ok=false: it has none).

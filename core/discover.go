@@ -139,7 +139,9 @@ func KnownRuntimes() []string {
 }
 
 // projectRootDir walks up from dir to the nearest directory containing a project
-// marker and returns that directory's path; falls back to dir itself, or "".
+// marker and returns it; dir itself when there is none. The walk stops at the
+// user's home and at the filesystem root, and never enters a folder anyone can
+// write (/tmp): a project's config is read only from folders its owner controls.
 func projectRootDir(dir string) string {
 	if dir == "" || dir == "/" {
 		return ""
@@ -147,15 +149,19 @@ func projectRootDir(dir string) string {
 	if !filepath.IsAbs(dir) {
 		return dir
 	}
-	d := dir
-	for {
+	home, _ := os.UserHomeDir()
+	for d := dir; ; {
+		fi, err := os.Stat(d)
+		if err != nil || worldWritable(fi) {
+			break
+		}
 		for _, m := range projectMarkers {
 			if _, err := os.Stat(filepath.Join(d, m)); err == nil {
 				return d
 			}
 		}
 		parent := filepath.Dir(d)
-		if parent == d {
+		if parent == d || d == home {
 			break
 		}
 		d = parent
@@ -281,7 +287,10 @@ func buildServices(listeners []listener, includeAll bool, runtimes map[string]bo
 			procs = append(procs, byPID[pid])
 		}
 		sort.Slice(procs, func(i, j int) bool { return procs[i].Port < procs[j].Port })
-		cfg, err := loadProjectConfig(procs[0].Root)
+		cfg, skipped, err := loadProjectConfig(procs[0].Root)
+		for _, why := range skipped {
+			problems[why] = why
+		}
 		if err != nil {
 			problems[procs[0].Root] = err.Error()
 			continue
@@ -307,7 +316,13 @@ func buildServices(listeners []listener, includeAll bool, runtimes map[string]bo
 		slugCounts[p.slug]++
 		nameCounts[p.name]++
 	}
-	configProblems.Store(&problems)
+	if prev := configProblems.Swap(&problems); prev != nil {
+		for k, msg := range problems {
+			if _, seen := (*prev)[k]; !seen {
+				appLog().Warn("project config skipped", "why", msg)
+			}
+		}
+	}
 
 	var services []Service
 	var dups []duplicate

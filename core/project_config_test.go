@@ -48,7 +48,7 @@ port = 4100
 `,
 		"composer.json": `{"extra": {"tsp": {"name": "api.acme", "share": "private", "path": "api", "port": 4100}}}`,
 	} {
-		cfg, err := loadProjectConfig(writeFiles(t, map[string]string{file: body}))
+		cfg, _, err := loadProjectConfig(writeFiles(t, map[string]string{file: body}))
 		if err != nil {
 			t.Errorf("%s: %v", file, err)
 			continue
@@ -61,21 +61,21 @@ port = 4100
 
 func TestProjectConfig_precedenceDefaultsAndErrors(t *testing.T) {
 	// .tsp.json wins over package.json.
-	cfg, _ := loadProjectConfig(writeFiles(t, map[string]string{".tsp.json": `{"name": "one"}`, "package.json": `{"tsp": {"name": "two"}}`}))
+	cfg, _, _ := loadProjectConfig(writeFiles(t, map[string]string{".tsp.json": `{"name": "one"}`, "package.json": `{"tsp": {"name": "two"}}`}))
 	if cfg.Name != "one" {
 		t.Errorf("precedence: %+v", cfg)
 	}
 	// A package.json without "tsp" is not a config: the next file is read.
-	cfg, _ = loadProjectConfig(writeFiles(t, map[string]string{"package.json": `{"name": "x"}`, "pyproject.toml": "[tool.tsp]\nname = \"py\"\n"}))
+	cfg, _, _ = loadProjectConfig(writeFiles(t, map[string]string{"package.json": `{"name": "x"}`, "pyproject.toml": "[tool.tsp]\nname = \"py\"\n"}))
 	if cfg.Name != "py" {
 		t.Errorf("fall through: %+v", cfg)
 	}
 	// No config: enabled, no name.
-	if cfg, err := loadProjectConfig(t.TempDir()); err != nil || !cfg.Enabled || cfg.Name != "" || cfg.File != "" {
+	if cfg, _, err := loadProjectConfig(t.TempDir()); err != nil || !cfg.Enabled || cfg.Name != "" || cfg.File != "" {
 		t.Errorf("none: %+v %v", cfg, err)
 	}
 	// share false, enabled false.
-	cfg, _ = loadProjectConfig(writeFiles(t, map[string]string{".tsp.json": `{"share": false, "enabled": false}`}))
+	cfg, _, _ = loadProjectConfig(writeFiles(t, map[string]string{".tsp.json": `{"share": false, "enabled": false}`}))
 	if cfg.Share != "off" || cfg.Enabled {
 		t.Errorf("off: %+v", cfg)
 	}
@@ -87,25 +87,25 @@ func TestProjectConfig_precedenceDefaultsAndErrors(t *testing.T) {
 		`{"port": 70000}`:       "port",
 		`{`:                     "unexpected end",
 	} {
-		_, err := loadProjectConfig(writeFiles(t, map[string]string{".tsp.json": body}))
+		_, _, err := loadProjectConfig(writeFiles(t, map[string]string{".tsp.json": body}))
 		if err == nil || !strings.Contains(err.Error(), want) || !strings.Contains(err.Error(), ".tsp.json") {
 			t.Errorf("%s: err = %v, want %q naming the file", body, err, want)
 		}
 	}
-	if _, err := loadProjectConfig(writeFiles(t, map[string]string{"pyproject.toml": "[tool.tsp]\nname = [1]\n"})); err == nil {
+	if _, _, err := loadProjectConfig(writeFiles(t, map[string]string{"pyproject.toml": "[tool.tsp]\nname = [1]\n"})); err == nil {
 		t.Error("a TOML array was accepted")
 	}
 }
 
 func TestProjectConfig_cacheFollowsTheFile(t *testing.T) {
 	dir := writeFiles(t, map[string]string{".tsp.json": `{"name": "one"}`})
-	if cfg, _ := loadProjectConfig(dir); cfg.Name != "one" {
+	if cfg, _, _ := loadProjectConfig(dir); cfg.Name != "one" {
 		t.Fatal(cfg)
 	}
 	path := filepath.Join(dir, ".tsp.json")
 	_ = os.WriteFile(path, []byte(`{"name": "two.app"}`), 0o644)
 	_ = os.Chtimes(path, time.Now().Add(time.Second), time.Now().Add(time.Second))
-	if cfg, _ := loadProjectConfig(dir); cfg.Name != "two.app" {
+	if cfg, _, _ := loadProjectConfig(dir); cfg.Name != "two.app" {
 		t.Errorf("a changed file was served from the cache: %+v", cfg)
 	}
 }
@@ -140,5 +140,56 @@ func TestBuildServices_projectConfig(t *testing.T) {
 	}
 	if p := projectConfigProblems(); len(p) != 1 || !strings.Contains(p[0], "Bad_Name") {
 		t.Errorf("problems = %q", p)
+	}
+}
+
+func TestProjectConfig_onlyFilesTheUserControls(t *testing.T) {
+	unixOnly(t)
+	// Writable by others: skipped, with the reason.
+	dir := writeFiles(t, map[string]string{".tsp.json": `{"name": "evil", "script": "rm -rf ~"}`})
+	_ = os.Chmod(filepath.Join(dir, ".tsp.json"), 0o666)
+	cfg, skipped, err := loadProjectConfig(dir)
+	if err != nil || cfg.Name != "" || len(skipped) != 1 || !strings.Contains(skipped[0], "others can change it") {
+		t.Errorf("group/world-writable: %+v %q %v", cfg, skipped, err)
+	}
+	// A link to a file outside the project: skipped.
+	outside := writeFiles(t, map[string]string{"x.json": `{"name": "evil"}`})
+	linked := t.TempDir()
+	if err := os.Symlink(filepath.Join(outside, "x.json"), filepath.Join(linked, ".tsp.json")); err != nil {
+		t.Fatal(err)
+	}
+	if cfg, skipped, _ := loadProjectConfig(linked); cfg.Name != "" || len(skipped) != 1 || !strings.Contains(skipped[0], "outside the project") {
+		t.Errorf("link out: %+v %q", cfg, skipped)
+	}
+	// A link inside the project is fine.
+	inside := writeFiles(t, map[string]string{"tsp.config.json": `{"name": "ok.app"}`})
+	_ = os.Symlink(filepath.Join(inside, "tsp.config.json"), filepath.Join(inside, ".tsp.json"))
+	if cfg, skipped, _ := loadProjectConfig(inside); cfg.Name != "ok.app" || len(skipped) != 0 {
+		t.Errorf("link in: %+v %q", cfg, skipped)
+	}
+	// A project in a folder anyone can write: not read.
+	shared := writeFiles(t, map[string]string{".tsp.json": `{"name": "evil"}`})
+	_ = os.Chmod(shared, 0o777)
+	if cfg, skipped, _ := loadProjectConfig(shared); cfg.Name != "" || len(skipped) != 1 {
+		t.Errorf("world-writable folder: %+v %q", cfg, skipped)
+	}
+}
+
+func TestProjectRootDir_neverWalksThroughASharedFolder(t *testing.T) {
+	unixOnly(t)
+	shared := t.TempDir()
+	_ = os.WriteFile(filepath.Join(shared, "package.json"), []byte(`{"tsp": {"name": "evil"}}`), 0o644)
+	_ = os.Chmod(shared, 0o1777) // like /tmp
+	app := filepath.Join(shared, "app")
+	if err := os.Mkdir(app, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if got := projectRootDir(app); got != app {
+		t.Errorf("projectRootDir = %s, want %s (not the shared folder above it)", got, app)
+	}
+	// It stops at the home folder too.
+	home, _ := os.UserHomeDir()
+	if got := projectRootDir(filepath.Join(home, "no-such-project-x9")); got != filepath.Join(home, "no-such-project-x9") && got != home {
+		t.Errorf("walked above home: %s", got)
 	}
 }

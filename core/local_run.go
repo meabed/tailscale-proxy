@@ -86,7 +86,10 @@ func resolveRun(args []string, dir string, getenv func(string) string) (runSpec,
 		return runSpec{name: args[0], argv: commandArgv(args[1:])}, validateName(args[0])
 	}
 	root := projectRootDir(dir)
-	cfg, err := loadProjectConfig(root)
+	cfg, skipped, err := loadProjectConfig(root)
+	for _, why := range skipped {
+		fmt.Fprintln(os.Stderr, "tsp run: skipped "+why)
+	}
 	if err != nil {
 		return runSpec{}, err
 	}
