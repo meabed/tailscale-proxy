@@ -109,7 +109,7 @@ func cmdDoctor(argv []string) int {
 	}
 	fmt.Println("Tailscale (tsp start: https://<node>.ts.net/<project>)")
 	exposeOK := printChecks(runDoctor(execRunner{}, newDiscoverer(execRunner{}), dcfg, mode))
-	fmt.Println("\nLocal HTTPS names (tsp run: https://<name>.localhost)")
+	fmt.Println("\nLocal HTTPS names (https://<name>.localhost: every dev server found, and tsp run apps)")
 	s, supported := servicePlatform()
 	checks, err := localHTTPSChecks(s, supported)
 	if err != nil {
@@ -120,7 +120,7 @@ func cmdDoctor(argv []string) int {
 	fmt.Println()
 	switch {
 	case exposeOK && localOK:
-		fmt.Println("All checks passed: `tsp start` exposes your servers, `tsp run` serves an app at https://<name>.localhost.")
+		fmt.Println("All checks passed: your dev servers answer at https://<name>.localhost (" + dashboardURL + "), and `tsp start` shares them online.")
 		return 0
 	case exposeOK:
 		fmt.Println("`tsp start` is ready. Local HTTPS names need the fixes above (usually one `tsp service install`).")
