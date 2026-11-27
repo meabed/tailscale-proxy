@@ -14,19 +14,37 @@ import (
 // ok=false: another process holds it. The kernel drops the lock when its holder
 // exits for any reason (kill -9, a crash, a reboot), so a held lock is proof of
 // a live owner and a pid in a file is never trusted on its own.
+//
+// A lock file may be removed by its holder (removeLocked), so a lock taken on a
+// file that is no longer the one at path proves nothing: it is dropped and
+// taken again on the file that is there now.
 func tryLock(path string) (release func(), ok bool, err error) {
-	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o644)
-	if err != nil {
-		return nil, false, err
-	}
-	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
-		_ = f.Close()
-		if errors.Is(err, syscall.EWOULDBLOCK) {
-			return nil, false, nil
+	for {
+		f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o644)
+		if err != nil {
+			return nil, false, err
 		}
-		return nil, false, err
+		if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+			_ = f.Close()
+			if errors.Is(err, syscall.EWOULDBLOCK) {
+				return nil, false, nil
+			}
+			return nil, false, err
+		}
+		held, herr := f.Stat()
+		current, cerr := os.Stat(path)
+		if herr == nil && cerr == nil && os.SameFile(held, current) {
+			return func() { _ = f.Close() }, true, nil
+		}
+		_ = f.Close() // removed or replaced while we locked it: lock the file at path now
 	}
-	return func() { _ = f.Close() }, true, nil
+}
+
+// removeLocked deletes path, whose lock the caller holds, then gives the lock up:
+// removed first, so no process can lock this file and believe it owns path.
+func removeLocked(path string, release func()) {
+	_ = os.Remove(path)
+	release()
 }
 
 // checkRootOnly refuses a path a non-root user could replace: every existing

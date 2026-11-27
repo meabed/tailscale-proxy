@@ -25,6 +25,14 @@ func tryLock(path string) (release func(), ok bool, err error) {
 	return func() { _ = syscall.CloseHandle(h) }, true, nil
 }
 
+// removeLocked deletes path, whose lock the caller holds, then gives the lock up.
+// Windows opens a lock file for one handle at a time, so it is closed first and
+// removed after; a process that opens it in between simply holds a new file.
+func removeLocked(path string, release func()) {
+	release()
+	_ = os.Remove(path)
+}
+
 // checkRootOnly: the boot service is macOS/Linux only.
 func checkRootOnly(string) error { return nil }
 

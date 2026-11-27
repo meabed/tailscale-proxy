@@ -2,6 +2,7 @@ package core
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"hash/fnv"
 	"net"
@@ -84,12 +85,17 @@ func (r *localRegistry) file(name string) string { return filepath.Join(r.dir, n
 func (r *localRegistry) lock(name string) string { return filepath.Join(r.dir, name+".lock") }
 
 // claim takes name for this process (ok=false: a live run holds it). The caller
-// keeps it until it exits; release() gives it up.
+// keeps it until it exits; release() gives it up and removes the lock file, so a
+// finished run leaves nothing in the folder.
 func (r *localRegistry) claim(name string) (release func(), ok bool, err error) {
 	if err := os.MkdirAll(r.dir, 0o755); err != nil {
 		return nil, false, fmt.Errorf("creating %s: %v", r.dir, err)
 	}
-	return tryLock(r.lock(name))
+	unlock, ok, err := tryLock(r.lock(name))
+	if !ok || err != nil {
+		return nil, ok, err
+	}
+	return func() { removeLocked(r.lock(name), unlock) }, true, nil
 }
 
 // add writes the route atomically. The caller holds its claim.
@@ -120,9 +126,9 @@ func (r *localRegistry) read(name string) (localRoute, bool) {
 	return rt, true
 }
 
-// alive reports whether a run holds name. A free lock means its run is gone: the
-// route file is removed while the lock is held here, so no new run can be
-// writing it at that moment.
+// alive reports whether a run holds name. A free lock means its run is gone
+// (killed before it could clean up): its route file and lock file are removed
+// while the lock is held here, so no new run can be writing them at that moment.
 func (r *localRegistry) alive(name string) bool {
 	release, free, err := tryLock(r.lock(name))
 	if err != nil {
@@ -132,7 +138,7 @@ func (r *localRegistry) alive(name string) bool {
 		return true
 	}
 	r.remove(name)
-	release()
+	removeLocked(r.lock(name), release)
 	return false
 }
 
@@ -144,6 +150,13 @@ func (r *localRegistry) list() []localRoute {
 	}
 	var out []localRoute
 	for _, e := range entries {
+		// A lock with no route file is a run that died before writing one, or after removing it: swept here.
+		if name, isLock := strings.CutSuffix(e.Name(), ".lock"); isLock && !e.IsDir() && validateName(name) == nil {
+			if _, err := os.Stat(r.file(name)); errors.Is(err, os.ErrNotExist) {
+				r.alive(name)
+			}
+			continue
+		}
 		name, isRoute := strings.CutSuffix(e.Name(), ".json")
 		if e.IsDir() || !isRoute || validateName(name) != nil {
 			continue

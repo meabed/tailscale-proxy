@@ -330,3 +330,44 @@ func TestPortFree(t *testing.T) {
 		t.Errorf("portFree(%d) = false after close", port)
 	}
 }
+
+func TestRegistry_finishedAndDeadRunsLeaveNoFiles(t *testing.T) {
+	reg := testRegistry(t)
+	stop := running(t, reg, localRoute{Name: "done", Port: 4001, PID: 1})
+	stop() // a run that exits normally
+	if _, err := os.Stat(reg.lock("done")); !os.IsNotExist(err) {
+		t.Errorf("a finished run left %s", reg.lock("done"))
+	}
+	// A run killed before it wrote its route leaves only an unheld lock: listing sweeps it.
+	if err := os.WriteFile(reg.lock("killed"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	reg.list()
+	if _, err := os.Stat(reg.lock("killed")); !os.IsNotExist(err) {
+		t.Errorf("an unheld lock survived list(): %s", reg.lock("killed"))
+	}
+	// A held lock is never swept.
+	running(t, reg, localRoute{Name: "live", Port: 4002, PID: 1})
+	reg.list()
+	if _, err := os.Stat(reg.lock("live")); err != nil {
+		t.Errorf("a live run's lock was removed: %v", err)
+	}
+}
+
+func TestTryLock_aRemovedLockFileIsNotHeld(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "name.lock")
+	release, ok, err := tryLock(path)
+	if err != nil || !ok {
+		t.Fatalf("tryLock = %v, %v", ok, err)
+	}
+	removeLocked(path, release)
+	// The next lock is on a new file at path, and it holds it.
+	again, ok, err := tryLock(path)
+	if err != nil || !ok {
+		t.Fatalf("tryLock after removal = %v, %v", ok, err)
+	}
+	if _, ok, _ := tryLock(path); ok {
+		t.Error("two holders of one path")
+	}
+	again()
+}
