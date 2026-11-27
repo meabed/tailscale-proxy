@@ -1,6 +1,7 @@
 package core
 
 import (
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
@@ -101,14 +102,20 @@ func (r *rotatingFile) Write(p []byte) (int, error) {
 	}
 	if r.size+int64(len(p)) > r.max {
 		r.rotate()
+		if r.f == nil {
+			return 0, fmt.Errorf("reopening %s after rotating it failed", r.path)
+		}
 	}
 	n, err := r.f.Write(p)
 	r.size += int64(n)
 	return n, err
 }
 
-// rotate shifts path → path.1 → … under a lock shared with the other writers.
+// rotate shifts path → path.1 → … under a lock shared with the other writers. It
+// closes its own handle first: Windows cannot rename a file that is open.
 func (r *rotatingFile) rotate() {
+	_ = r.f.Close()
+	r.f = nil
 	release, ok, err := tryLock(filepath.Join(filepath.Dir(r.path), "rotate.lock"))
 	if err == nil && ok {
 		if fi, err := os.Stat(r.path); err == nil && fi.Size()+1 > r.max/2 {
@@ -122,8 +129,6 @@ func (r *rotatingFile) rotate() {
 		}
 		release()
 	}
-	_ = r.f.Close()
-	r.f = nil
 	_ = r.open()
 }
 
