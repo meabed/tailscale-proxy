@@ -118,15 +118,17 @@ func httpTarget(host, uri string) string {
 
 // redirectHandler answers http:// on port 80 with what https answers: a
 // .localhost name moves to https with 308 (a browser then shows the very same
-// page), and a host outside .localhost (a name in /etc/hosts) gets the page a
-// name nothing runs at gets, saying why.
-func redirectHandler(running func() []localRoute) http.Handler {
+// page). A host outside .localhost gets a 404 that names nothing that runs: a
+// site whose name was re-pointed at 127.0.0.1 (DNS rebinding) must not read what
+// this machine serves.
+func redirectHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		host := hostOnly(r.Host)
 		target := httpTarget(host, r.URL.RequestURI())
 		if target == "" {
-			note := fmt.Sprintf("http://%s reached tsp's http port on this machine, but tsp serves only https://<name>.%s names.", safeText(host), localTLD)
-			writeNotFound(w, r, running(), "", note)
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			w.WriteHeader(http.StatusNotFound)
+			fmt.Fprintf(w, "tsp: http://%s reached tsp's http port on this machine, but tsp serves only https://<name>.%s names: open %s for what runs\n", safeText(host), localTLD, dashboardURL)
 			return
 		}
 		w.Header().Set("Location", target)
@@ -146,7 +148,6 @@ func redirectHandler(running func() []localRoute) http.Handler {
 
 type notFoundPage struct {
 	Name     string // the requested name, "" for the bare host
-	Note     string // how the request got here, when it was not https://<name>.localhost
 	URL      string
 	Running  []localRoute
 	Examples []runExample
@@ -154,8 +155,8 @@ type notFoundPage struct {
 	Board    string
 }
 
-func newNotFoundPage(running []localRoute, name, note string) notFoundPage {
-	p := notFoundPage{Name: name, Note: note, Running: running, Examples: examplesFor(name), Docs: docsURL, Board: dashboardURL}
+func newNotFoundPage(running []localRoute, name string) notFoundPage {
+	p := notFoundPage{Name: name, Running: running, Examples: examplesFor(name), Docs: docsURL, Board: dashboardURL}
 	if name != "" {
 		p.URL = localRoute{Name: name}.URL()
 	}
@@ -164,8 +165,8 @@ func newNotFoundPage(running []localRoute, name, note string) notFoundPage {
 
 // writeNotFound answers a name no run registered: what runs, and how to run an
 // app under this name, for any stack.
-func writeNotFound(w http.ResponseWriter, r *http.Request, running []localRoute, name, note string) {
-	p := newNotFoundPage(running, name, note)
+func writeNotFound(w http.ResponseWriter, r *http.Request, running []localRoute, name string) {
+	p := newNotFoundPage(running, name)
 	if wantsHTML(r) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.WriteHeader(http.StatusNotFound)
@@ -184,9 +185,6 @@ func writeNotFoundText(w io.Writer, p notFoundPage) {
 	}
 	if p.URL != "" {
 		fmt.Fprintf(w, "tsp: nothing runs at %s\n\n", p.URL)
-	}
-	if p.Note != "" {
-		fmt.Fprintf(w, "tsp: %s\n\n", p.Note)
 	}
 	writeRunningText(w, p.Running)
 	fmt.Fprintf(w, "\nServe an app at https://%s.%s:\n", shown, localTLD)
@@ -361,6 +359,8 @@ func readProxyState(dir string) (proxyState, bool) {
 // end and how, POST /api/apps/{name}/stop ends it). Only the dashboard's own page
 // can stop an app from a browser: Go's cross-origin protection refuses a POST
 // another site sends (Sec-Fetch-Site, Origin), and the JSON body a form cannot.
+// A stop must also come from a process of this user (requestFromOwner), not from
+// another account on the same machine.
 func dashboardHandler(dir string, reg *localRegistry, lw *localWatcher, m *proxyMetrics) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/status", func(w http.ResponseWriter, r *http.Request) {
@@ -389,6 +389,10 @@ func dashboardHandler(dir string, reg *localRegistry, lw *localWatcher, m *proxy
 		}
 		if err := json.NewDecoder(io.LimitReader(r.Body, 1024)).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
 			writeJSON(w, http.StatusBadRequest, stopResult{Error: "the body is not JSON: " + err.Error()})
+			return
+		}
+		if err := requestFromOwner(r.RemoteAddr); err != nil {
+			writeJSON(w, http.StatusForbidden, stopResult{Error: err.Error()})
 			return
 		}
 		t, code, err := dashboardTarget(dir, reg, lw, r.PathValue("name"))
@@ -516,7 +520,6 @@ table{width:100%;border-collapse:collapse;font-size:14px}th,td{text-align:left;p
 th{color:var(--muted);font-weight:600;font-size:13px}.n{text-align:right;font-variant-numeric:tabular-nums}h1 .mono{font-size:.8em}.muted{color:var(--muted)}
 .ok{color:var(--ok)}.warn{color:var(--warn)}dl{display:grid;grid-template-columns:max-content 1fr;gap:6px 18px;margin:0}dt{color:var(--muted)}dd{margin:0}
 .wrap{overflow-x:auto}footer{margin-top:40px;color:var(--muted);font-size:13px}
-.note{background:var(--soft);border:1px solid var(--line);border-left:3px solid var(--warn);border-radius:6px;padding:10px 14px}
 button{font:inherit;font-size:13px;border:1px solid var(--line);background:var(--bg);color:var(--fg);border-radius:6px;padding:4px 10px;cursor:pointer}
 button:hover{background:var(--soft)}button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 button.danger{background:var(--bad);border-color:var(--bad);color:#fff}button.danger:hover{filter:brightness(1.08)}
@@ -541,7 +544,7 @@ dialog:not([data-state=ready]) #sd-stop,dialog:not([data-state=failed]) #sd-forc
 
 {{define "notfound"}}<!doctype html><html lang="en"><head>{{template "style"}}<title>Nothing runs at {{if .URL}}{{.URL}}{{else}}this name{{end}}</title></head><body><main>
 <h1>Nothing runs at {{if .URL}}<span class="mono">{{.URL}}</span>{{else}}this name{{end}}</h1>
-{{if .Note}}<p class="note">{{.Note}}</p>{{else}}<p class="muted">The local HTTPS proxy is up; no app is registered under this name.</p>{{end}}
+<p class="muted">The local HTTPS proxy is up; no app is registered under this name.</p>
 <h2>Running now</h2>{{template "running" .Running}}
 <h2>Serve an app here</h2>
 <p>Start it as usual: tsp finds dev servers by itself and names each after its folder. To pick the name, put <code>.tsp.json</code> in the project:</p>

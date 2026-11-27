@@ -110,7 +110,7 @@ func newLocalHandler(dir string, reg *localRegistry, w *localWatcher, m *proxyMe
 			proxy.ServeHTTP(mw, r.WithContext(context.WithValue(r.Context(), localRouteKey{}, rt)))
 			key = rt.Name
 		} else {
-			writeNotFound(mw, r, allRoutes(reg, w), name, "")
+			writeNotFound(mw, r, allRoutes(reg, w), name)
 		}
 		status, ttfb := mw.result()
 		m.record(key, status, ttfb, mw.bytes, mw.failed)
@@ -312,7 +312,7 @@ func newLocalServer(dir string) (*localServer, error) {
 	srv.TLSConfig = &tls.Config{GetCertificate: iss.GetCertificate, MinVersion: tls.VersionTLS12}
 	srv.ErrorLog = log.New(io.Discard, "", 0) // per-connection TLS noise: an untrusted CA, a port scan
 	srv.ConnState = m.connState
-	rd := newServer("", redirectHandler(func() []localRoute { return allRoutes(reg, w) }))
+	rd := newServer("", redirectHandler())
 	rd.ErrorLog = srv.ErrorLog
 	return &localServer{dir: dir, ca: ca, srv: srv, redirect: rd, metrics: m, watcher: w}, nil
 }

@@ -110,11 +110,12 @@ sudo.
 ### What the proxy answers itself
 
 `local_pages.go`: `tsp.localhost` (reserved) is the dashboard and `/api/status`, plus `GET /api/apps/{name}` (what a
-stop would end) and `POST /api/apps/{name}/stop`, behind `http.CrossOriginProtection` and a JSON body; an unknown name gets a 404
+stop would end) and `POST /api/apps/{name}/stop`, behind `http.CrossOriginProtection`, a JSON body and (unix) `requestFromOwner`: lsof must show the
+client's end of the loopback connection as a process of this uid; an unknown name gets a 404
 with the running names and a way to run an app there per stack; a registered name whose app does not answer gets a
 502 with its port, pid and folder. Browsers (`Accept: text/html`) get HTML via `html/template`, other clients plain
 text. Port 80 answers every `http://*.localhost` (reserved names too) with a 308 to the same URL over https, the bare
-localhost and loopback addresses with the dashboard, any other host with the 404 page and a note. `stop.go` is `tsp
+localhost and loopback addresses with the dashboard, any other host with a bare 404 (nothing listed: DNS rebinding). `stop.go` is `tsp
 stop` and the dashboard's Stop: it re-checks the pid against the registry or `lsof` before it signals, never touches
 tsp's own processes or Docker's forwarder, sends SIGTERM (`taskkill /T`) and waits 5s, and SIGKILLs the run and its
 listeners with `--force`. `tsp run <name> -- '<one

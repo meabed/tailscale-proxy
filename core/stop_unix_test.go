@@ -46,6 +46,13 @@ func startListener(t *testing.T, stubborn bool) (*exec.Cmd, int) {
 	return cmd, port
 }
 
+// fromOwner lets the in-process test requests (from 192.0.2.1) stop apps.
+func fromOwner(t *testing.T) {
+	orig := requestFromOwner
+	requestFromOwner = func(string) error { return nil }
+	t.Cleanup(func() { requestFromOwner = orig })
+}
+
 func dashboardRequest(h http.Handler, method, path, body string, header map[string]string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(method, path, strings.NewReader(body))
 	req.Host = dashboardName + "." + localTLD
@@ -58,6 +65,7 @@ func dashboardRequest(h http.Handler, method, path, body string, header map[stri
 }
 
 func TestDashboardStop_showsThePlanThenStops(t *testing.T) {
+	fromOwner(t)
 	cmd, port := startListener(t, false)
 	reg := testRegistry(t)
 	running(t, reg, localRoute{Name: "web", Port: port, PID: cmd.Process.Pid, Dir: "/src/web"})
@@ -83,6 +91,7 @@ func TestDashboardStop_showsThePlanThenStops(t *testing.T) {
 }
 
 func TestDashboardStop_refusesOtherSitesAndForms(t *testing.T) {
+	fromOwner(t)
 	cmd, port := startListener(t, false)
 	reg := testRegistry(t)
 	running(t, reg, localRoute{Name: "web", Port: port, PID: cmd.Process.Pid, Dir: "/src/web"})
@@ -131,6 +140,26 @@ func TestStopProcesses_forceEndsWhatIgnoresSIGTERM(t *testing.T) {
 	}
 	if res := stopProcesses(target, true); !res.Stopped || !strings.HasPrefix(res.Ran, "kill -KILL ") {
 		t.Fatalf("forced: %+v", res)
+	}
+}
+
+func TestRequestFromOwner_onlyThisUsersProcesses(t *testing.T) {
+	if _, err := exec.LookPath("curl"); err != nil {
+		t.Skip("no curl")
+	}
+	verdict := make(chan error, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		verdict <- requestFromOwner(r.RemoteAddr)
+	}))
+	defer srv.Close()
+	if out, err := exec.Command("curl", "-s", srv.URL).CombinedOutput(); err != nil {
+		t.Fatalf("curl: %v %s", err, out)
+	}
+	if err := <-verdict; err != nil {
+		t.Errorf("curl run by this user was refused: %v", err)
+	}
+	if err := requestFromOwner("192.0.2.1:4000"); err == nil {
+		t.Error("a request from another machine was let through")
 	}
 }
 

@@ -4,6 +4,7 @@ package core
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"slices"
@@ -24,6 +25,17 @@ func stopProcess(pid int) error {
 // dropPrivileges is not available on Windows, where no port needs elevation.
 func dropPrivileges(uid, gid int) error {
 	return fmt.Errorf("--uid is not supported on Windows")
+}
+
+// requestFromOwner checks that a request comes from this machine. Windows gives
+// no cheap way to see who owns the other end of a loopback connection; a stop
+// there relies on the dashboard's cross-origin checks.
+var requestFromOwner = func(remoteAddr string) error {
+	host, _, err := net.SplitHostPort(remoteAddr)
+	if ip := net.ParseIP(host); err != nil || ip == nil || !ip.IsLoopback() {
+		return fmt.Errorf("only this machine may stop apps (request from %s)", remoteAddr)
+	}
+	return nil
 }
 
 // signalStop ends pid and the processes it started: taskkill /T asks them to

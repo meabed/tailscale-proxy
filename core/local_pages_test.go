@@ -10,8 +10,7 @@ import (
 )
 
 func TestRedirectHandler_httpAnswersWhatHTTPSAnswers(t *testing.T) {
-	routes := []localRoute{{Name: "web", Port: 4100, PID: 1, Dir: "/src/web", Source: sourceRun}}
-	h := redirectHandler(func() []localRoute { return routes })
+	h := redirectHandler()
 	for _, tc := range []struct{ host, target, want string }{
 		{"api.localhost", "/x?y=1", "https://api.localhost/x?y=1"},
 		{"api.localhost:80", "/x?y=1", "https://api.localhost/x?y=1"},
@@ -31,18 +30,10 @@ func TestRedirectHandler_httpAnswersWhatHTTPSAnswers(t *testing.T) {
 			}
 		}
 	}
-	// A host outside .localhost gets the page an unknown name gets over https, saying why.
-	for _, accept := range []string{"", "text/html"} {
-		rec := get(h, "myapp.test", "/", accept)
-		body := rec.Body.String()
-		if rec.Code != http.StatusNotFound || rec.Header().Get("Location") != "" {
-			t.Errorf("myapp.test (%q): %d %q", accept, rec.Code, rec.Header().Get("Location"))
-		}
-		for _, want := range []string{"http://myapp.test reached tsp", "https://web.localhost", ".tsp.json"} {
-			if !strings.Contains(body, want) {
-				t.Errorf("myapp.test (%q) lacks %q:\n%s", accept, want, body)
-			}
-		}
+	// A host outside .localhost (a name re-pointed at 127.0.0.1) learns nothing of what runs.
+	rec := get(h, "rebound.example", "/", "text/html")
+	if body := rec.Body.String(); rec.Code != http.StatusNotFound || rec.Header().Get("Location") != "" || !strings.Contains(body, "serves only https://<name>.localhost") || strings.Contains(body, "web") {
+		t.Errorf("rebound.example: %d %q\n%s", rec.Code, rec.Header().Get("Location"), body)
 	}
 }
 

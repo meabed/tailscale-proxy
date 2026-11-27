@@ -249,6 +249,8 @@ The same through the API: `GET https://tsp.localhost/api/apps/<name>` returns wh
 `POST https://tsp.localhost/api/apps/<name>/stop` with `{"force": false}` stops it (200 when it exited, 409 with the
 forced command when it did not). Only the dashboard's own page can stop an app from a browser: tsp refuses a request
 another website sends (it checks `Sec-Fetch-Site` and `Origin`, and asks for a JSON body, which a form cannot send).
+On macOS and Linux the request must also come from one of your own programs, never another account's on the same
+machine.
 tsp never stops itself, a process another user owns, or Docker: for a container's port it names the container to
 `docker stop` instead.
 
@@ -260,8 +262,9 @@ same as text.
 
 `http://` gets what `https://` gets. Every `http://<name>.localhost`, the reserved `tsp` included, redirects to the same
 URL over https (308: the method and body are kept), so a browser shows the very same page. `http://localhost/` and
-`http://127.0.0.1/` open the dashboard, like `https://localhost/`. Any other host that reaches port 80 (a name in
-`/etc/hosts`) gets the page an unknown name gets, with a note on why. If another program holds port 80, HTTPS keeps
+`http://127.0.0.1/` open the dashboard, like `https://localhost/`. Any other host that reaches port 80 gets a short 404
+that lists nothing, so a website whose name was re-pointed at 127.0.0.1 (DNS rebinding) learns nothing about this
+machine. If another program holds port 80, HTTPS keeps
 working and `tsp doctor` names the program.
 
 ## Subdomains

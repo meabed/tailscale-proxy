@@ -5,6 +5,7 @@ package core
 import (
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"strconv"
@@ -37,6 +38,32 @@ func dropPrivileges(uid, gid int) error {
 		return fmt.Errorf("setuid %d: %v", uid, err)
 	}
 	return nil
+}
+
+// requestFromOwner checks that a request to the local proxy comes from one of
+// this user's processes (a browser, curl), not another account's: on loopback,
+// lsof shows the client's end of the connection, and only for processes the user
+// may inspect.
+var requestFromOwner = func(remoteAddr string) error {
+	host, port, err := net.SplitHostPort(remoteAddr)
+	ip := net.ParseIP(host)
+	if err != nil || ip == nil || !ip.IsLoopback() {
+		return fmt.Errorf("only this machine may stop apps (request from %s)", remoteAddr)
+	}
+	if ip.To4() == nil {
+		host = "[" + host + "]"
+	}
+	out, _ := exec.Command("lsof", "-nP", "-iTCP@"+host+":"+port, "-sTCP:ESTABLISHED", "-Fpu").Output()
+	pid, uid := 0, strconv.Itoa(os.Getuid())
+	for _, line := range strings.Split(string(out), "\n") {
+		switch {
+		case strings.HasPrefix(line, "p"):
+			pid, _ = strconv.Atoi(line[1:])
+		case strings.HasPrefix(line, "u") && pid != os.Getpid() && line[1:] == uid:
+			return nil
+		}
+	}
+	return fmt.Errorf("only your own programs may stop your apps: the request did not come from a process of uid %s", uid)
 }
 
 // signalStop sends pid SIGTERM, or SIGKILL when forced. A process that is gone
