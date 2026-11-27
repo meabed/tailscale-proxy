@@ -1,5 +1,6 @@
-/* Quiet (light + dark): system-native type, neutral paper, cool-blue accent.
- * Dark follows the system unless the toggle stored a choice ([data-theme]). */
+/* Quiet (light + dark): system-native type for reading, Martian Mono for addresses and commands, neutral paper.
+ * Two colours say who can reach an address: --local (green, only this machine) and --accent (blue, online through
+ * Tailscale; links use it too). Dark follows the system unless the toggle stored a choice ([data-theme]). */
 :root {
   color-scheme: light;
 
@@ -13,6 +14,8 @@
   --border-strong: oklch(86% 0.006 256);
   --accent: oklch(54% 0.17 256);
   --accent-soft: oklch(54% 0.17 256 / 0.12);
+  --local: oklch(55% 0.12 160);
+  --local-soft: oklch(55% 0.12 160 / 0.12);
   --warning: oklch(68% 0.15 75);
   --warning-soft: oklch(68% 0.15 75 / 0.14);
   --code-bg: oklch(96.6% 0.003 256);
@@ -47,6 +50,8 @@
     --border-strong: oklch(38% 0.015 256);
     --accent: oklch(74% 0.15 256);
     --accent-soft: oklch(74% 0.15 256 / 0.18);
+    --local: oklch(76% 0.13 160);
+    --local-soft: oklch(76% 0.13 160 / 0.16);
     --warning: oklch(80% 0.14 80);
     --warning-soft: oklch(80% 0.14 80 / 0.14);
     --code-bg: oklch(21% 0.014 256);
@@ -67,6 +72,8 @@
   --border-strong: oklch(38% 0.015 256);
   --accent: oklch(74% 0.15 256);
   --accent-soft: oklch(74% 0.15 256 / 0.18);
+  --local: oklch(76% 0.13 160);
+  --local-soft: oklch(76% 0.13 160 / 0.16);
   --warning: oklch(80% 0.14 80);
   --warning-soft: oklch(80% 0.14 80 / 0.14);
   --code-bg: oklch(21% 0.014 256);
@@ -85,6 +92,8 @@
   --color-border-strong: var(--border-strong);
   --color-accent: var(--accent);
   --color-accent-soft: var(--accent-soft);
+  --color-local: var(--local);
+  --color-local-soft: var(--local-soft);
   --color-warning: var(--warning);
   --color-warning-soft: var(--warning-soft);
 }
@@ -92,6 +101,7 @@
 @theme {
   --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+  --font-address: 'Martian Mono Variable', ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 @layer base {

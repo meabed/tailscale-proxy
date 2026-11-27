@@ -1,0 +1,36 @@
+# Use with AI agents
+
+Coding agents start dev servers, call them and hand you links. With tsp they use names instead of ports, find what
+runs with one command, and give you a link you can open from anywhere.
+
+## Give an agent the prompt
+
+Paste this at the start of a session, before asking an agent to run, test or share an app.
+
+<AgentPrompt kind="prompt" />
+
+## Keep it in the repo
+
+Add this section to the project's `AGENTS.md` (or `CLAUDE.md`), so every session knows it without being told.
+
+<AgentPrompt kind="agents-md" />
+
+## Docs an agent can read
+
+| URL | What |
+| --- | --- |
+| [`/llms.txt`](/llms.txt) | What tsp is and a link to each page, in the [llms.txt](https://llmstxt.org) format |
+| [`/llms-full.txt`](/llms-full.txt) | Every page of these docs as one Markdown file |
+
+## Commands agents rely on
+
+| Command | Gives the agent |
+| --- | --- |
+| `tsp service status` | three ✓/✗ lines and exit 1 when local HTTPS isn't ready |
+| `tsp routes --json` | the running `*.localhost` names: `name`, `port`, `pid`, `dir` |
+| `tsp run <name> -- <cmd...>` | an app at `https://<name>.localhost`, with `PORT` and `HOST` set for it |
+| `tsp list` | every dev server tsp can share, with its online link |
+| `tsp doctor` | what the online side is missing, with the fix for each |
+
+Every command prints what to do next when something is off, so an agent can recover without guessing. Commands that
+need the user (a password for `tsp service install`, a Tailscale sign-in) say so.

@@ -18,20 +18,24 @@ bun run typecheck      # bun check (TypeScript 7)
 
 ## Layout
 
-| Path               | What                                                                                                                                               |
-| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `content/*.mdx`    | Page bodies (`index.mdx` is `/`). `<Callout type="info\|warning">`, `<Tabs items={[…]}><Tabs.Tab>` and ` ```mermaid ` blocks work without imports. |
-| `src/lib/pages.ts` | Sidebar order and page titles (the `<title>` is `<title> – tailscale-proxy`).                                                                      |
-| `src/routes/*.tsx` | One route per page, rendering its `content/*.mdx`; `__root.tsx` is the shell (header, sidebar, footer).                                            |
-| `src/components/`  | Header, sidebar, search (Pagefind), theme toggle, and the MDX components.                                                                          |
-| `src/styles.css`   | Tailwind entry; tokens in `src/styles/theme.css`, MDX body styles in `src/styles/prose.css`.                                                       |
-| `public/`          | Static assets served at `/`.                                                                                                                       |
+| Path                     | What                                                                                                                                                            |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/routes/index.tsx`   | The home page: the two addresses taken apart, the problems each solves, the two-lane map, the quick start, the agent prompt.                                    |
+| `content/*.mdx`          | Every other page's body. `<Address>`, `<ReachMap>`, `<AgentPrompt>`, `<Callout>`, `<Tabs>` and ` ```mermaid ` blocks work without imports.                      |
+| `src/lib/pages.ts`       | Sidebar groups, page titles (the `<title>` is `<title> – tailscale-proxy`) and each page's llms.txt line.                                                       |
+| `src/lib/agent-guide.ts` | The agent prompt and AGENTS.md section the copy buttons copy, and the llms.txt intro.                                                                           |
+| `scripts/gen-llms.ts`    | Writes `public/llms.txt` and `public/llms-full.txt` (every page as Markdown) before each build and dev start; both are git-ignored.                             |
+| `src/components/`        | Header, sidebar (and its phone menu), search (Pagefind), theme toggle, and the MDX components.                                                                  |
+| `src/styles.css`         | Tailwind entry; tokens in `src/styles/theme.css` (green `--local` and blue `--accent` say who can reach an address), MDX body styles in `src/styles/prose.css`. |
+| `public/`                | Static assets served at `/`.                                                                                                                                    |
 
-**Add a page:** write `content/<name>.mdx`, add `{ path: '/<name>', title }` to `src/lib/pages.ts`, and copy any
-`src/routes/<page>.tsx` to `src/routes/<name>.tsx` with the new path. The build prerenders it and indexes it for search.
+**Add a page:** write `content/<name>.mdx`, add `{ path: '/<name>', title, summary }` to a group in `src/lib/pages.ts`,
+and copy any `src/routes/<page>.tsx` to `src/routes/<name>.tsx` with the new path. The build prerenders it, indexes it
+for search and adds it to llms.txt.
 
 ## Deploy to Vercel
 
 The project's **Root Directory** is `website`; `vercel.json` sets everything else: `bun run build`, output
 `dist/client` as a plain static site (no framework preset), clean URLs (`/installation` serves `installation.html`,
-`404.html` answers unknown paths). Pushes to `master` redeploy.
+`404.html` answers unknown paths) and redirects the old `/getting-started` and `/usage` to `/share` and `/commands`.
+Pushes to `master` redeploy.

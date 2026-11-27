@@ -1,21 +1,36 @@
 # Troubleshooting
 
-Start with `tsp doctor` — it diagnoses the most common setup problems and prints
-the exact fix link for each. The map below points to the right section:
+Two commands check everything and print the fix for each problem they find:
 
-```mermaid
-flowchart TD
-    A["Can't reach a service"] --> B{"tsp list shows it?"}
-    B -->|no| C["Widen --ports, add --runtimes, or --all<br/>see: No services found"]
-    B -->|yes| D{"Page loads but unstyled?"}
-    D -->|yes| E["Open it via its /slug/ URL<br/>cookie route-affinity"]
-    D -->|no| F{"DNS error — can't resolve the ts.net name?"}
-    F -->|from a container| G["see: Reaching services from a container"]
-    F -->|from a tailnet host| H["MagicDNS shadows the name<br/>tailscale set --accept-dns=false"]
-    F -->|no| I{"502 upstream error?"}
-    I -->|yes| J["Backend is down — clears on the next scan"]
-    I -->|no| K["Run tsp doctor for a full check"]
+```bash
+tsp service status     # local HTTPS names: boot service, proxy, trusted CA
+tsp doctor             # online links: Tailscale, HTTPS certificates, Funnel, discovery
 ```
+
+Find your symptom below; the rest of the page has the details.
+
+## Local HTTPS names (`*.localhost`)
+
+| Symptom | Fix |
+| --- | --- |
+| `tsp run` warns "the local HTTPS proxy is not running" | `tsp service install` (it prints the proxy's log when it cannot start) |
+| Browser: "not private"; curl: certificate error | `tsp trust` (macOS: at the screen, not over SSH), then restart the browser |
+| `https://<name>.localhost` answers 404 "nothing runs at" | start the app (`bun dev` / `tsp run` in its folder); `tsp routes` lists what runs |
+| It answers 502 "not answering" | the app is still starting, or doesn't listen on `$PORT` and `$HOST` |
+| "already runs (pid …)" | stop the other terminal's run, or `tsp run --force` |
+| Every `*.localhost` hangs | another program holds port 443: `lsof -nP -iTCP:443 -sTCP:LISTEN` ([Funnel next to the proxy](#funnel-on-443-next-to-tsp-proxy-macos)) |
+
+## Online links (`*.ts.net`)
+
+| Symptom | Fix |
+| --- | --- |
+| `tsp list` shows nothing | [No services found](#no-services-found) |
+| A webhook or callback never arrives | `tsp` must run, without `--private`: [Webhooks](/webhooks#when-the-provider-cant-reach-it) |
+| The page loads without styles | open it through its `/<project>/` link: [A page loads without styles](#a-page-loads-without-styles) |
+| Opens on the phone, not on this Mac | [MagicDNS](#works-from-my-phone-but-not-my-mac-magicdns) |
+| A container can't resolve the `ts.net` name | [Reaching services from a container](#reaching-services-from-a-container-failed-to-resolve-tsnet) |
+| 502 upstream error | [502](#502-upstream-error): the dev server stopped; it clears on the next scan |
+| The link stays up after `kill -9` | [Funnel still on after a hard kill](#funnel-still-on-after-a-hard-kill) |
 
 ## Works from my phone but not my Mac (MagicDNS)
 

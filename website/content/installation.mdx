@@ -1,99 +1,102 @@
-# Installation & setup
+# Install
 
-Get from zero to a public URL in **four steps**. Total time: ~5 minutes.
+tsp is one binary with two halves. Set up the half you need, or both: they don't depend on each other.
 
-```mermaid
-flowchart TD
-    A["1 · Install Tailscale + sign in<br/>tailscale up"] --> B{"Public or private?"}
-    B -->|"Public (Funnel)"| C["2 · Enable MagicDNS + HTTPS certs<br/>grant the funnel node attribute"]
-    B -->|"Private (Serve)"| D["No extra setup<br/>run tsp --private"]
-    C --> E["3 · Install tsp<br/>npx / npm / brew / go"]
-    D --> E
-    E --> F["tsp doctor — verify the setup"]
-    F --> G["4 · Start dev servers, then run tsp"]
-```
+| You want | Set up | Takes |
+| --- | --- | --- |
+| `https://<name>.localhost` on this machine | [Local HTTPS](#2-local-https-once-per-machine) | one command, one password prompt |
+| A link that works from anywhere (webhooks, callbacks, sharing) | [Tailscale](#3-tailscale-for-online-links) | a free Tailscale account, two switches in its admin console |
 
-## 1. Install Tailscale & sign in
+## 1. Install tsp
 
-[Tailscale](https://tailscale.com) is the secure tunnel `tsp` runs on (the part
-that replaces ngrok's relay). Install it, then bring your machine online:
-
-<Tabs items={["macOS", "Linux", "Windows"]}>
-  <Tabs.Tab>
-    ```bash
-    brew install --cask tailscale
-    # or download the app: https://tailscale.com/download
-    tailscale up          # opens a browser to sign up / log in (free)
-    ```
-  </Tabs.Tab>
-  <Tabs.Tab>
-    ```bash
-    curl -fsSL https://tailscale.com/install.sh | sh
-    sudo tailscale up     # opens a browser to sign up / log in (free)
-    ```
-  </Tabs.Tab>
-  <Tabs.Tab>
-    ```powershell
-    winget install tailscale.tailscale
-    tailscale up          # opens a browser to sign up / log in (free)
-    ```
-  </Tabs.Tab>
-</Tabs>
-
-## 2. Enable Funnel (for public URLs)
-
-Funnel is what makes your dev server reachable from the **public internet**. Turn
-it on once in the Tailscale admin console:
-
-1. **Enable HTTPS certificates** → admin console → **DNS** → toggle on **MagicDNS**
-   and **HTTPS Certificates** ([guide](https://tailscale.com/kb/1153/enabling-https)).
-2. **Allow Funnel** → admin console → **Access controls** → add this to your
-   policy file and save:
-   ```jsonc
-   {
-     "nodeAttrs": [
-       { "target": ["autogroup:member"], "attr": ["funnel"] }
-     ]
-   }
-   ```
-   ([Funnel docs](https://tailscale.com/kb/1223/funnel))
-
-<Callout type="info">
-  Only want it reachable from **your own devices** (your laptop, phone, teammates
-  on the tailnet)? Skip this step and run `tsp --private` — that uses Tailscale
-  **Serve** and needs no extra setup.
-</Callout>
-
-## 3. Install tsp
-
-<Tabs items={["npx (no install)", "npm", "Homebrew", "Go"]}>
-  <Tabs.Tab>
-    ```bash
-    npx tailscale-proxy doctor
-    ```
-  </Tabs.Tab>
-  <Tabs.Tab>
-    ```bash
-    npm i -g tailscale-proxy
-    tsp doctor
-    ```
-  </Tabs.Tab>
+<Tabs items={["Homebrew", "npm", "Go", "No install"]}>
   <Tabs.Tab>
     ```bash
     brew install meabed/tap/tsp
-    tsp doctor
+    ```
+  </Tabs.Tab>
+  <Tabs.Tab>
+    ```bash
+    npm i -g tailscale-proxy        # the command is still tsp
     ```
   </Tabs.Tab>
   <Tabs.Tab>
     ```bash
     go install github.com/meabed/tailscale-proxy@latest
-    tsp doctor
+    ```
+  </Tabs.Tab>
+  <Tabs.Tab>
+    ```bash
+    npx tailscale-proxy doctor      # any command, without installing
     ```
   </Tabs.Tab>
 </Tabs>
 
-`tsp doctor` confirms everything is wired up and prints the exact fix link for
-anything missing:
+macOS, Linux, Windows and WSL, on amd64 and arm64. Prefer a window to a terminal? The [desktop app](/desktop) shares
+dev servers from the menu bar.
+
+## 2. Local HTTPS, once per machine
+
+```bash
+tsp service install
+```
+
+```
+✓ boot service /Library/LaunchDaemons/com.meabed.tailscale-proxy.plist
+✓ proxy running (tsp 1.11.0, pid 57001, port 443)
+✓ local CA trusted by the OS
+```
+
+It starts the local proxy at boot and adds its certificate authority to the system's trust store, so browsers, curl,
+Bun and Node accept `https://<name>.localhost`. It asks for your password only when the boot service itself changes:
+the first time, and after a tsp update. Running it again is always safe; it checks what is in place and fixes only what
+is missing. `tsp service status` prints the same three lines and exits 1 if any is off.
+
+Then run an app at its name: [Local HTTPS names](/local-https).
+
+## 3. Tailscale, for online links
+
+[Tailscale](https://tailscale.com) carries the online links: it gives your machine a stable name and a certificate, and
+its Funnel feature makes a port reachable from the internet. The free plan is enough.
+
+<Tabs items={["macOS", "Linux", "Windows"]}>
+  <Tabs.Tab>
+    ```bash
+    brew install --cask tailscale    # or the app from tailscale.com/download
+    tailscale up                     # sign in in the browser
+    ```
+  </Tabs.Tab>
+  <Tabs.Tab>
+    ```bash
+    curl -fsSL https://tailscale.com/install.sh | sh
+    sudo tailscale up
+    ```
+  </Tabs.Tab>
+  <Tabs.Tab>
+    ```powershell
+    winget install tailscale.tailscale
+    tailscale up
+    ```
+  </Tabs.Tab>
+</Tabs>
+
+Two switches in the [admin console](https://login.tailscale.com/admin), once per Tailscale network:
+
+1. **DNS:** turn on MagicDNS and HTTPS Certificates ([guide](https://tailscale.com/kb/1153/enabling-https)).
+2. **Access controls:** allow Funnel, which public links need ([guide](https://tailscale.com/kb/1223/funnel)):
+   ```jsonc
+   { "nodeAttrs": [{ "target": ["autogroup:member"], "attr": ["funnel"] }] }
+   ```
+
+<Callout type="info">
+  Links only for your own devices and teammates on your Tailscale network don't need step 2: use `tsp --private`.
+</Callout>
+
+Check it:
+
+```bash
+tsp doctor
+```
 
 ```
 ✓ tailscale installed  (1.98.2)
@@ -102,29 +105,15 @@ anything missing:
 ✓ service discovery  (2 service(s) in 3000-6000)
 ```
 
-Supported: **macOS, Linux, Windows, WSL** (amd64 + arm64).
+Each ✗ comes with the link or command that fixes it. Then share your dev servers: [Share online](/share).
 
-## 4. Run it
-
-Start your dev servers as usual, then:
+## Update and remove
 
 ```bash
-tsp                   # discover :3000-6000 and expose them publicly (Funnel)
+tsp update                 # the latest release (or the brew/npm command that installs it)
+tsp service install        # after an update: moves the boot service to the new version
+tsp service uninstall      # stop and remove the boot service
 ```
 
-```
-Services:
-  https://your-node.ts.net/web/  →  127.0.0.1:4000
-  https://your-node.ts.net/api/  →  127.0.0.1:4100
-```
-
-Open those from anywhere. <kbd>Ctrl-C</kbd> stops it and resets the entry.
-Next: the full [Getting started](/getting-started) walkthrough.
-
----
-
-## Updating
-
-```bash
-tsp update            # self-updates, or prints the brew/npm command
-```
+To remove the local certificate authority as well, delete `~/.tailscale-proxy/ca` and remove the "tailscale-proxy local
+CA" certificate from the trust store (Keychain Access on macOS).

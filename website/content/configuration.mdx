@@ -9,14 +9,7 @@ tsp configure --ports 3000-9000 --runtimes node,bun,python --private
 tsp                       # uses the saved config
 ```
 
-Settings resolve left-to-right — each layer overrides the one before it:
-
-```mermaid
-flowchart LR
-    A["built-in defaults"] --> B["~/.tailscale-proxy/config.json<br/>(written by tsp configure)"]
-    B --> C["CLI flags<br/>(this run only)"]
-    C --> R["effective settings"]
-```
+Each run takes the built-in defaults, then the file, then the flags you pass, so a flag always wins for that run.
 
 ## File format
 

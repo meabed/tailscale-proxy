@@ -1,28 +1,34 @@
-# Usage & commands
+# Commands
 
-```
-tsp [flags]         Default: run "start" with your saved config
-tsp start           Discover services, run the proxy, and expose it
-tsp status          Serve/Funnel status + the current service map
-tsp list            Discovered services (slug → runtime, port, project, URL)
-tsp reset           Remove the Serve/Funnel entry and exit
-tsp doctor          Check tailscale, exposure readiness, and discovery
-tsp configure       Save defaults to ~/.tailscale-proxy/config.json
-tsp update          Update to the latest release
-```
+Every command prints what to do next when something is off. `tsp <command> --help` lists its flags; `-v` prints the
+version.
 
-```mermaid
-flowchart LR
-    T["tsp"] --> S["start — discover, proxy & expose<br/>(the bare 'tsp' default)"]
-    T --> L["list — discovered services + URLs"]
-    T --> ST["status — Serve/Funnel status + map"]
-    T --> R["reset — remove the entry"]
-    T --> D["doctor — environment checks"]
-    T --> CF["configure — save defaults"]
-    T --> U["update — self-update"]
-```
+## Local HTTPS names
 
-Run `tsp start --help` for all flags. Global: `-h/--help`, `-v/--version`.
+| Command | What it does |
+| --- | --- |
+| `tsp run` | Run the app in this folder at `https://<name>.localhost`, from package.json `"tsp": { "name", "script" }` |
+| `tsp run <name> -- <cmd...>` | Run any command at `https://<name>.localhost` |
+| `tsp run --force` | Take a name over from a run in another terminal |
+| `tsp routes [--json]` | The names running now, with port, process and folder |
+| `tsp service install` | Once per machine: the proxy from boot, and its CA trusted. Safe to repeat |
+| `tsp service status` | Three ✓/✗ lines; exit 1 when one is off |
+| `tsp service uninstall` | Stop and remove the boot service |
+| `tsp trust` | Trust the local CA only |
+| `tsp proxy [--port n]` | The proxy in the foreground (what the boot service runs) |
+
+## Online links through Tailscale
+
+| Command | What it does |
+| --- | --- |
+| `tsp` | `tsp start` with your saved settings: share every dev server found |
+| `tsp start [flags]` | Find dev servers, run the routing proxy, publish it through Funnel or Serve |
+| `tsp list` | What would be shared, with each link, without sharing |
+| `tsp status` | The Funnel or Serve entry and the current map |
+| `tsp reset` | Remove the Funnel or Serve entry (`--private` for Serve) |
+| `tsp doctor` | Check Tailscale, HTTPS certificates, Funnel and discovery; print each fix |
+| `tsp configure [flags]` | Save flags as defaults in `~/.tailscale-proxy/config.json` |
+| `tsp update` | Update to the latest release, or print the brew/npm command |
 
 ## `start` flags
 

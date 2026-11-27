@@ -1,5 +1,8 @@
 @import 'tailwindcss';
 
+/* The face of every address and command the site shows (self-hosted, no font request to a third party). */
+@import '@fontsource-variable/martian-mono';
+
 /* Color, type and layout tokens (light + dark) and their Tailwind names. */
 @import './styles/theme.css';
 

@@ -11,14 +11,16 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as R404RouteImport } from './routes/404'
+import { Route as AgentsRouteImport } from './routes/agents'
+import { Route as CommandsRouteImport } from './routes/commands'
 import { Route as ConfigurationRouteImport } from './routes/configuration'
 import { Route as DesktopRouteImport } from './routes/desktop'
-import { Route as GettingStartedRouteImport } from './routes/getting-started'
 import { Route as HowItWorksRouteImport } from './routes/how-it-works'
 import { Route as InstallationRouteImport } from './routes/installation'
 import { Route as LocalHttpsRouteImport } from './routes/local-https'
+import { Route as ShareRouteImport } from './routes/share'
 import { Route as TroubleshootingRouteImport } from './routes/troubleshooting'
-import { Route as UsageRouteImport } from './routes/usage'
+import { Route as WebhooksRouteImport } from './routes/webhooks'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -30,6 +32,16 @@ const R404Route = R404RouteImport.update({
   path: '/404',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AgentsRoute = AgentsRouteImport.update({
+  id: '/agents',
+  path: '/agents',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CommandsRoute = CommandsRouteImport.update({
+  id: '/commands',
+  path: '/commands',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ConfigurationRoute = ConfigurationRouteImport.update({
   id: '/configuration',
   path: '/configuration',
@@ -38,11 +50,6 @@ const ConfigurationRoute = ConfigurationRouteImport.update({
 const DesktopRoute = DesktopRouteImport.update({
   id: '/desktop',
   path: '/desktop',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const GettingStartedRoute = GettingStartedRouteImport.update({
-  id: '/getting-started',
-  path: '/getting-started',
   getParentRoute: () => rootRouteImport,
 } as any)
 const HowItWorksRoute = HowItWorksRouteImport.update({
@@ -60,104 +67,123 @@ const LocalHttpsRoute = LocalHttpsRouteImport.update({
   path: '/local-https',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ShareRoute = ShareRouteImport.update({
+  id: '/share',
+  path: '/share',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const TroubleshootingRoute = TroubleshootingRouteImport.update({
   id: '/troubleshooting',
   path: '/troubleshooting',
   getParentRoute: () => rootRouteImport,
 } as any)
-const UsageRoute = UsageRouteImport.update({
-  id: '/usage',
-  path: '/usage',
+const WebhooksRoute = WebhooksRouteImport.update({
+  id: '/webhooks',
+  path: '/webhooks',
   getParentRoute: () => rootRouteImport,
 } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/404': typeof R404Route
+  '/agents': typeof AgentsRoute
+  '/commands': typeof CommandsRoute
   '/configuration': typeof ConfigurationRoute
   '/desktop': typeof DesktopRoute
-  '/getting-started': typeof GettingStartedRoute
   '/how-it-works': typeof HowItWorksRoute
   '/installation': typeof InstallationRoute
   '/local-https': typeof LocalHttpsRoute
+  '/share': typeof ShareRoute
   '/troubleshooting': typeof TroubleshootingRoute
-  '/usage': typeof UsageRoute
+  '/webhooks': typeof WebhooksRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/404': typeof R404Route
+  '/agents': typeof AgentsRoute
+  '/commands': typeof CommandsRoute
   '/configuration': typeof ConfigurationRoute
   '/desktop': typeof DesktopRoute
-  '/getting-started': typeof GettingStartedRoute
   '/how-it-works': typeof HowItWorksRoute
   '/installation': typeof InstallationRoute
   '/local-https': typeof LocalHttpsRoute
+  '/share': typeof ShareRoute
   '/troubleshooting': typeof TroubleshootingRoute
-  '/usage': typeof UsageRoute
+  '/webhooks': typeof WebhooksRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/404': typeof R404Route
+  '/agents': typeof AgentsRoute
+  '/commands': typeof CommandsRoute
   '/configuration': typeof ConfigurationRoute
   '/desktop': typeof DesktopRoute
-  '/getting-started': typeof GettingStartedRoute
   '/how-it-works': typeof HowItWorksRoute
   '/installation': typeof InstallationRoute
   '/local-https': typeof LocalHttpsRoute
+  '/share': typeof ShareRoute
   '/troubleshooting': typeof TroubleshootingRoute
-  '/usage': typeof UsageRoute
+  '/webhooks': typeof WebhooksRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
     | '/404'
+    | '/agents'
+    | '/commands'
     | '/configuration'
     | '/desktop'
-    | '/getting-started'
     | '/how-it-works'
     | '/installation'
     | '/local-https'
+    | '/share'
     | '/troubleshooting'
-    | '/usage'
+    | '/webhooks'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/404'
+    | '/agents'
+    | '/commands'
     | '/configuration'
     | '/desktop'
-    | '/getting-started'
     | '/how-it-works'
     | '/installation'
     | '/local-https'
+    | '/share'
     | '/troubleshooting'
-    | '/usage'
+    | '/webhooks'
   id:
     | '__root__'
     | '/'
     | '/404'
+    | '/agents'
+    | '/commands'
     | '/configuration'
     | '/desktop'
-    | '/getting-started'
     | '/how-it-works'
     | '/installation'
     | '/local-https'
+    | '/share'
     | '/troubleshooting'
-    | '/usage'
+    | '/webhooks'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   R404Route: typeof R404Route
+  AgentsRoute: typeof AgentsRoute
+  CommandsRoute: typeof CommandsRoute
   ConfigurationRoute: typeof ConfigurationRoute
   DesktopRoute: typeof DesktopRoute
-  GettingStartedRoute: typeof GettingStartedRoute
   HowItWorksRoute: typeof HowItWorksRoute
   InstallationRoute: typeof InstallationRoute
   LocalHttpsRoute: typeof LocalHttpsRoute
+  ShareRoute: typeof ShareRoute
   TroubleshootingRoute: typeof TroubleshootingRoute
-  UsageRoute: typeof UsageRoute
+  WebhooksRoute: typeof WebhooksRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -176,6 +202,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof R404RouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/agents': {
+      id: '/agents'
+      path: '/agents'
+      fullPath: '/agents'
+      preLoaderRoute: typeof AgentsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/commands': {
+      id: '/commands'
+      path: '/commands'
+      fullPath: '/commands'
+      preLoaderRoute: typeof CommandsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/configuration': {
       id: '/configuration'
       path: '/configuration'
@@ -188,13 +228,6 @@ declare module '@tanstack/react-router' {
       path: '/desktop'
       fullPath: '/desktop'
       preLoaderRoute: typeof DesktopRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/getting-started': {
-      id: '/getting-started'
-      path: '/getting-started'
-      fullPath: '/getting-started'
-      preLoaderRoute: typeof GettingStartedRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/how-it-works': {
@@ -218,6 +251,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LocalHttpsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/share': {
+      id: '/share'
+      path: '/share'
+      fullPath: '/share'
+      preLoaderRoute: typeof ShareRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/troubleshooting': {
       id: '/troubleshooting'
       path: '/troubleshooting'
@@ -225,11 +265,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TroubleshootingRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/usage': {
-      id: '/usage'
-      path: '/usage'
-      fullPath: '/usage'
-      preLoaderRoute: typeof UsageRouteImport
+    '/webhooks': {
+      id: '/webhooks'
+      path: '/webhooks'
+      fullPath: '/webhooks'
+      preLoaderRoute: typeof WebhooksRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -238,14 +278,16 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   R404Route: R404Route,
+  AgentsRoute: AgentsRoute,
+  CommandsRoute: CommandsRoute,
   ConfigurationRoute: ConfigurationRoute,
   DesktopRoute: DesktopRoute,
-  GettingStartedRoute: GettingStartedRoute,
   HowItWorksRoute: HowItWorksRoute,
   InstallationRoute: InstallationRoute,
   LocalHttpsRoute: LocalHttpsRoute,
+  ShareRoute: ShareRoute,
   TroubleshootingRoute: TroubleshootingRoute,
-  UsageRoute: UsageRoute,
+  WebhooksRoute: WebhooksRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

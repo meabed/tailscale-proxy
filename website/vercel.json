@@ -5,5 +5,17 @@
   "buildCommand": "bun run build",
   "outputDirectory": "dist/client",
   "cleanUrls": true,
-  "trailingSlash": false
+  "trailingSlash": false,
+  "redirects": [
+    {
+      "source": "/getting-started",
+      "destination": "/share",
+      "permanent": true
+    },
+    {
+      "source": "/usage",
+      "destination": "/commands",
+      "permanent": true
+    }
+  ]
 }

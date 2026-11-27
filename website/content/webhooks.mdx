@@ -1,0 +1,89 @@
+# Webhooks & OAuth callbacks
+
+Payment providers, Git hosts, chat platforms and sign-in providers need a URL on the internet that reaches your
+code. With tsp that URL points at your laptop, and it stays the same: register it once, and it works every day you run
+`tsp`.
+
+<Address
+  reach="online"
+  command="tsp"
+  parts={[
+    { text: "https://bigfoot.tail1234.ts.net", note: "Your machine. Same name tomorrow, after a reboot, on another network." },
+    { text: "/api/", note: "The project folder of the dev server that should receive it." },
+    { text: "webhooks/stripe", note: "Your app's own route, unchanged." },
+  ]}
+/>
+
+## The workflow
+
+1. Start the app that receives the call, as usual.
+2. Run `tsp` (public: the provider is outside your Tailscale network). `tsp list` prints the link without sharing.
+3. Paste `https://<machine>.<tailnet>.ts.net/<project>/<your route>` into the provider's settings. Once.
+4. Trigger the event. The request reaches your app with its body and headers untouched, so signature checks pass.
+
+<Callout type="info">
+  Keep it running while you work with `tsp --bg` (logs in `./tsp.log`). When `tsp` is stopped, the provider gets an
+  error and retries later, as it would with a deployed site that is down.
+</Callout>
+
+## Examples
+
+<Tabs items={["Stripe", "GitHub", "Slack", "OAuth sign-in"]}>
+  <Tabs.Tab>
+    Dashboard: Developers, Webhooks, Add endpoint.
+
+    ```
+    Endpoint URL   https://bigfoot.tail1234.ts.net/api/webhooks/stripe
+    ```
+
+    Your handler verifies `Stripe-Signature` with the endpoint's signing secret, as in production. With the Stripe CLI
+    you'd run `stripe listen` in every session and get a new secret each time; this endpoint and its secret stay.
+
+  </Tabs.Tab>
+  <Tabs.Tab>
+    Repository or app settings, Webhooks.
+
+    ```
+    Payload URL    https://bigfoot.tail1234.ts.net/api/webhooks/github
+    Content type   application/json
+    ```
+
+    "Recent deliveries" in the same settings page shows each attempt and lets you redeliver one while you fix the
+    handler.
+
+  </Tabs.Tab>
+  <Tabs.Tab>
+    App settings: Event Subscriptions (Request URL) and Interactivity.
+
+    ```
+    Request URL    https://bigfoot.tail1234.ts.net/api/slack/events
+    ```
+
+    Slack sends a challenge when you save the URL, so `tsp` and the app must be running at that moment.
+
+  </Tabs.Tab>
+  <Tabs.Tab>
+    Register the callback as an authorized redirect URI, next to production's.
+
+    ```
+    Google   https://bigfoot.tail1234.ts.net/web/auth/callback/google
+    GitHub   https://bigfoot.tail1234.ts.net/web/auth/callback/github
+    ```
+
+    Run `tsp --forward-host` so the app sees the public host (`X-Forwarded-Host`, `X-Forwarded-Proto: https`) and builds
+    the same redirect URI it registered; without it the app sees `localhost` and the provider rejects the mismatch.
+
+  </Tabs.Tab>
+</Tabs>
+
+## When the provider can't reach it
+
+| What you see | Why | Fix |
+| --- | --- | --- |
+| Timeout, connection refused | `tsp` isn't running, or runs with `--private` | `tsp` (or `tsp --bg`); a provider is never on your tailnet |
+| 404 from tsp | no dev server for that project is running | start it; `tsp list` shows the project names |
+| 502 | the app is starting, or crashed | check the app's own logs |
+| OAuth: redirect URI mismatch | the app built a `localhost` redirect | `tsp --forward-host` |
+| The URL changed | the machine was renamed in Tailscale | rename it back in the admin console, or update the provider |
+
+More in [Troubleshooting](/troubleshooting).

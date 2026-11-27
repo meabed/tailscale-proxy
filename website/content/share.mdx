@@ -1,90 +1,93 @@
-# Getting started
+# Share online
 
-A practical walkthrough — from a fresh Tailscale account to sharing several real
-dev servers through one URL.
+`tsp` finds the dev servers running on this machine and gives each one a link through Tailscale: public for anyone,
+or private to your Tailscale network. The link is the same every time you run it.
 
-## 1. Set up Tailscale (one-time)
+<Address
+  reach="online"
+  command="tsp"
+  parts={[
+    { text: "https://", note: "Tailscale's certificate, valid in every browser." },
+    { text: "bigfoot.tail1234.ts.net", note: "This machine's name on your Tailscale network. It doesn't change between runs, reboots or networks." },
+    { text: "/web/", note: "The project folder the dev server runs from. tsp finds the server by its port; nothing to configure." },
+    { text: "pricing", note: "Everything after the project reaches the app unchanged: here, /pricing." },
+  ]}
+/>
 
-```bash
-tailscale up                      # sign up / log in
-```
+## Share what is running
 
-Enable [HTTPS certificates](https://tailscale.com/kb/1153/enabling-https) and,
-for public sharing, the [`funnel` node attribute](https://tailscale.com/kb/1223/funnel).
-Then verify:
-
-```bash
-npx tailscale-proxy doctor
-```
-
-## 2. Start some dev servers
-
-These runtimes are discovered by default: `node`, `bun`, `deno`, `python`,
-`ruby`, `php`, `go`, `java`, `dotnet`, `elixir`, `perl`, and `docker`-published
-ports. Run each from its **project folder** — that becomes the URL path.
+Start your dev servers the way you always do, each from its own project folder, then:
 
 ```bash
-# JavaScript / TypeScript
-cd ~/sites/portfolio && npx serve -l 3000
-cd ~/sites/docs      && npx http-server -p 3001
-cd ~/apps/web        && npx next dev -p 4000
-cd ~/apps/api        && bun run dev
-
-# Python (interpreter or uvicorn/gunicorn)
-cd ~/apps/fastapi    && uvicorn main:app --port 3010
-
-# PHP / Ruby / Go / Docker
-cd ~/apps/legacy     && php -S 127.0.0.1:3004
-cd ~/apps/rb         && ruby -run -e httpd . -p 3005
-cd ~/apps/gosrv      && go run .
-docker run -p 3030:80 nginx
-```
-
-## 3. Share them
-
-```bash
-tsp                  # public Funnel (default)
-tsp --private        # tailnet-only Serve
+tsp                  # public links (Tailscale Funnel)
+tsp --private        # only devices on your Tailscale network (Tailscale Serve)
 ```
 
 ```
 Services:
-  https://bigfoot.tail-scale.ts.net/portfolio/  →  127.0.0.1:3000
-  https://bigfoot.tail-scale.ts.net/web/        →  127.0.0.1:4000
-  https://bigfoot.tail-scale.ts.net/api/        →  127.0.0.1:4100
+  https://bigfoot.tail1234.ts.net/web/   →  127.0.0.1:4000
+  https://bigfoot.tail1234.ts.net/api/   →  127.0.0.1:4100
+  https://bigfoot.tail1234.ts.net/docs/  →  127.0.0.1:3001
 ```
 
-## 4. Save your preferences
+The links work while `tsp` runs; Ctrl-C takes them down. `tsp --bg` keeps it running detached (logs in `./tsp.log`).
+A server that starts later is picked up within a scan (20 seconds by default, `--interval` to change), and one that
+restarts keeps its link.
+
+## Public or private
+
+| | `tsp` (Funnel) | `tsp --private` (Serve) |
+| --- | --- | --- |
+| Who can open the link | anyone on the internet | your devices and people on your Tailscale network |
+| Webhooks from Stripe, GitHub, Slack | yes | no: they are outside your network |
+| Your phone, a teammate | yes | yes, with Tailscale on their device |
+| Extra setup | Funnel allowed in the admin console ([Install](/installation#3-tailscale-for-online-links)) | none |
+
+## What gets found
+
+Dev servers listening in the port range (3000–6000 by default) whose process is a web runtime: Node, Bun, Deno,
+Python (uvicorn, gunicorn), Ruby, PHP, `go run`, Java, .NET, Elixir, Perl, and Docker-published ports with `--docker`.
 
 ```bash
-tsp configure --ports 3000-9000 --runtimes node,bun,python
-tsp                  # now a bare `tsp` uses the saved config
+tsp list                         # what would be shared, with its link, without sharing it
+tsp --ports 3000-9000            # a wider range this time
+tsp configure --ports 3000-9000  # ...or every time
+tsp --all                        # every listener in the range, compiled binaries included
 ```
 
-<Callout type="info">
-  Compiled binaries (a built Go or Rust server) have arbitrary process names, so
-  they show up only under `--all`. `go run` / `cargo` dev workflows are detected.
-</Callout>
+The project name is the folder that holds the nearest `package.json`, `go.mod`, `pyproject.toml`, `Cargo.toml` or
+`.git`. If one folder runs two servers, the lower port gets `/<project>/` and the other `/<project>-<port>/`, and
+`tsp` prints the map.
 
-## A real multi-service setup
+## What your app sees
 
-Four services, each in its own folder under `~/work/help-ai`:
+Requests arrive the way they would on localhost: `Host: localhost:<port>`, the `/<project>` prefix removed, so CORS,
+cookies and host allow-lists behave as they do locally. Apps that build absolute URLs from the request (OAuth redirect
+URIs, canonical links) want the public host instead:
 
 ```bash
-cd ~/work/help-ai/services/agent     && bun run dev    # :3087
-cd ~/work/help-ai/services/crawlee   && bun run dev    # :3120
-cd ~/work/help-ai/services/workspace && bun run dev    # :3122
-cd ~/work/help-ai/apps/web           && npm run dev    # :4501
+tsp --forward-host     # X-Forwarded-Host and X-Forwarded-Proto: https reach the app
+```
+
+Server-sent events stream and WebSockets upgrade, so hot reload works through the link too.
+
+## A real setup
+
+Four services of one product, each in its own folder:
+
+```bash
+cd ~/work/acme/services/agent     && bun run dev    # :3087
+cd ~/work/acme/services/crawler   && bun run dev    # :3120
+cd ~/work/acme/services/workspace && bun run dev    # :3122
+cd ~/work/acme/apps/web           && npm run dev    # :4501
 tsp
 ```
 
 ```
-  https://bigfoot.tail-scale.ts.net/agent/      →  127.0.0.1:3087
-  https://bigfoot.tail-scale.ts.net/crawlee/    →  127.0.0.1:3120
-  https://bigfoot.tail-scale.ts.net/workspace/  →  127.0.0.1:3122
-  https://bigfoot.tail-scale.ts.net/web/        →  127.0.0.1:4501
+  https://bigfoot.tail1234.ts.net/agent/      →  127.0.0.1:3087
+  https://bigfoot.tail1234.ts.net/crawler/    →  127.0.0.1:3120
+  https://bigfoot.tail1234.ts.net/workspace/  →  127.0.0.1:3122
+  https://bigfoot.tail1234.ts.net/web/        →  127.0.0.1:4501
 ```
 
-Restart a server and `tsp` picks up the new process automatically. If a project
-folder runs more than one server, the lowest-port one is the main `/<slug>/` and
-the others get a `-<port>` suffix — all stay reachable, and `tsp` prints the map.
+Next: point a webhook or an OAuth callback at one of them, in [Webhooks & OAuth callbacks](/webhooks).

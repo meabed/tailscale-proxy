@@ -1,24 +1,32 @@
-# Local HTTPS names (`tsp run`)
+# Local HTTPS names
 
-`tsp run` starts an app on a free port and serves it at a stable HTTPS name on this
-machine, `https://<name>.localhost`, for as long as it runs.
+`tsp run` starts an app on a free port and serves it at a stable HTTPS name on this machine, for as long as it runs.
 
-```
-browser / curl / Bun ──► https://api.acme.localhost ──► tsp proxy (127.0.0.1:443, [::1]:443)
-                                                          │  Host → name → port (~/.tailscale-proxy/routes)
-                                                          ▼
-                                       the app `tsp run` started on 127.0.0.1:<port>
-```
+<Address
+  reach="local"
+  command="tsp run"
+  parts={[
+    { text: "https://", note: "A certificate signed by a certificate authority that only this machine trusts." },
+    { text: "web.acme", note: "The name in package.json, or the one you pass to tsp run." },
+    { text: ".localhost", note: "Every OS sends *.localhost to this machine itself; nothing leaves it." },
+  ]}
+/>
 
-It is independent of `tsp start` (the Tailscale Funnel/Serve side). When both run, the
-Funnel keeps 443 too (they share it: see [Troubleshooting](/troubleshooting)), and a `tsp run` app is
-also discovered by `tsp start` like any other dev server.
+## Why a name instead of `localhost:3000`
+
+- **HTTPS like production.** Secure cookies, `SameSite=None`, service workers, passkeys, the clipboard API and OAuth
+  libraries that refuse plain HTTP all work.
+- **No port bookkeeping.** tsp picks a free port in 4000–4999 (the same one for a name, run after run, while it is
+  free). Two projects that both want port 3000 stop colliding.
+- **Names that say what they are.** `api.acme.localhost` and `web.acme.localhost` instead of two numbers; cookies
+  scoped to `.acme.localhost` are shared between them.
+- **Subdomains per tenant.** With `help-chat` running, `https://acme.help-chat.localhost` reaches it too.
 
 ## Set up a machine (once)
 
 ```bash
 tsp service install    # the proxy from boot + the CA trusted; re-run any time, it fixes what is off
-tsp service status     # ✓ boot service · ✓ proxy running · ✓ CA trusted (exit 1 otherwise)
+tsp service status     # three ✓ lines, exit 1 when one is off
 ```
 
 ## Run an app
@@ -57,7 +65,12 @@ Requests reach the app with the original `Host` (`api.acme.localhost`) and
 `X-Forwarded-Proto: https`, `X-Forwarded-Host`, `X-Forwarded-For`. HTTP/2, streaming
 (SSE) and WebSockets (Vite/Next hot reload) pass through.
 
-## How it works
+<Callout type="info">
+  Need the same app online, for a webhook or a phone? A `tsp run` app is a dev server like any other: `tsp` finds it and
+  gives it a link through Tailscale too. See [Share online](/share).
+</Callout>
+
+## Technical details
 
 - **Routes** are one JSON file per running app in `~/.tailscale-proxy/routes/<name>.json`
   (`{name, port, pid, dir}`), written atomically by its `tsp run` and removed when it
