@@ -249,8 +249,9 @@ The same through the API: `GET https://tsp.localhost/api/apps/<name>` returns wh
 `POST https://tsp.localhost/api/apps/<name>/stop` with `{"force": false}` stops it (200 when it exited, 409 with the
 forced command when it did not). Only the dashboard's own page can stop an app from a browser: tsp refuses a request
 another website sends (it checks `Sec-Fetch-Site` and `Origin`, and asks for a JSON body, which a form cannot send).
-On macOS and Linux the request must also come from one of your own programs, never another account's on the same
-machine.
+On macOS and Linux the request must also come from one of your own programs: tsp looks up the other end of that very
+connection and stops nothing for another account on the same machine. Windows offers no cheap way to check that, so
+there the dashboard shows the commands to copy, and `tsp stop` does the stopping in a terminal.
 tsp never stops itself, a process another user owns, or Docker: for a container's port it names the container to
 `docker stop` instead.
 

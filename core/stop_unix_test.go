@@ -4,7 +4,9 @@ package core
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -49,7 +51,7 @@ func startListener(t *testing.T, stubborn bool) (*exec.Cmd, int) {
 // fromOwner lets the in-process test requests (from 192.0.2.1) stop apps.
 func fromOwner(t *testing.T) {
 	orig := requestFromOwner
-	requestFromOwner = func(string) error { return nil }
+	requestFromOwner = func(*http.Request) error { return nil }
 	t.Cleanup(func() { requestFromOwner = orig })
 }
 
@@ -149,7 +151,7 @@ func TestRequestFromOwner_onlyThisUsersProcesses(t *testing.T) {
 	}
 	verdict := make(chan error, 1)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		verdict <- requestFromOwner(r.RemoteAddr)
+		verdict <- requestFromOwner(r)
 	}))
 	defer srv.Close()
 	if out, err := exec.Command("curl", "-s", srv.URL).CombinedOutput(); err != nil {
@@ -158,8 +160,14 @@ func TestRequestFromOwner_onlyThisUsersProcesses(t *testing.T) {
 	if err := <-verdict; err != nil {
 		t.Errorf("curl run by this user was refused: %v", err)
 	}
-	if err := requestFromOwner("192.0.2.1:4000"); err == nil {
+	if err := requestFromOwner(httptest.NewRequest("POST", "/", nil)); err == nil { // from 192.0.2.1
 		t.Error("a request from another machine was let through")
+	}
+	// A loopback address no connection of this user's has: nothing to attribute it to.
+	req := httptest.NewRequest("POST", "/", nil)
+	req.RemoteAddr = "127.0.0.1:1"
+	if err := requestFromOwner(req.WithContext(context.WithValue(req.Context(), http.LocalAddrContextKey, &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 443}))); err == nil {
+		t.Error("a connection no process of this user holds was let through")
 	}
 }
 

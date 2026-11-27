@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/http"
+	"net/netip"
 	"os"
 	"os/exec"
 	"strconv"
@@ -41,29 +43,34 @@ func dropPrivileges(uid, gid int) error {
 }
 
 // requestFromOwner checks that a request to the local proxy comes from one of
-// this user's processes (a browser, curl), not another account's: on loopback,
-// lsof shows the client's end of the connection, and only for processes the user
-// may inspect.
-var requestFromOwner = func(remoteAddr string) error {
-	host, port, err := net.SplitHostPort(remoteAddr)
-	ip := net.ParseIP(host)
-	if err != nil || ip == nil || !ip.IsLoopback() {
-		return fmt.Errorf("only this machine may stop apps (request from %s)", remoteAddr)
+// this user's processes (a browser, curl), not another account's: lsof shows the
+// client's end of this very connection (its local end is the request's remote
+// address, its remote end the proxy's own), and only for processes the user may
+// inspect, so another account's client is never found.
+var requestFromOwner = func(r *http.Request) error {
+	client, err := netip.ParseAddrPort(r.RemoteAddr)
+	if err != nil || !client.Addr().IsLoopback() {
+		return fmt.Errorf("only this machine may stop apps (request from %s)", r.RemoteAddr)
 	}
-	if ip.To4() == nil {
-		host = "[" + host + "]"
+	server, _ := r.Context().Value(http.LocalAddrContextKey).(net.Addr)
+	if server == nil {
+		return fmt.Errorf("the proxy's end of the connection is unknown")
 	}
-	out, _ := exec.Command("lsof", "-nP", "-iTCP@"+host+":"+port, "-sTCP:ESTABLISHED", "-Fpu").Output()
-	pid, uid := 0, strconv.Itoa(os.Getuid())
+	want := client.String() + "->" + server.String()
+	out, _ := exec.Command("lsof", "-nP", "-iTCP@"+client.String(), "-sTCP:ESTABLISHED", "-Fpun").Output()
+	pid, owner := 0, ""
 	for _, line := range strings.Split(string(out), "\n") {
 		switch {
 		case strings.HasPrefix(line, "p"):
 			pid, _ = strconv.Atoi(line[1:])
-		case strings.HasPrefix(line, "u") && pid != os.Getpid() && line[1:] == uid:
+			owner = ""
+		case strings.HasPrefix(line, "u"):
+			owner = line[1:]
+		case strings.HasPrefix(line, "n") && line[1:] == want && pid != os.Getpid() && owner == strconv.Itoa(os.Getuid()):
 			return nil
 		}
 	}
-	return fmt.Errorf("only your own programs may stop your apps: the request did not come from a process of uid %s", uid)
+	return fmt.Errorf("only your own programs may stop your apps: the connection %s does not belong to a process of uid %d", want, os.Getuid())
 }
 
 // signalStop sends pid SIGTERM, or SIGKILL when forced. A process that is gone

@@ -391,7 +391,7 @@ func dashboardHandler(dir string, reg *localRegistry, lw *localWatcher, m *proxy
 			writeJSON(w, http.StatusBadRequest, stopResult{Error: "the body is not JSON: " + err.Error()})
 			return
 		}
-		if err := requestFromOwner(r.RemoteAddr); err != nil {
+		if err := requestFromOwner(r); err != nil {
 			writeJSON(w, http.StatusForbidden, stopResult{Error: err.Error()})
 			return
 		}
@@ -435,21 +435,22 @@ type stopPlan struct {
 	URL      string        `json:"url,omitempty"`
 	Target   stopTarget    `json:"target"`
 	Folder   string        `json:"folder,omitempty"`
-	How      string        `json:"how"`   // what Stop does, in words
-	Runs     string        `json:"runs"`  // what Stop runs
-	Force    string        `json:"force"` // what Force stop runs
+	StopHere bool          `json:"stopHere"` // the dashboard can stop it (not on Windows: see requestFromOwner)
+	How      string        `json:"how"`      // what Stop does, in words
+	Runs     string        `json:"runs"`     // what Stop runs
+	Force    string        `json:"force"`    // what Force stop runs
 	Commands []stopCommand `json:"commands"`
 }
 
 func newStopPlan(t stopTarget) stopPlan {
 	how := fmt.Sprintf("Stop sends SIGTERM, as Ctrl-C in its terminal would, and waits up to %s for it to exit.", stopGrace)
 	if runtime.GOOS == "windows" {
-		how = fmt.Sprintf("Stop asks it and the processes it started to close (taskkill /T), and waits up to %s.", stopGrace)
+		how = "On Windows the dashboard does not stop apps: it cannot tell whose program asks. Run one of these in a terminal; tsp stop asks it and the processes it started to close (taskkill /T)."
 	}
 	if t.Source == sourceRun {
 		how += " It was started with tsp run, which passes the stop on to its app and ends with it."
 	}
-	p := stopPlan{Target: t, How: how, Runs: signalCommand(t, false), Force: signalCommand(t, true), Commands: stopCommands(t)}
+	p := stopPlan{Target: t, StopHere: runtime.GOOS != "windows", How: how, Runs: signalCommand(t, false), Force: signalCommand(t, true), Commands: stopCommands(t)}
 	if t.Name != "" {
 		p.URL = localRoute{Name: t.Name}.URL()
 	}
@@ -530,7 +531,7 @@ dialog dl{margin:14px 0}dialog dd{word-break:break-all}.cmds{display:grid;grid-t
 .cmds code{background:var(--soft);border:1px solid var(--line);border-radius:6px;padding:4px 8px;overflow-x:auto;white-space:nowrap}.cmds span{color:var(--muted);font-size:13px}
 .runs{margin:10px 0 0}.runs code{background:var(--soft);border-radius:4px;padding:1px 6px}.actions{display:flex;gap:8px;justify-content:flex-end;margin-top:18px}
 #sd-msg.bad{color:var(--bad)}#sd-msg.good{color:var(--ok)}
-dialog:not([data-state=ready]) #sd-stop,dialog:not([data-state=failed]) #sd-force,dialog:not([data-state=ready]):not([data-state=failed]) .plan{display:none}
+dialog:not([data-state=ready]) #sd-stop,dialog:not([data-state=failed]) #sd-force,dialog:not([data-state=ready]):not([data-state=failed]):not([data-state=manual]) .plan,dialog[data-state=manual] .runs{display:none}
 </style>{{end}}
 
 {{define "examples"}}<div class="wrap"><table><tbody>{{range .}}<tr><td>{{.Stack}}</td><td class="mono">{{.Command}}</td><td class="muted">{{.Note}}</td></tr>{{end}}</tbody></table></div>{{end}}
@@ -640,6 +641,7 @@ dialog:not([data-state=ready]) #sd-stop,dialog:not([data-state=failed]) #sd-forc
     ]);
     el("sd-runs").textContent = body.runs;
     commands(body.commands);
+    if (!body.stopHere) return state("manual", body.how);
     state("ready", body.how);
     el("sd-stop").focus();
   };
