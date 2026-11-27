@@ -222,4 +222,25 @@
 
 :root[data-theme='dark'] .shiki span {
   color: var(--shiki-dark) !important;
+
+  /* The request figure: the lane dashes drift toward the app; nothing moves under reduced motion. */
+  .flow-dash {
+    animation: flow-dash 1.4s linear infinite;
+  }
+
+  @keyframes flow-dash {
+    to {
+      stroke-dashoffset: -11;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .flow-dash {
+      animation: none;
+    }
+
+    .flow-packets {
+      display: none;
+    }
+  }
 }

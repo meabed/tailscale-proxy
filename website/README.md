@@ -20,8 +20,8 @@ bun run typecheck      # bun check (TypeScript 7)
 
 | Path                     | What                                                                                                                                                            |
 | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/routes/index.tsx`   | The home page: the two addresses taken apart, the problems each solves, the two-lane map, the quick start, the agent prompt.                                    |
-| `content/*.mdx`          | Every other page's body. `<Address>`, `<ReachMap>`, `<AgentPrompt>`, `<Callout>`, `<Tabs>` and ` ```mermaid ` blocks work without imports.                      |
+| `src/routes/index.tsx`   | The home page: the two addresses taken apart, the problems each solves, the request figure, the quick start, the agent prompt.                                  |
+| `content/*.mdx`          | Every other page's body. `<Address>`, `<RequestFlow>`, `<AgentPrompt>`, `<Callout>`, `<Tabs>` and ` ```mermaid ` blocks work without imports.                   |
 | `src/lib/pages.ts`       | Sidebar groups, page titles (the `<title>` is `<title> – tailscale-proxy`) and each page's llms.txt line.                                                       |
 | `src/lib/agent-guide.ts` | The agent prompt and AGENTS.md section the copy buttons copy, and the llms.txt intro.                                                                           |
 | `scripts/gen-llms.ts`    | Writes `public/llms.txt` and `public/llms-full.txt` (every page as Markdown) before each build and dev start; both are git-ignored.                             |

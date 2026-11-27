@@ -16,7 +16,7 @@ function toMarkdown(mdx: string): string {
     })
     .replace(/<AgentPrompt kind="agents-md" \/>/g, `\`\`\`markdown\n${agentsMdSection}\n\`\`\``)
     .replace(/<AgentPrompt( kind="prompt")? \/>/g, `\`\`\`text\n${agentPrompt}\n\`\`\``)
-    .replace(/<ReachMap \/>\n?/g, '')
+    .replace(/<RequestFlow \/>\n?/g, '')
     .replace(/<svg[\s\S]*?<\/svg>/g, '')
     .replace(/^\s*<\/?(Callout|Tabs|Tabs\.Tab|div|span|a|img|p)\b[^>]*>\s*$/gm, '')
     .replace(/<\/?(Callout|Tabs\.Tab|Tabs|div|span|b|a|img|p)\b[^>]*>/g, '')

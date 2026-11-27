@@ -5,7 +5,7 @@ import { Address } from '@/components/address';
 import { AgentPrompt } from '@/components/agent-prompt';
 import { Callout } from '@/components/callout';
 import { CodeBlock } from '@/components/code-block';
-import { ReachMap } from '@/components/reach-map';
+import { RequestFlow } from '@/components/request-flow';
 import { SiteFooter } from '@/components/site-footer';
 import { SiteHeader } from '@/components/site-header';
 import { SiteSidebar } from '@/components/site-sidebar';
@@ -15,10 +15,10 @@ import { pages, siteName } from '@/lib/pages';
 
 import appCss from '../styles.css?url';
 
-// What the MDX pages render with: `<Callout>`, `<Tabs>`, `<Address>`, `<ReachMap>` and `<AgentPrompt>` are used without
+// What the MDX pages render with: `<Callout>`, `<Tabs>`, `<Address>`, `<RequestFlow>` and `<AgentPrompt>` are used without
 // imports; `pre` adds the copy button.
 // `<Mermaid>` is imported by the remark plugin into each page that has a ```mermaid block.
-const mdxComponents = { Address, AgentPrompt, Callout, ReachMap, Tabs, pre: CodeBlock };
+const mdxComponents = { Address, AgentPrompt, Callout, RequestFlow, Tabs, pre: CodeBlock };
 
 export const Route = createRootRoute({
   head: () => ({

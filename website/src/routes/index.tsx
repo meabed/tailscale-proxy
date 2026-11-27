@@ -3,7 +3,7 @@ import { createFileRoute, Link } from '@tanstack/react-router';
 import { Address } from '@/components/address';
 import { AgentPrompt } from '@/components/agent-prompt';
 import { CopyButton } from '@/components/copy-button';
-import { ReachMap } from '@/components/reach-map';
+import { RequestFlow } from '@/components/request-flow';
 
 import type { ReactNode } from 'react';
 
@@ -114,27 +114,39 @@ function Home() {
         </div>
       </header>
 
-      <div className='mt-12 grid max-w-[60rem] gap-y-4'>
-        <Address
-          reach='local'
-          command='tsp run'
-          parts={[
-            { text: 'https://', note: 'A real certificate your browser and curl trust, signed on this machine.' },
-            { text: 'api.acme', note: 'The name you give the app in package.json. You never type a port again.' },
-            { text: '.localhost', note: 'Reachable only from this machine.' },
-          ]}
-        />
-        <Address
-          reach='online'
-          command='tsp'
-          parts={[
-            { text: 'https://', note: "Tailscale's certificate, valid everywhere." },
-            { text: 'bigfoot.tail1234.ts.net', note: 'Your machine on your Tailscale network. It stays the same, so links you register keep working.' },
-            { text: '/api/', note: 'The project folder the dev server runs from, found by port.' },
-            { text: 'webhooks/stripe', note: 'The rest of the path reaches your app as is.' },
-          ]}
-        />
-      </div>
+      <RequestFlow />
+
+      <Section
+        title='Two addresses, taken apart'
+        lead={
+          <>
+            Your app keeps listening on a plain local port. tsp puts a name in front of it on your machine, and Tailscale carries the online link to the same port. Use either side alone, or both. The{' '}
+            <Link to='/how-it-works'>technical details</Link> are a page of their own.
+          </>
+        }
+      >
+        <div className='mt-6 grid max-w-[60rem] gap-y-4'>
+          <Address
+            reach='local'
+            command='tsp run'
+            parts={[
+              { text: 'https://', note: 'A real certificate your browser and curl trust, signed on this machine.' },
+              { text: 'api.acme', note: 'The name you give the app in package.json. You never type a port again.' },
+              { text: '.localhost', note: 'Reachable only from this machine.' },
+            ]}
+          />
+          <Address
+            reach='online'
+            command='tsp'
+            parts={[
+              { text: 'https://', note: "Tailscale's certificate, valid everywhere." },
+              { text: 'bigfoot.tail1234.ts.net', note: 'Your machine on your Tailscale network. It stays the same, so links you register keep working.' },
+              { text: '/api/', note: 'The project folder the dev server runs from, found by port.' },
+              { text: 'webhooks/stripe', note: 'The rest of the path reaches your app as is.' },
+            ]}
+          />
+        </div>
+      </Section>
 
       <Section title='What it is for' lead='Pick the problem you have. Each one has an address that solves it.'>
         <ul className='border-border mt-8 divide-y divide-(--border) border-y'>
@@ -153,18 +165,6 @@ function Home() {
             </li>
           ))}
         </ul>
-      </Section>
-
-      <Section
-        title='Two ways in, one app'
-        lead={
-          <>
-            Your app keeps listening on a plain local port. tsp puts a name in front of it on your machine, and Tailscale carries the online link to the same port. Use either side alone, or both. The{' '}
-            <Link to='/how-it-works'>technical details</Link> are a page of their own.
-          </>
-        }
-      >
-        <ReachMap />
       </Section>
 
       <Section title='Start in two minutes'>

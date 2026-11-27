@@ -10,7 +10,7 @@ const links = [
 
 export function SiteFooter() {
   return (
-    <footer className='border-border text-muted mt-16 flex flex-wrap items-center justify-between gap-x-6 gap-y-2 border-t pt-7 text-[0.88rem]'>
+    <footer className='border-border text-muted mt-16 flex flex-wrap items-center justify-between gap-x-6 gap-y-3 border-t pt-8 pb-12 text-[0.88rem]'>
       <p>
         MIT {year},{' '}
         <a href='https://meabed.com' target='_blank' rel='noreferrer'>
