@@ -56,10 +56,10 @@ module** under `desktop/` that imports `core` and drives it in-process.
 | `core/store.go` | `routeStore`: `refresh`, debounced de-registration |
 | `core/proxy.go` | `newHandler`: reverse proxy, path routing, cookie affinity, Host rewrite |
 | `core/expose.go` | `Runner` iface, `Mode` (Funnel/Serve), `tailscale serve\|funnel\|set`, `nodeDNSName`, accept-dns |
-| `core/doctor.go` | `runDoctor` + `check{}` + `printChecks` |
+| `core/doctor.go` | `runDoctor` + `check{}` + `printChecks`; `tsp doctor` adds `localHTTPSChecks` (shared with `tsp service status`) |
 | `core/output.go` | Start header, service URLs, duplicate notes |
 | `core/poll.go` | Periodic re-scan loop + logging (CLI) |
-| `core/update.go` | Self-update (brew / npm / standalone) |
+| `core/update.go` | Self-update: standalone replaces itself; brew/npm run their upgrade (npm first: Homebrew's Node keeps globals under `/opt/homebrew/lib/node_modules`) |
 | `core/local_routes.go` | `localRoute`, name rules, the per-route file registry (`~/.tailscale-proxy/routes`), stable port pick |
 | `core/local_ca.go` | Local CA (name-constrained to `localhost`), per-name leaf issuer with a bounded cache, `caTrusted` |
 | `core/local_proxy.go` | `tsp proxy`: HTTPS on `127.0.0.1`/`[::1]:443`, routes by Host, privilege drop, `proxy.json` |

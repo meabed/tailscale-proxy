@@ -31,7 +31,7 @@ Commands:
   status     Print Serve/Funnel status and the current service map
   list       Print discovered services (slug → runtime, port, project, URL)
   reset      Remove the Serve/Funnel entry and exit
-  doctor     Check tailscale, exposure readiness, and discovery
+  doctor     Check everything: Tailscale exposure and local HTTPS names, each ✗ with its fix
   configure  Save defaults to ~/.tailscale-proxy/config.json
   update     Update tsp to the latest release (or show the brew/npm command)
 

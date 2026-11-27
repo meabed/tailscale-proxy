@@ -113,8 +113,10 @@ npx tailscale-proxy
 Supported: **macOS, Linux, Windows, WSL** (amd64 + arm64).
 (`go install github.com/meabed/tailscale-proxy@latest` also works if you have Go.)
 
-Update later with **`tsp update`** — it self-updates a standalone binary, or prints
-`brew upgrade tsp` / `npm i -g tailscale-proxy@latest` for managed installs.
+Update later with **`tsp update`** — it self-updates a standalone binary, and runs
+`brew upgrade tsp` or `npm i -g tailscale-proxy@latest` for you on a managed install.
+If the local HTTPS boot service is installed, it then tells you to run `tsp service install`
+once, which moves the proxy to the new version.
 
 ---
 
@@ -142,7 +144,7 @@ tsp start           Discover services, run the proxy, and expose it
 tsp status          Serve/Funnel status + the current service map
 tsp list            Discovered services (slug → runtime, port, project, URL)
 tsp reset           Remove the Serve/Funnel entry and exit
-tsp doctor          Check tailscale, exposure readiness, and discovery
+tsp doctor          Check everything: Tailscale exposure and local HTTPS names, each ✗ with its fix
 tsp configure       Save defaults to ~/.tailscale-proxy/config.json
 tsp update          Update to the latest release
 

@@ -139,8 +139,10 @@ func printChecks(checks []check) bool {
 		}
 		fmt.Println(line)
 		if !c.OK && c.Fix != "" {
-			for _, fl := range strings.Split(c.Fix, "\n") {
-				fmt.Println("    " + fl)
+			fl := strings.Split(c.Fix, "\n")
+			fmt.Println("    → " + fl[0])
+			for _, l := range fl[1:] {
+				fmt.Println("      " + l)
 			}
 		}
 		if c.Note != "" {

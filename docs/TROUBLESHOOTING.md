@@ -1,7 +1,8 @@
 # Troubleshooting
 
-Start with `tsp doctor` — it diagnoses the most common setup problems and prints
-the exact fix link for each.
+Start with `tsp doctor` — it checks both halves (Tailscale exposure for `tsp start`,
+and the boot service, proxy and CA trust behind `tsp run`'s https://<name>.localhost)
+and prints the exact command or link that fixes each ✗.
 
 ## "It works from my phone but not from my Mac" (the MagicDNS gotcha)
 

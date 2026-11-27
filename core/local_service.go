@@ -454,37 +454,39 @@ func elevate(args []string, why string) (code int, done bool) {
 	return 0, true
 }
 
+// localHTTPSChecks reports whether https://<name>.localhost works in a browser: the
+// boot service (where tsp has one), the proxy, and the CA's trust.
+func localHTTPSChecks(s serviceSystem, supported bool) ([]check, error) {
+	dir, err := stateDir()
+	if err != nil {
+		return nil, err
+	}
+	var checks []check
+	if supported {
+		checks = append(checks, check{Name: "boot service " + s.unitPath, OK: s.installed(), Fix: "tsp service install"})
+	}
+	st, running := runningProxy(dir)
+	proxy := check{Name: "local HTTPS proxy not running", Fix: "tsp service install (or `tsp proxy` in a terminal)"}
+	if running {
+		proxy = check{Name: fmt.Sprintf("proxy running (tsp %s, pid %d, port %d)", st.Version, st.PID, st.Port), OK: true}
+		if st.outdated() {
+			proxy.Note = fmt.Sprintf("the proxy runs tsp %s, this is %s: tsp service install updates it", st.Version, Version)
+		}
+	}
+	checks = append(checks, proxy)
+	ca, err := loadCA(caFiles(dir))
+	checks = append(checks, check{Name: "local CA trusted by the OS", OK: err == nil && caTrusted(ca), Fix: "tsp trust (macOS: in a terminal at the Mac's screen)"})
+	return checks, nil
+}
+
 // cmdServiceStatus prints the proxy's state; exit 0 only when names work in a browser.
 func cmdServiceStatus(s serviceSystem, supported bool) int {
-	dir, err := stateDir()
+	checks, err := localHTTPSChecks(s, supported)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	ok := true
-	line := func(good bool, text, fix string) {
-		if good {
-			fmt.Println("✓ " + text)
-			return
-		}
-		ok = false
-		fmt.Println("✗ " + text + "\n    → " + fix)
-	}
-	if supported {
-		line(s.installed(), "boot service "+s.unitPath, "tsp service install")
-	}
-	st, running := runningProxy(dir)
-	proxyLine := "local HTTPS proxy not running"
-	if running {
-		proxyLine = fmt.Sprintf("proxy running (tsp %s, pid %d, port %d)", st.Version, st.PID, st.Port)
-	}
-	line(running, proxyLine, "tsp service install (or `tsp proxy` in a terminal)")
-	if running && st.outdated() {
-		fmt.Printf("  ! the proxy runs tsp %s, this is %s: tsp service install updates it\n", st.Version, Version)
-	}
-	ca, err := loadCA(caFiles(dir))
-	line(err == nil && caTrusted(ca), "local CA trusted by the OS", "tsp trust (macOS: in a terminal at the Mac's screen)")
-	if !ok {
+	if !printChecks(checks) {
 		return 1
 	}
 	return 0

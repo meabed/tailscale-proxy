@@ -559,3 +559,27 @@ func TestCmdService_status(t *testing.T) {
 		t.Errorf("status with nothing set up = %d, want 1", code)
 	}
 }
+
+func TestLocalHTTPSChecks_outdatedProxyNotes(t *testing.T) {
+	home, _ := isolate(t)
+	dir := filepath.Join(home, ".tailscale-proxy")
+	_ = os.MkdirAll(dir, 0o755)
+	data, _ := json.Marshal(proxyState{PID: 42, Version: "0.0.1", Port: 443})
+	_ = os.WriteFile(proxyStatePath(dir), data, 0o644)
+	release, _, _ := tryLock(proxyLockPath(dir))
+	defer release()
+	s, _ := testService(t, "launchd")
+	checks, err := localHTTPSChecks(s, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range checks {
+		if strings.HasPrefix(c.Name, "proxy running") {
+			if Version != "dev" && !strings.Contains(c.Note, "tsp service install updates it") {
+				t.Errorf("outdated proxy note = %q", c.Note)
+			}
+			return
+		}
+	}
+	t.Errorf("no proxy check in %+v", checks)
+}
