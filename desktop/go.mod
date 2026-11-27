@@ -1,6 +1,6 @@
 module github.com/meabed/tailscale-proxy/desktop
 
-go 1.26.0
+go 1.27
 
 require (
 	github.com/meabed/tailscale-proxy v1.6.2
