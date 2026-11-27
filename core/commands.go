@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
+	"time"
 )
 
 func cmdConfigure(argv []string) int {
@@ -26,6 +28,7 @@ func cmdConfigure(argv []string) int {
 	fs.BoolVar(&cfg.Docker, "docker", cfg.Docker, "also query Docker API for containers")
 	fs.StringVar(&cfg.AcceptDNS, "accept-dns", cfg.AcceptDNS, "set Tailscale MagicDNS (true|false) on start; empty = leave it alone")
 	fs.BoolVar(&cfg.AutoUpdate, "auto-update", cfg.AutoUpdate, "the local HTTPS proxy installs new releases itself (--auto-update=false to stop)")
+	fs.StringVar(&cfg.LocalRequestLog, "local-request-log", cfg.LocalRequestLog, "the local HTTPS proxy's request log: errors (failed, 5xx, slow), all, off")
 	if err := fs.Parse(argv); err != nil {
 		if err == flag.ErrHelp {
 			return 0
@@ -34,6 +37,10 @@ func cmdConfigure(argv []string) int {
 	}
 	if _, err := parsePortRange(cfg.Ports); err != nil {
 		fmt.Fprintln(os.Stderr, err)
+		return 2
+	}
+	if !slices.Contains([]string{"errors", "all", "off"}, cfg.LocalRequestLog) {
+		fmt.Fprintf(os.Stderr, "invalid --local-request-log %q: use errors, all or off\n", cfg.LocalRequestLog)
 		return 2
 	}
 	if !validAcceptDNS(cfg.AcceptDNS) {
@@ -76,7 +83,13 @@ func cmdStatus(argv []string) int {
 	} else {
 		fmt.Printf("%s status:\n%s\n", mode.label(), out)
 	}
-	return printDiscovered(dcfg, mode, httpsPort)
+	code := printDiscovered(dcfg, mode, httpsPort)
+	if dir, err := stateDir(); err == nil {
+		if rows := summarize(readHistory(dir, time.Now().Add(-time.Hour)), "start"); len(rows) > 0 {
+			printSummaries("Requests per project, last hour (tsp stats --since 24h for more)", rows)
+		}
+	}
+	return code
 }
 
 func cmdList(argv []string) int {

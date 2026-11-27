@@ -34,7 +34,7 @@ func backend(t *testing.T) (port int) {
 func TestLocalHandler_routesByHost(t *testing.T) {
 	reg := testRegistry(t)
 	running(t, reg, localRoute{Name: "api.acme", Port: backend(t), PID: 1, Dir: "/src/api"})
-	h := newLocalHandler(reg)
+	h := newLocalHandler(reg, newProxyMetrics(), "errors")
 
 	req := httptest.NewRequest("GET", "https://api.acme.localhost/v1/items?q=1", nil)
 	req.Host = "api.acme.localhost"
@@ -58,7 +58,7 @@ func TestLocalHandler_routesByHost(t *testing.T) {
 func TestLocalHandler_subdomainsReachTheirParent(t *testing.T) {
 	reg := testRegistry(t)
 	running(t, reg, localRoute{Name: "help-chat", Port: backend(t), PID: 1})
-	h := newLocalHandler(reg)
+	h := newLocalHandler(reg, newProxyMetrics(), "errors")
 	for host, want := range map[string]int{"acme.help-chat.localhost": 200, "a.b.help-chat.localhost": 200, "help-chat.localhost": 200, "other.localhost": 404, "chat.localhost": 404} {
 		req := httptest.NewRequest("GET", "/", nil)
 		req.Host = host
@@ -76,7 +76,7 @@ func TestLocalHandler_subdomainsReachTheirParent(t *testing.T) {
 func TestLocalHandler_unknownNameLists(t *testing.T) {
 	reg := testRegistry(t)
 	running(t, reg, localRoute{Name: "web", Port: 4100, PID: 1, Dir: "/src/web"})
-	h := newLocalHandler(reg)
+	h := newLocalHandler(reg, newProxyMetrics(), "errors")
 
 	for host, want := range map[string]string{
 		"nope.localhost": "nothing runs at https://nope.localhost",
@@ -91,7 +91,7 @@ func TestLocalHandler_unknownNameLists(t *testing.T) {
 		}
 	}
 
-	empty := newLocalHandler(testRegistry(t))
+	empty := newLocalHandler(testRegistry(t), newProxyMetrics(), "errors")
 	req := httptest.NewRequest("GET", "/", nil)
 	req.Host = "localhost"
 	rec := httptest.NewRecorder()
@@ -108,7 +108,7 @@ func TestLocalHandler_deadAppIs502AndForgotten(t *testing.T) {
 
 	reg := testRegistry(t)
 	stop := running(t, reg, localRoute{Name: "gone", Port: port, PID: 7, Dir: "/src/gone"})
-	h := newLocalHandler(reg)
+	h := newLocalHandler(reg, newProxyMetrics(), "errors")
 	req := httptest.NewRequest("GET", "/", nil)
 	req.Host = "gone.localhost"
 
@@ -148,7 +148,7 @@ func TestLocalHandler_websocketUpgrade(t *testing.T) {
 
 	reg := testRegistry(t)
 	running(t, reg, localRoute{Name: "hmr", Port: app.Addr().(*net.TCPAddr).Port, PID: 1})
-	front := httptest.NewServer(newLocalHandler(reg))
+	front := httptest.NewServer(newLocalHandler(reg, newProxyMetrics(), "errors"))
 	t.Cleanup(front.Close)
 
 	c, err := net.Dial("tcp", front.Listener.Addr().String())
@@ -169,11 +169,11 @@ func TestLocalHandler_websocketUpgrade(t *testing.T) {
 	}
 }
 
-func TestServeLocal_endToEnd(t *testing.T) {
+func TestRunStandalone_endToEnd(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
-	dir := filepath.Join(home, ".tailscale-proxy")
+	dir := filepath.Join(home, ".tsp")
 	reg := newLocalRegistry(filepath.Join(dir, "routes"))
 	running(t, reg, localRoute{Name: "api", Port: backend(t), PID: os.Getpid(), Dir: "/src/api"})
 
@@ -184,7 +184,7 @@ func TestServeLocal_endToEnd(t *testing.T) {
 	addr := ln.Addr().String()
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan int, 1)
-	go func() { done <- serveLocal(ctx, []net.Listener{ln}, 443, "") }()
+	go func() { done <- runStandalone(ctx, []net.Listener{ln}, 443) }()
 
 	var st proxyState
 	for i := 0; i < 100; i++ {
@@ -194,7 +194,7 @@ func TestServeLocal_endToEnd(t *testing.T) {
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	if st.PID != os.Getpid() || st.Port != 443 || st.Version != Version {
+	if st.PID != os.Getpid() || st.Worker != os.Getpid() || st.Port != 443 || st.Version != Version || st.Mode != "standalone" {
 		t.Fatalf("proxy.json = %+v", st)
 	}
 	ca, err := loadCA(caFiles(dir))
@@ -225,9 +225,21 @@ func TestServeLocal_endToEnd(t *testing.T) {
 		t.Error("the proxy completed a TLS handshake for example.com")
 	}
 
+	// The proxy counts the request and answers tsp stats on its admin socket.
+	var live metricsSnapshot
+	for i := 0; i < 100; i++ {
+		if live, err = fetchLiveStats(dir, os.Getpid()); err == nil {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if r := live.Routes["api"]; err != nil || r.Requests != 1 || r.S2xx != 1 {
+		t.Errorf("live stats = %+v, %v; want one 2xx request for api", live.Routes, err)
+	}
+
 	cancel()
 	if code := <-done; code != 0 {
-		t.Errorf("serveLocal exit = %d", code)
+		t.Errorf("runStandalone exit = %d", code)
 	}
 	if _, err := os.Stat(proxyStatePath(dir)); !os.IsNotExist(err) {
 		t.Error("proxy.json was left behind after shutdown")
@@ -254,15 +266,15 @@ func TestRunningProxy(t *testing.T) {
 	}
 }
 
-func TestServeLocal_secondProxyRefused(t *testing.T) {
+func TestRunStandalone_secondProxyRefused(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
-	dir := filepath.Join(home, ".tailscale-proxy")
+	dir := filepath.Join(home, ".tsp")
 	_ = os.MkdirAll(dir, 0o755)
 	release, _, _ := tryLock(proxyLockPath(dir))
 	defer release()
-	if code := serveLocal(context.Background(), nil, 443, ""); code != 1 {
+	if code := runStandalone(context.Background(), nil, 443); code != 1 {
 		t.Errorf("a second proxy for the same user = %d, want 1", code)
 	}
 }

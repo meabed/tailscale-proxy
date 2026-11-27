@@ -17,7 +17,7 @@ import (
 
 // Local HTTPS names: `tsp run` starts an app on a free port and registers
 // <name> → port here; `tsp proxy` serves https://<name>.localhost from it.
-// Each route is <name>.json in ~/.tailscale-proxy/routes, written atomically by
+// Each route is <name>.json in ~/.tsp/routes, written atomically by
 // its `tsp run`, which holds <name>.lock for as long as it runs. The lock is the
 // proof of life: the OS drops it when the run ends in any way (kill -9, a crash,
 // a reboot), so a route without a held lock is dead and is removed, under that

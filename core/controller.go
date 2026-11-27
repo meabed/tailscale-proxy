@@ -121,7 +121,9 @@ func (c *Controller) Start(o Options) error {
 	store := newRouteStore(func() ([]Service, []duplicate, error) { return disc.discover(dcfg) }, o.DeregisterCycles, o.MatchSeparators)
 	_, _, _, _ = store.refresh()
 
-	srv := newServer(fmt.Sprintf("%s:%d", o.Bind, o.Port), newHandler(store, o.LogRequests, o.ForwardHost))
+	metrics := newProxyMetrics()
+	srv := newServer(fmt.Sprintf("%s:%d", o.Bind, o.Port), newHandler(store, o.LogRequests, o.ForwardHost, metrics))
+	srv.ConnState = metrics.connState
 	ln, err := net.Listen("tcp", srv.Addr)
 	if err != nil {
 		return fmt.Errorf("cannot listen on %s: %v", srv.Addr, err)
@@ -148,6 +150,9 @@ func (c *Controller) Start(o Options) error {
 
 	go func() { _ = srv.Serve(ln) }()
 	go c.pollLoop(ctx, store, time.Duration(o.Interval)*time.Second)
+	if dir, err := stateDir(); err == nil {
+		go historyLoop(ctx, dir, "start", metrics) // per-minute request summaries for tsp stats and tsp status
+	}
 	c.notify()
 	return nil
 }

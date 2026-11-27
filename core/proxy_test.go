@@ -54,7 +54,7 @@ func TestHandler_routesAndStripsPrefix(t *testing.T) {
 	port := mustPort(t, backend.URL)
 	store := storeWith(Service{Slug: "svc.local", Port: port, Runtime: "node"})
 
-	h := newHandler(store, false, false)
+	h := newHandler(store, false, false, newProxyMetrics())
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest("GET", "/svc.local/foo?x=1", nil)
 	h.ServeHTTP(rec, req)
@@ -84,7 +84,7 @@ func TestHandler_underscoreAliasRoutes(t *testing.T) {
 	// Registered under the canonical dash slug; the underscore form must reach it.
 	store := storeWith(Service{Slug: "module-api-foo", Port: port, Runtime: "node"})
 
-	h := newHandler(store, false, false)
+	h := newHandler(store, false, false, newProxyMetrics())
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest("GET", "/module_api_foo/bar?x=1", nil))
 
@@ -98,7 +98,7 @@ func TestHandler_underscoreAliasRoutes(t *testing.T) {
 
 func TestHandler_unknownHostReturns404Index(t *testing.T) {
 	store := storeWith(Service{Slug: "known.local", Port: 4000, Runtime: "node"})
-	h := newHandler(store, false, false)
+	h := newHandler(store, false, false, newProxyMetrics())
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest("GET", "/nope.local/x", nil))
 	if rec.Code != 404 {
@@ -111,7 +111,7 @@ func TestHandler_unknownHostReturns404Index(t *testing.T) {
 
 func TestHandler_deadBackendReturns502(t *testing.T) {
 	store := storeWith(Service{Slug: "dead.local", Port: 1, Runtime: "node"}) // nothing listens on :1
-	h := newHandler(store, false, false)
+	h := newHandler(store, false, false, newProxyMetrics())
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest("GET", "/dead.local/x", nil))
 	if rec.Code != 502 {
@@ -150,7 +150,7 @@ func TestHandler_proxiesUpgrade(t *testing.T) {
 	port := mustPort(t, backend.URL)
 	store := storeWith(Service{Slug: "ws.local", Port: port, Runtime: "node"})
 
-	front := httptest.NewServer(newHandler(store, false, false))
+	front := httptest.NewServer(newHandler(store, false, false, newProxyMetrics()))
 	defer front.Close()
 
 	u, _ := url.Parse(front.URL)
@@ -189,7 +189,7 @@ func TestHandler_cookieAffinity(t *testing.T) {
 	defer backend.Close()
 	port := mustPort(t, backend.URL)
 	store := storeWith(Service{Slug: "web", Port: port, Runtime: "node"})
-	h := newHandler(store, false, false)
+	h := newHandler(store, false, false, newProxyMetrics())
 
 	// 1. Visit the prefixed app URL → routed (stripped) AND sets the affinity cookie.
 	rec := httptest.NewRecorder()
@@ -246,7 +246,7 @@ func TestHandler_forwardHostModes(t *testing.T) {
 		rec := httptest.NewRecorder()
 		req := httptest.NewRequest("GET", "/app/page", nil)
 		req.Host = "bigfoot.quoll-adhara.ts.net" // external funnel host
-		newHandler(store, false, forwardHost).ServeHTTP(rec, req)
+		newHandler(store, false, forwardHost, newProxyMetrics()).ServeHTTP(rec, req)
 		return rec.Result().Header
 	}
 
@@ -290,7 +290,7 @@ func TestHandler_logsRequests(t *testing.T) {
 	log.SetOutput(&buf)
 	defer log.SetOutput(os.Stderr)
 
-	h := newHandler(store, true, false)
+	h := newHandler(store, true, false, newProxyMetrics())
 	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/svc.local/x", nil))
 
 	out := buf.String()
@@ -307,7 +307,7 @@ func TestHandler_loggingDisabledIsSilent(t *testing.T) {
 	log.SetOutput(&buf)
 	defer log.SetOutput(os.Stderr)
 
-	h := newHandler(store, false, false)
+	h := newHandler(store, false, false, newProxyMetrics())
 	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/unknown.local/x", nil))
 	if buf.Len() != 0 {
 		t.Errorf("expected no log output, got: %q", buf.String())
@@ -342,7 +342,7 @@ func benchHandler(b *testing.B, n int) (http.Handler, string) {
 		svcs = append(svcs, Service{Slug: fmt.Sprintf("app-%d", i), Port: 1 + i, Runtime: "node"})
 	}
 	svcs = append(svcs, Service{Slug: "hot", Port: port, Runtime: "node"})
-	return newHandler(storeWith(svcs...), false, false), "/hot/api/items?x=1"
+	return newHandler(storeWith(svcs...), false, false, newProxyMetrics()), "/hot/api/items?x=1"
 }
 
 // BenchmarkHandler_proxy measures one routed round trip (routing + reverse proxy
@@ -396,7 +396,7 @@ func TestHandler_flushesStreams(t *testing.T) {
 		io.WriteString(w, "data: 1\n\n")
 	}))
 	defer backend.Close()
-	h := newHandler(storeWith(Service{Slug: "sse", Port: mustPort(t, backend.URL)}), false, false)
+	h := newHandler(storeWith(Service{Slug: "sse", Port: mustPort(t, backend.URL)}), false, false, newProxyMetrics())
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest("GET", "/sse/", nil))
 	if !rec.Flushed || rec.Body.String() != "data: 1\n\n" {

@@ -319,9 +319,9 @@ func TestCmdServiceStatus_notSetUp(t *testing.T) {
 
 func TestCmdServiceStatus_proxyRunning(t *testing.T) {
 	home, _ := isolate(t)
-	dir := filepath.Join(home, ".tailscale-proxy")
+	dir := filepath.Join(home, ".tsp")
 	_ = os.MkdirAll(dir, 0o755)
-	data, _ := json.Marshal(proxyState{PID: 42, Version: Version, Port: 443})
+	data, _ := json.Marshal(proxyState{PID: 41, Worker: 42, Version: Version, Port: 443, Mode: "worker"})
 	_ = os.WriteFile(proxyStatePath(dir), data, 0o644)
 	release, _, _ := tryLock(proxyLockPath(dir))
 	defer release()
@@ -353,7 +353,7 @@ func sudoStartsProxy(t *testing.T, dir string, ran *[][]string) {
 		if argv[0] != "sudo" || !slices.Contains(argv, "service") { // Linux: the trust steps run through sudo too
 			return nil
 		}
-		data, _ := json.Marshal(proxyState{PID: 42, Version: Version, Port: 443})
+		data, _ := json.Marshal(proxyState{PID: 41, Worker: 42, Version: Version, Port: 443, Mode: "worker"})
 		_ = os.WriteFile(proxyStatePath(dir), data, 0o644)
 		release, _, _ := tryLock(proxyLockPath(dir))
 		t.Cleanup(release)
@@ -372,7 +372,7 @@ func TestCmdServiceInstall_setsUpAsTheCaller(t *testing.T) {
 	home, _ := isolate(t)
 	t.Setenv("SSH_CONNECTION", "1") // macOS: leave the keychain dialog as a next step
 	ran := pinSystem(t, 501, &recRunner{})
-	dir := filepath.Join(home, ".tailscale-proxy")
+	dir := filepath.Join(home, ".tsp")
 	sudoStartsProxy(t, dir, ran)
 	s, _ := testService(t, "launchd")
 	code := 0
@@ -403,9 +403,9 @@ func TestCmdServiceInstall_upToDateNeedsNoSudo(t *testing.T) {
 	home, _ := isolate(t)
 	t.Setenv("SSH_CONNECTION", "1")
 	ran := pinSystem(t, 501, &recRunner{})
-	dir := filepath.Join(home, ".tailscale-proxy")
+	dir := filepath.Join(home, ".tsp")
 	_ = os.MkdirAll(dir, 0o755)
-	data, _ := json.Marshal(proxyState{PID: 7, Version: Version, Port: 443})
+	data, _ := json.Marshal(proxyState{PID: 6, Worker: 7, Version: Version, Port: 443, Mode: "worker"})
 	_ = os.WriteFile(proxyStatePath(dir), data, 0o644)
 	release, _, _ := tryLock(proxyLockPath(dir))
 	defer release()
@@ -452,7 +452,7 @@ func TestSetupReason(t *testing.T) {
 	}
 	_ = copyExecutable(src, s.binPath)
 	_ = os.WriteFile(s.unitPath, []byte("old"), 0o644)
-	if got := setupReason(s, testUser, proxyState{}, false); !strings.HasPrefix(got, "moving the boot service to the self-updating launcher") {
+	if got := setupReason(s, testUser, proxyState{}, false); !strings.HasPrefix(got, "updating the boot service to this tsp's supervisor") {
 		t.Errorf("old unit: %s", got)
 	}
 	_ = os.WriteFile(s.unitPath, []byte(s.unit(testUser)), 0o644)
@@ -547,7 +547,7 @@ func TestCmdService_uninstall(t *testing.T) {
 
 func TestHealProxy_outsideATerminalOnlyWarns(t *testing.T) {
 	home, _ := isolate(t)
-	stderr := captureStderr(t, func() { healProxy(filepath.Join(home, ".tailscale-proxy"), localRoute{Name: "api"}) })
+	stderr := captureStderr(t, func() { healProxy(filepath.Join(home, ".tsp"), localRoute{Name: "api"}) })
 	if !strings.Contains(stderr, "https://api.localhost will not answer: tsp service install") {
 		t.Errorf("stderr:\n%s", stderr)
 	}
@@ -562,9 +562,9 @@ func TestCmdService_status(t *testing.T) {
 
 func TestLocalHTTPSChecks_outdatedProxyNotes(t *testing.T) {
 	home, _ := isolate(t)
-	dir := filepath.Join(home, ".tailscale-proxy")
+	dir := filepath.Join(home, ".tsp")
 	_ = os.MkdirAll(dir, 0o755)
-	data, _ := json.Marshal(proxyState{PID: 42, Version: "0.0.1", Port: 443})
+	data, _ := json.Marshal(proxyState{PID: 41, Worker: 42, Version: "0.0.1", Port: 443, Mode: "worker"})
 	_ = os.WriteFile(proxyStatePath(dir), data, 0o644)
 	release, _, _ := tryLock(proxyLockPath(dir))
 	defer release()

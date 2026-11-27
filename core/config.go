@@ -25,6 +25,7 @@ type Config struct {
 	MatchSeparators  bool   `json:"matchSeparators"`  // match slugs with '-' and '_' interchangeably
 	Docker           bool   `json:"docker"`           // also query Docker API for containers
 	AutoUpdate       bool   `json:"autoUpdate"`       // the local HTTPS proxy updates itself; the CLI says when a release is out
+	LocalRequestLog  string `json:"localRequestLog"`  // the local HTTPS proxy's request log: "errors" (failed, 5xx, slow), "all", "off"
 }
 
 // defaultLocalPort is the local proxy's port. It is never one of Funnel's public
@@ -36,26 +37,17 @@ const defaultLocalPort = 18443
 func defaultConfig() Config {
 	return Config{
 		Ports: "3000-6000", Bind: "127.0.0.1", Port: defaultLocalPort, Interval: 20,
-		HTTPSPort: 443, LogRequests: true, DeregisterCycles: 5, MatchSeparators: true, AutoUpdate: true,
+		HTTPSPort: 443, LogRequests: true, DeregisterCycles: 5, MatchSeparators: true, AutoUpdate: true, LocalRequestLog: "errors",
 	}
 }
 
-// ConfigPath returns the config file path, ~/.tailscale-proxy/config.json.
+// ConfigPath returns the config file path, ~/.tsp/config.json.
 func ConfigPath() (string, error) {
-	home, err := os.UserHomeDir()
+	dir, err := stateDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, ".tailscale-proxy", "config.json"), nil
-}
-
-// stateDir is ~/.tailscale-proxy (beside config.json).
-func stateDir() (string, error) {
-	p, err := ConfigPath()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Dir(p), nil
+	return filepath.Join(dir, "config.json"), nil
 }
 
 // writeFileAtomic writes data to path through a temp file and rename, so a

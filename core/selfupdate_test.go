@@ -31,7 +31,7 @@ func withVersion(t *testing.T, v string) {
 
 func stateFor(t *testing.T) string {
 	home, _ := isolate(t)
-	dir := filepath.Join(home, ".tailscale-proxy")
+	dir := filepath.Join(home, ".tsp")
 	if err := os.MkdirAll(filepath.Join(dir, "bin"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -59,7 +59,7 @@ func TestVersionLess(t *testing.T) {
 
 func TestSyncProxyBin(t *testing.T) {
 	home, _ := isolate(t)
-	dir := filepath.Join(home, ".tailscale-proxy")
+	dir := filepath.Join(home, ".tsp")
 	self := filepath.Join(t.TempDir(), "tsp")
 	_ = os.WriteFile(self, []byte("new"), 0o755)
 	withVersion(t, "1.13.0")
@@ -72,7 +72,7 @@ func TestSyncProxyBin(t *testing.T) {
 		t.Fatalf("first sync: copied=%v err=%v", copied, err)
 	}
 	if got := proxyBinVersion(dir); got != "1.13.0" {
-		t.Errorf("bin/version = %q", got)
+		t.Errorf("current = %q", got)
 	}
 	if copied, _ := syncProxyBin(dir, self); copied {
 		t.Error("copied the same release again")
@@ -81,45 +81,56 @@ func TestSyncProxyBin(t *testing.T) {
 	if copied, _ := syncProxyBin(dir, self); copied || proxyBinVersion(dir) != "1.14.0" {
 		t.Error("an older CLI replaced a newer proxy copy")
 	}
+	if st := loadBinState(dir); st.Previous != "1.13.0" {
+		t.Errorf("previous = %q, want 1.13.0 kept for a rollback", st.Previous)
+	}
 	withVersion(t, "dev")
-	_ = os.Remove(proxyBinVersionPath(dir))
 	if copied, _ := syncProxyBin(dir, self); copied {
 		t.Error("a development build copied itself")
 	}
 }
 
-func TestWatchProxyBin(t *testing.T) {
+func TestInstallProxyBin_keepsCurrentAndPreviousOnly(t *testing.T) {
 	dir := stateFor(t)
-	withVersion(t, "1.13.0")
-	orig := proxyBinPoll
-	proxyBinPoll = 5 * time.Millisecond
-	t.Cleanup(func() { proxyBinPoll = orig })
 	src := filepath.Join(t.TempDir(), "tsp")
 	_ = os.WriteFile(src, []byte("x"), 0o755)
-	_ = installProxyBin(dir, src, "1.14.0") // there before the proxy started (it failed to run): no loop
+	for _, v := range []string{"1.14.0", "1.15.0", "1.16.0"} {
+		if err := installProxyBin(dir, src, v); err != nil {
+			t.Fatal(err)
+		}
+	}
+	entries, _ := os.ReadDir(filepath.Join(dir, "bin"))
+	var names []string
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), "tsp") {
+			names = append(names, e.Name())
+		}
+	}
+	want := []string{proxyBinName("1.15.0"), proxyBinName("1.16.0")}
+	if !slices.Equal(names, want) {
+		t.Errorf("bin/ holds %v, want %v", names, want)
+	}
+}
 
-	var restarts atomic.Int32
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	done := make(chan struct{})
-	go func() { watchProxyBin(ctx, dir, func() { restarts.Add(1) }); close(done) }()
-	time.Sleep(30 * time.Millisecond)
-	if restarts.Load() != 0 {
-		t.Fatal("restarted on a copy that was already there")
-	}
-	_ = installProxyBin(dir, src, "1.12.0") // older than this proxy: stays
-	time.Sleep(30 * time.Millisecond)
-	if restarts.Load() != 0 {
-		t.Fatal("restarted on an older copy")
-	}
+func TestMarkBad_rollsBackAndIsSkipped(t *testing.T) {
+	dir := stateFor(t)
+	src := filepath.Join(t.TempDir(), "tsp")
+	_ = os.WriteFile(src, []byte("x"), 0o755)
+	_ = installProxyBin(dir, src, "1.14.0")
 	_ = installProxyBin(dir, src, "1.15.0")
-	select {
-	case <-done:
-	case <-time.After(2 * time.Second):
-		t.Fatal("no restart on a newer copy")
+	if now := markBad(dir, "1.15.0", "not ready"); now != "1.14.0" || proxyBinVersion(dir) != "1.14.0" {
+		t.Fatalf("after rollback current = %q", now)
 	}
-	if restarts.Load() != 1 {
-		t.Errorf("restarts = %d", restarts.Load())
+	if !isBadVersion(dir, "v1.15.0") {
+		t.Error("1.15.0 is not marked bad")
+	}
+	withVersion(t, "1.15.0")
+	if copied, _ := syncProxyBin(dir, src); copied {
+		t.Error("the CLI copied in a release that failed here")
+	}
+	withVersion(t, "1.16.0")
+	if copied, _ := syncProxyBin(dir, src); !copied || proxyBinVersion(dir) != "1.16.0" {
+		t.Error("a newer good release was not taken after a bad one")
 	}
 }
 
@@ -175,8 +186,8 @@ func TestUpdateProxyBin_installsAVerifiedNewerRelease(t *testing.T) {
 	if err != nil || tag != "1.13.0" {
 		t.Fatalf("tag=%q err=%v", tag, err)
 	}
-	if got, _ := os.ReadFile(proxyBinPath(dir)); !strings.Contains(string(got), "echo 1.13.0") || proxyBinVersion(dir) != "1.13.0" {
-		t.Errorf("bin/tsp = %q, version %q", got, proxyBinVersion(dir))
+	if got, _ := os.ReadFile(proxyBinPath(dir, "1.13.0")); !strings.Contains(string(got), "echo 1.13.0") || proxyBinVersion(dir) != "1.13.0" {
+		t.Errorf("bin/tsp-1.13.0 = %q, current %q", got, proxyBinVersion(dir))
 	}
 	st := loadUpdateState(dir)
 	if st.ETag != `"e1"` || st.Latest != "v1.13.0" || st.CheckedAt.IsZero() {
@@ -197,6 +208,16 @@ func TestUpdateProxyBin_rejectsABadChecksum(t *testing.T) {
 	}
 	if proxyBinVersion(dir) != "" {
 		t.Error("a binary that failed its checksum was installed")
+	}
+}
+
+func TestUpdateProxyBin_skipsABadRelease(t *testing.T) {
+	dir := stateFor(t)
+	withVersion(t, "1.12.0")
+	_, downloads := releaseServer(t, "v1.13.0", []byte("x"), false)
+	markBad(dir, "1.13.0", "not ready")
+	if tag, err := updateProxyBin(context.Background(), dir); tag != "" || err != nil || downloads.Load() != 0 {
+		t.Errorf("a release that failed here was downloaded again: tag=%q err=%v downloads=%d", tag, err, downloads.Load())
 	}
 }
 
@@ -285,14 +306,14 @@ func TestSetupLocalHTTPS_newerTspNeedsNoSudo(t *testing.T) {
 	t.Setenv("SSH_CONNECTION", "1")
 	withVersion(t, "1.13.0")
 	ran := pinSystem(t, 501, &recRunner{})
-	dir := filepath.Join(home, ".tailscale-proxy")
+	dir := filepath.Join(home, ".tsp")
 	_ = os.MkdirAll(filepath.Join(dir, "bin"), 0o755)
 	s, src := testService(t, "launchd")
 	_ = copyExecutable(src, s.binPath)
 	_ = os.WriteFile(s.unitPath, []byte(s.unit(serviceSpec{uid: os.Getuid(), gid: os.Getgid(), home: home})), 0o644)
-	// The proxy of the previous release runs, and restarts on the copy once it lands.
+	// The proxy of the previous release runs, and swaps to the copy once it lands.
 	state := func(v string) {
-		data, _ := json.Marshal(proxyState{PID: 7, Version: v, Port: 443, Launcher: "1.12.0"})
+		data, _ := json.Marshal(proxyState{PID: 6, Worker: 7, Version: v, Port: 443, Launcher: "1.12.0", Mode: "worker"})
 		_ = writeFileAtomic(proxyStatePath(dir), data, 0o644)
 	}
 	state("1.12.0")
@@ -314,7 +335,7 @@ func TestSetupLocalHTTPS_newerTspNeedsNoSudo(t *testing.T) {
 			t.Errorf("sudo ran for an update: %v", c)
 		}
 	}
-	if !strings.Contains(out, "→ the local HTTPS proxy moves from tsp 1.12.0 to 1.13.0 (no sudo)") || !strings.Contains(out, "✓ local HTTPS proxy running (tsp 1.13.0, pid 7, port 443); it updates itself") {
+	if !strings.Contains(out, "→ the local HTTPS proxy swaps from tsp 1.12.0 to 1.13.0 once the new one serves (no sudo)") || !strings.Contains(out, "✓ local HTTPS proxy running (tsp 1.13.0, pid 7, port 443); it updates itself") {
 		t.Errorf("output:\n%s", out)
 	}
 }
@@ -324,7 +345,7 @@ func TestSetupLocalHTTPS_oldDaemonMigratesOnce(t *testing.T) {
 	home, _ := isolate(t)
 	t.Setenv("SSH_CONNECTION", "1")
 	ran := pinSystem(t, 501, &recRunner{})
-	dir := filepath.Join(home, ".tailscale-proxy")
+	dir := filepath.Join(home, ".tsp")
 	sudoStartsProxy(t, dir, ran)
 	s, src := testService(t, "launchd")
 	_ = copyExecutable(src, s.binPath)
@@ -333,7 +354,7 @@ func TestSetupLocalHTTPS_oldDaemonMigratesOnce(t *testing.T) {
 	if len(*ran) == 0 || (*ran)[0][0] != "sudo" {
 		t.Fatalf("ran %v, want the one sudo of the migration", *ran)
 	}
-	if !strings.Contains(out, "→ moving the boot service to the self-updating launcher (once: later updates need no sudo)") {
+	if !strings.Contains(out, "→ updating the boot service to this tsp's supervisor (sudo once: later updates need none)") {
 		t.Errorf("output:\n%s", out)
 	}
 }
@@ -343,13 +364,15 @@ func TestLocalHTTPSChecks_selfUpdatingNotes(t *testing.T) {
 	withVersion(t, "1.13.0")
 	t.Setenv("TSP_NO_UPDATE", "")
 	t.Setenv("CI", "")
-	dir := filepath.Join(home, ".tailscale-proxy")
+	dir := filepath.Join(home, ".tsp")
 	_ = os.MkdirAll(dir, 0o755)
-	data, _ := json.Marshal(proxyState{PID: 42, Version: "1.12.0", Port: 443})
+	data, _ := json.Marshal(proxyState{PID: 41, Worker: 42, Version: "1.12.0", Port: 443, Mode: "worker", Rollbacks: 1})
 	_ = os.WriteFile(proxyStatePath(dir), data, 0o644)
 	release, _, _ := tryLock(proxyLockPath(dir))
 	defer release()
 	saveUpdateState(dir, updateState{CheckedAt: time.Now().Add(-2 * time.Hour), Latest: "v1.13.0"})
+	_ = os.MkdirAll(filepath.Join(dir, "bin"), 0o755)
+	markBad(dir, "1.12.5", "not ready")
 	s, _ := testService(t, "launchd")
 	_ = os.WriteFile(s.unitPath, []byte(s.unit(testUser)), 0o644)
 	checks, err := localHTTPSChecks(s, true)
@@ -361,7 +384,8 @@ func TestLocalHTTPSChecks_selfUpdatingNotes(t *testing.T) {
 		names, notes = append(names, c.Name), append(notes, c.Note)
 	}
 	all := strings.Join(names, "\n") + "\n" + strings.Join(notes, "\n")
-	if !strings.Contains(all, "it restarts on "+proxyBinPath(dir)+" within seconds") || !strings.Contains(all, "auto-update on (checked 2h0m0s ago, latest 1.13.0)") {
+	if !strings.Contains(all, "proxy running (tsp 1.12.0, pid 42, port 443)") || !strings.Contains(all, "it swaps within seconds once 1.13.0 serves") ||
+		!strings.Contains(all, "set aside (failed to start here): 1.12.5") || !strings.Contains(all, "auto-update on (checked 2h0m0s ago, latest 1.13.0)") {
 		t.Errorf("checks:\n%s", all)
 	}
 }

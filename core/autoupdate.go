@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"math/rand/v2"
 	"net/http"
 	"os"
@@ -20,13 +19,14 @@ import (
 )
 
 // The local HTTPS proxy keeps itself current: once a day it asks GitHub for the
-// latest release (a conditional request), and installs a newer one as its copy in
-// bin/ after checking the archive against the release's checksums.txt; watchProxyBin
-// then restarts it on the new copy. The CLI only says, once a day, that a release
+// latest release (a conditional request) and, after checking the archive against
+// the release's checksums.txt, installs a newer one in bin/ (never one that failed
+// here before); the supervisor then swaps to it once it proves it serves, and keeps
+// the old one serving if it does not. The CLI only says, once a day, that a release
 // is out and how to get it (brew, npm or tsp update). Off: `tsp configure
 // --auto-update=false`, TSP_NO_UPDATE=1, or CI.
 
-// updateState is ~/.tailscale-proxy/update.json.
+// updateState is ~/.tsp/update.json.
 type updateState struct {
 	CheckedAt  time.Time `json:"checkedAt"`
 	ETag       string    `json:"etag,omitempty"`
@@ -186,14 +186,17 @@ func updateProxyBin(ctx context.Context, dir string) (string, error) {
 	if v := proxyBinVersion(dir); v != "" && versionLess(have, v) {
 		have = v
 	}
-	if st.Latest == "" || !versionLess(have, st.Latest) {
+	if st.Latest == "" || !versionLess(have, st.Latest) || isBadVersion(dir, st.Latest) {
 		return "", nil
 	}
 	bin, err := fetchReleaseBinary(ctx, st.Latest)
 	if err != nil {
 		return "", err
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(proxyBinPath(dir)), ".tsp-update-*")
+	if err := os.MkdirAll(binDir(dir), 0o755); err != nil {
+		return "", err
+	}
+	tmp, err := os.CreateTemp(binDir(dir), ".tsp-update-*")
 	if err != nil {
 		return "", err
 	}
@@ -231,9 +234,11 @@ func autoUpdateLoop(ctx context.Context, dir string) {
 		cancel()
 		switch {
 		case err != nil:
-			log.Printf("auto-update: %v (next try in %s)", err, updateEvery)
+			appLog().Warn("auto-update failed", "err", err, "retry", updateEvery.String())
 		case tag != "":
-			log.Printf("auto-update: installed tsp %s in %s", tag, proxyBinPath(dir))
+			appLog().Info("auto-update installed", "release", tag, "path", proxyBinPath(dir, tag))
+		default:
+			appLog().Info("auto-update checked", "latest", normalizeVer(loadUpdateState(dir).Latest))
 		}
 	}
 }

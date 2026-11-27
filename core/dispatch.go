@@ -49,6 +49,10 @@ func Run(argv []string) int {
 		return cmdTrust(argv[1:])
 	case "uninstall":
 		return cmdUninstall(argv[1:])
+	case "stats":
+		return cmdStats(argv[1:])
+	case "logs":
+		return cmdLogs(argv[1:])
 	case "update-check": // hidden: the background half of the CLI's update notice
 		return cmdUpdateCheck()
 	case "-v", "--version", "version":

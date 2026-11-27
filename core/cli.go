@@ -15,49 +15,50 @@ import (
 )
 
 func printHelp() {
-	fmt.Print(`tailscale-proxy (tsp)
-Discover local dev servers by port and expose them through one Tailscale entry,
-routed by project name — and serve them locally at stable HTTPS names.
-
-  https://<node>.ts.net/<project>/foo   →   127.0.0.1:<port>/foo
-  https://<name>.localhost/foo          →   127.0.0.1:<port>/foo   (tsp run)
+	fmt.Print(`tailscale-proxy (tsp): real HTTPS addresses for local dev servers
+  https://<name>.localhost             on this machine          (tsp run)
+  https://<node>.ts.net/<project>/     online, through Tailscale (tsp)
 
 Usage:
   tsp [flags]              # default: run "start" with your saved config
   tsp <command> [flags]
 
-Commands:
-  start      Discover services, run the proxy, and expose it (Serve or Funnel)
-  status     Print Serve/Funnel status and the current service map
-  list       Print discovered services (slug → runtime, port, project, URL)
-  reset      Remove the Serve/Funnel entry and exit
-  doctor     Check everything: Tailscale exposure and local HTTPS names, each ✗ with its fix
-  configure  Save defaults to ~/.tailscale-proxy/config.json
-  update     Update tsp to the latest release (runs brew or npm when that installed it)
-  uninstall  Remove everything tsp set up: Serve/Funnel entry, boot service, CA trust, state
-
 Local HTTPS names (https://<name>.localhost):
   run        Run an app on a free port at https://<name>.localhost
   routes     Print the running names (--json)
-  service    install | uninstall | status — the local HTTPS proxy, from boot (once per
-             machine: it then updates itself, no sudo)
+  service    install | uninstall | status: the local HTTPS proxy from boot (install once
+             per machine: it then updates itself live, no sudo)
   trust      Add the local CA to the OS trust store (browsers, curl)
   proxy      Run the local HTTPS proxy in the foreground (what the service runs)
 
+Online links through Tailscale (https://<node>.ts.net/<project>/):
+  start      Discover dev servers, run the proxy, and publish it (Funnel, or Serve with --private)
+  list       Print the dev servers that would be shared, with their links
+  status     Print the Funnel or Serve entry, the map, and requests per project
+  reset      Remove the Funnel or Serve entry
+
+Both:
+  doctor     Check everything; each ✗ comes with the command that fixes it
+  stats      Health and requests per name (--since 1h, --json)
+  logs       The local HTTPS proxy's events: updates, rollbacks, failed or slow requests (-f)
+  configure  Save defaults to ~/.tsp/config.json
+  update     Update tsp now (runs brew or npm when that installed it)
+  uninstall  Remove everything tsp set up (asks first)
+
 Examples:
-  tsp                        # start using saved config (or built-in defaults)
-  tsp --private              # start privately (Serve) this once
-  tsp configure --ports 3000-9000 --private   # save, then just run "tsp"
-  tsp list                   # see discovered services + URLs
   tsp service install        # once per machine: https://*.localhost, then it updates itself
   tsp run                    # in an app folder: package.json "tsp" {name, script}
-  tsp uninstall              # take it all back (asks first)
+  tsp                        # share every running dev server online (Funnel)
+  tsp --private              # only devices on your Tailscale network (Serve)
+  tsp stats --since 1h       # how the proxy has been doing
+  tsp logs -f                # follow its events
 
-New releases: the local HTTPS proxy installs them itself (daily, checksummed); the CLI
-says once a day how to update it. Off: tsp configure --auto-update=false or TSP_NO_UPDATE=1.
+Everything tsp keeps is in ~/.tsp. The local HTTPS proxy installs new releases itself
+(daily, checksum-verified, swapped in live and rolled back if it fails); off with
+tsp configure --auto-update=false or TSP_NO_UPDATE=1.
 
-Run "tsp start --help" for all flags. Global: -h/--help, -v/--version
-Docs: https://github.com/meabed/tailscale-proxy
+Run "tsp <command> --help" for a command's flags. Global: -h/--help, -v/--version
+Docs: https://tailscaleproxy.vercel.app (for agents: /llms-full.txt)
 `)
 }
 
@@ -67,7 +68,7 @@ func startUsage() {
 Usage:
   tsp start [flags]     (also the default: plain "tsp" runs this)
 
-Flags (defaults come from ~/.tailscale-proxy/config.json if present):
+Flags (defaults come from ~/.tsp/config.json if present):
   --ports <lo-hi|port>   Port range or single port to scan   (default 3000-6000)
   --all                  Include all listeners, not just web runtimes
   --runtimes <list>      Comma-separated runtimes to keep (default: all known)
@@ -241,7 +242,12 @@ func cmdStart(argv []string) int {
 	if o.bind != "127.0.0.1" && o.bind != "localhost" {
 		fmt.Printf("⚠ proxy bound to %s:%d — reachable beyond this host (containers/LAN). Anyone who can reach it can hit your dev servers.\n", o.bind, o.port)
 	}
-	srv := newServer(fmt.Sprintf("%s:%d", o.bind, o.port), newHandler(store, o.logRequests, o.forwardHost))
+	metrics := newProxyMetrics()
+	srv := newServer(fmt.Sprintf("%s:%d", o.bind, o.port), newHandler(store, o.logRequests, o.forwardHost, metrics))
+	srv.ConnState = metrics.connState
+	if dir, err := stateDir(); err == nil {
+		go historyLoop(ctx, dir, "start", metrics) // per-minute request summaries for tsp stats and tsp status
+	}
 	ln, err := net.Listen("tcp", srv.Addr)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "cannot listen on %s: %v\n", srv.Addr, err)

@@ -14,7 +14,7 @@ func TestCmdRoutes(t *testing.T) {
 	if code := cmdRoutes([]string{"--json"}); code != 0 {
 		t.Errorf("empty --json = %d", code)
 	}
-	reg := newLocalRegistry(filepath.Join(home, ".tailscale-proxy", "routes"))
+	reg := newLocalRegistry(filepath.Join(home, ".tsp", "routes"))
 	_ = reg.add(localRoute{Name: "api", Port: 4001, PID: os.Getpid(), Dir: "/src/api"})
 	if code := cmdRoutes(nil); code != 0 {
 		t.Errorf("text = %d", code)

@@ -1,8 +1,7 @@
 package core
 
 import (
-	"context"
-	"log"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -11,54 +10,154 @@ import (
 	"time"
 )
 
-// The boot service runs the user's own copy of tsp, ~/.tailscale-proxy/bin/tsp, as
-// that user (the root launcher binds 443, drops to the user, then execs it: see
-// local_launch_unix.go). Any newer tsp the user runs copies itself there, and the
-// proxy restarts on it, so updating tsp never needs sudo. bin/version names the
-// copy's release, read without running it.
+// The local HTTPS proxy runs the user's own copies of tsp, kept in ~/.tsp/bin: one
+// file per release (tsp-1.14.0) and bin/state.json naming the current one, the one
+// before it (the rollback), and the releases that failed to start (never tried
+// again). Any newer tsp the user runs copies itself in (syncProxyBin), the daily
+// auto-update downloads one (updateProxyBin), and the supervisor swaps to it live
+// once it proves it serves (supervisor_unix.go). Nothing here needs sudo.
 
-func proxyBinPath(dir string) string {
-	name := "tsp"
+// binState is bin/state.json.
+type binState struct {
+	Current  string            `json:"current,omitempty"`
+	Previous string            `json:"previous,omitempty"`
+	Bad      map[string]string `json:"bad,omitempty"` // release → why it was rolled back
+}
+
+func binDir(dir string) string           { return filepath.Join(dir, "bin") }
+func binStatePath(dir string) string     { return filepath.Join(binDir(dir), "state.json") }
+func binLockPath(dir string) string      { return filepath.Join(binDir(dir), "state.lock") }
+func proxyBinName(version string) string { return "tsp-" + normalizeVer(version) + exeSuffix() }
+
+func exeSuffix() string {
 	if runtime.GOOS == "windows" {
-		name = "tsp.exe"
+		return ".exe"
 	}
-	return filepath.Join(dir, "bin", name)
+	return ""
 }
 
-func proxyBinVersionPath(dir string) string { return filepath.Join(dir, "bin", "version") }
+// proxyBinPath is release version's copy in bin/.
+func proxyBinPath(dir, version string) string {
+	return filepath.Join(binDir(dir), proxyBinName(version))
+}
 
-// proxyBinVersion is the release of the user's proxy copy, "" when there is none.
-func proxyBinVersion(dir string) string {
-	data, err := os.ReadFile(proxyBinVersionPath(dir))
+func loadBinState(dir string) binState {
+	var st binState
+	if data, err := os.ReadFile(binStatePath(dir)); err == nil {
+		_ = json.Unmarshal(data, &st)
+	}
+	return st
+}
+
+func saveBinState(dir string, st binState) error {
+	data, _ := json.MarshalIndent(st, "", "  ")
+	return writeFileAtomic(binStatePath(dir), append(data, '\n'), 0o644)
+}
+
+// updateBinState changes bin/state.json under its lock (the CLI, the auto-update
+// and the supervisor all write it).
+func updateBinState(dir string, change func(*binState) error) error {
+	release, _, err := waitLock(binLockPath(dir), 10*time.Second)
 	if err != nil {
-		return ""
-	}
-	if _, err := os.Stat(proxyBinPath(dir)); err != nil {
-		return ""
-	}
-	return strings.TrimSpace(string(data))
-}
-
-// installProxyBin puts the binary at src in place as the proxy copy of release
-// version: the binary first, then its version (what a running proxy watches).
-func installProxyBin(dir, src, version string) error {
-	if err := copyExecutable(src, proxyBinPath(dir)); err != nil {
 		return err
 	}
-	return writeFileAtomic(proxyBinVersionPath(dir), []byte(version+"\n"), 0o644)
+	if release != nil {
+		defer release()
+	}
+	st := loadBinState(dir)
+	if err := change(&st); err != nil {
+		return err
+	}
+	return saveBinState(dir, st)
 }
 
-// syncProxyBin copies self in as the proxy copy when self is newer (never older),
-// once local HTTPS is set up on this machine (bin/ exists). It reports whether it
-// copied. Development builds never copy.
+// proxyBinVersion is the current copy's release, "" when there is none.
+func proxyBinVersion(dir string) string {
+	v := loadBinState(dir).Current
+	if v == "" {
+		return ""
+	}
+	if _, err := os.Stat(proxyBinPath(dir, v)); err != nil {
+		return ""
+	}
+	return v
+}
+
+// isBadVersion reports whether release v failed to start here before.
+func isBadVersion(dir, v string) bool {
+	_, bad := loadBinState(dir).Bad[normalizeVer(v)]
+	return bad
+}
+
+// installProxyBin copies the binary at src in as release version and makes it
+// current, keeping the one it replaces as the rollback. Older copies are removed.
+func installProxyBin(dir, src, version string) error {
+	version = normalizeVer(version)
+	if err := copyExecutable(src, proxyBinPath(dir, version)); err != nil {
+		return err
+	}
+	return updateBinState(dir, func(st *binState) error {
+		if st.Current != version {
+			st.Previous, st.Current = st.Current, version
+		}
+		pruneProxyBins(dir, st.Current, st.Previous)
+		return nil
+	})
+}
+
+// pruneProxyBins removes the copies in bin/ other than keep.
+func pruneProxyBins(dir string, keep ...string) {
+	entries, err := os.ReadDir(binDir(dir))
+	if err != nil {
+		return
+	}
+	wanted := map[string]bool{}
+	for _, v := range keep {
+		if v != "" {
+			wanted[proxyBinName(v)] = true
+		}
+	}
+	for _, e := range entries {
+		n := e.Name()
+		if strings.HasPrefix(n, "tsp-") && !wanted[n] {
+			_ = os.Remove(filepath.Join(binDir(dir), n))
+		}
+	}
+}
+
+// markBad records that release v failed to start and points current back at the
+// previous copy when v was current. It returns the release that is current now.
+func markBad(dir, v, why string) string {
+	v = normalizeVer(v)
+	var now string
+	_ = updateBinState(dir, func(st *binState) error {
+		if st.Bad == nil {
+			st.Bad = map[string]string{}
+		}
+		st.Bad[v] = why
+		if st.Current == v && st.Previous != "" {
+			st.Current, st.Previous = st.Previous, ""
+		}
+		now = st.Current
+		return nil
+	})
+	return now
+}
+
+// syncProxyBin copies self in as the current copy when self is newer (never
+// older, never a release that failed here), once local HTTPS is set up on this
+// machine (bin/ exists). It reports whether it copied. Development builds never copy.
 func syncProxyBin(dir, self string) (bool, error) {
 	if Version == "dev" {
 		return false, nil
 	}
-	if _, err := os.Stat(filepath.Dir(proxyBinPath(dir))); err != nil {
+	if _, err := os.Stat(binDir(dir)); err != nil {
 		return false, nil
 	}
 	if cur := proxyBinVersion(dir); cur != "" && !versionLess(cur, Version) {
+		return false, nil
+	}
+	if isBadVersion(dir, Version) {
 		return false, nil
 	}
 	return true, installProxyBin(dir, self, Version)
@@ -95,28 +194,4 @@ func parseVersion(v string) ([3]int, bool) {
 		out[i] = n
 	}
 	return out, true
-}
-
-// proxyBinPoll is how often a running proxy looks for a newer copy in bin/.
-var proxyBinPoll = 3 * time.Second
-
-// watchProxyBin calls restart once bin/ holds a release newer than this proxy that
-// arrived after it started (a copy that was already there and failed to start
-// never loops the service).
-func watchProxyBin(ctx context.Context, dir string, restart func()) {
-	start := proxyBinVersion(dir)
-	t := time.NewTicker(proxyBinPoll)
-	defer t.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-t.C:
-			if v := proxyBinVersion(dir); v != start && v != "" && versionLess(Version, v) {
-				log.Printf("tsp %s is in %s: restarting on it", v, proxyBinPath(dir))
-				restart()
-				return
-			}
-		}
-	}
 }

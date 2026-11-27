@@ -44,7 +44,7 @@ func trustCommands(goos, caPath, home string, root, debian bool) [][]string {
 
 func cmdTrust(argv []string) int {
 	if len(argv) > 0 {
-		fmt.Print("tsp trust — add the local CA (~/.tailscale-proxy/ca/ca.pem) to the OS trust store\n\nUsage:\n  tsp trust\n")
+		fmt.Print("tsp trust — add the local CA (~/.tsp/ca/ca.pem) to the OS trust store\n\nUsage:\n  tsp trust\n")
 		if argv[0] == "-h" || argv[0] == "--help" {
 			return 0
 		}

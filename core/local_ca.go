@@ -22,7 +22,7 @@ import (
 
 // The local CA signs the certificates `tsp proxy` presents for *.localhost. Its
 // name constraint limits it to localhost names, so even a leaked key cannot sign
-// a certificate for a real domain. Files: ~/.tailscale-proxy/ca/{ca.pem,ca-key.pem}.
+// a certificate for a real domain. Files: ~/.tsp/ca/{ca.pem,ca-key.pem}.
 
 const (
 	caValidity   = 10 * 365 * 24 * time.Hour
@@ -151,8 +151,9 @@ type certIssuer struct {
 	key *ecdsa.PrivateKey // one key for every leaf
 	now func() time.Time
 
-	mu    sync.Mutex
-	cache map[string]*tls.Certificate
+	mu      sync.Mutex
+	cache   map[string]*tls.Certificate
+	onIssue func() // counts each certificate signed (metrics)
 }
 
 func newCertIssuer(ca *localCA) (*certIssuer, error) {
@@ -160,7 +161,7 @@ func newCertIssuer(ca *localCA) (*certIssuer, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &certIssuer{ca: ca, key: key, now: time.Now, cache: map[string]*tls.Certificate{}}, nil
+	return &certIssuer{ca: ca, key: key, now: time.Now, cache: map[string]*tls.Certificate{}, onIssue: func() {}}, nil
 }
 
 // GetCertificate is the tls.Config hook.
@@ -204,6 +205,7 @@ func (i *certIssuer) leaf(name string) (*tls.Certificate, error) {
 	}
 	c := &tls.Certificate{Certificate: [][]byte{der, i.ca.cert.Raw}, PrivateKey: i.key, Leaf: leaf}
 	i.cache[name] = c
+	i.onIssue()
 	return c, nil
 }
 

@@ -8,7 +8,7 @@ import (
 )
 
 func TestUntrustCommands(t *testing.T) {
-	mac := untrustCommands("darwin", "/h/.tailscale-proxy/ca/ca.pem", "/h", false)
+	mac := untrustCommands("darwin", "/h/.tsp/ca/ca.pem", "/h", false)
 	if len(mac) != 2 || mac[0][1] != "remove-trusted-cert" || !strings.HasSuffix(mac[1][len(mac[1])-1], "login.keychain-db") || mac[1][3] != "tailscale-proxy local CA" {
 		t.Errorf("darwin = %v", mac)
 	}
@@ -29,7 +29,7 @@ func TestUntrustCommands(t *testing.T) {
 }
 
 func TestUninstallState_keepsConfigUnlessAll(t *testing.T) {
-	dir := filepath.Join(t.TempDir(), ".tailscale-proxy")
+	dir := filepath.Join(t.TempDir(), ".tsp")
 	for _, p := range []string{"ca/ca.pem", "routes/api.json", "bin/tsp", "config.json", "update.json"} {
 		_ = os.MkdirAll(filepath.Dir(filepath.Join(dir, p)), 0o755)
 		_ = os.WriteFile(filepath.Join(dir, p), []byte("x"), 0o644)
@@ -72,7 +72,7 @@ func TestCmdUninstall_nothingSetUp(t *testing.T) {
 	origP := servicePlatform
 	servicePlatform = func() (serviceSystem, bool) { return serviceSystem{unitPath: filepath.Join(home, "none")}, true }
 	t.Cleanup(func() { servicePlatform = origP })
-	dir := filepath.Join(home, ".tailscale-proxy")
+	dir := filepath.Join(home, ".tsp")
 	_ = os.MkdirAll(filepath.Join(dir, "routes"), 0o755)
 	out := captureStdout(t, func() {
 		if code := cmdUninstall([]string{"--yes"}); code != 0 {

@@ -124,7 +124,7 @@ func TestCmdRun_registersWhileRunning(t *testing.T) {
 	home, cwd := isolate(t)
 	t.Setenv("NODE_EXTRA_CA_CERTS", "")
 	out := filepath.Join(cwd, "seen")
-	script := "echo $PORT $HOST $NODE_EXTRA_CA_CERTS > seen; ls " + filepath.Join(home, ".tailscale-proxy", "routes") + " >> seen"
+	script := "echo $PORT $HOST $NODE_EXTRA_CA_CERTS > seen; ls " + filepath.Join(home, ".tsp", "routes") + " >> seen"
 	if runtime.GOOS == "windows" {
 		t.Skip("uses a POSIX shell")
 	}
@@ -140,13 +140,13 @@ func TestCmdRun_registersWhileRunning(t *testing.T) {
 	if port < localPortMin || port > localPortMax || fields[1] != "127.0.0.1" {
 		t.Errorf("PORT=%s HOST=%s", fields[0], fields[1])
 	}
-	if fields[2] != filepath.Join(home, ".tailscale-proxy", "ca", "ca.pem") {
+	if fields[2] != filepath.Join(home, ".tsp", "ca", "ca.pem") {
 		t.Errorf("NODE_EXTRA_CA_CERTS=%s", fields[2])
 	}
 	if fields[3] != "api.acme.json" || fields[4] != "api.acme.lock" {
 		t.Errorf("while running, the routes dir held %v", fields[3:])
 	}
-	if routes := newLocalRegistry(filepath.Join(home, ".tailscale-proxy", "routes")).list(); len(routes) != 0 {
+	if routes := newLocalRegistry(filepath.Join(home, ".tsp", "routes")).list(); len(routes) != 0 {
 		t.Errorf("routes left after the app exited: %+v", routes)
 	}
 }
@@ -193,7 +193,7 @@ func TestCmdRun_nameTakenAndForce(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("uses a POSIX shell and SIGTERM")
 	}
-	routes := filepath.Join(home, ".tailscale-proxy", "routes")
+	routes := filepath.Join(home, ".tsp", "routes")
 	_ = os.MkdirAll(routes, 0o755)
 	holder := exec.Command(os.Args[0], "-test.run=^TestHelperHoldName$")
 	holder.Env = append(os.Environ(), "TSP_TEST_HOLD="+routes)

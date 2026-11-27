@@ -13,7 +13,7 @@ import (
 
 // `tsp uninstall` takes back everything tsp set up on this machine, safe to run
 // again: the Serve/Funnel entry pointing at tsp, the boot service, the local CA's
-// trust, and ~/.tailscale-proxy. The CLI itself is removed the way it was
+// trust, and ~/.tsp. The CLI itself is removed the way it was
 // installed (brew, npm), which it prints; a standalone binary goes with --all.
 
 func uninstallUsage() {
@@ -26,7 +26,7 @@ Removes, each only if present:
   the Tailscale Serve/Funnel entry that points at tsp
   the boot service (the local HTTPS proxy; sudo asks for your password)
   the local CA from the OS trust store (macOS: a dialog at the Mac's screen)
-  ~/.tailscale-proxy: the CA, running names, the proxy's copy of tsp
+  ~/.tsp: the CA, running names, the proxy's copy of tsp
 Then prints how to remove the tsp command itself (brew uninstall, npm rm).
 
 Flags:
@@ -77,7 +77,7 @@ func cmdUninstall(argv []string) int {
 			fmt.Fprintln(os.Stderr, "tsp uninstall: add --yes to remove without asking (no terminal to ask in)")
 			return 2
 		}
-		fmt.Print("Remove tsp's boot service, its CA from the trust store, and ~/.tailscale-proxy? [y/N] ")
+		fmt.Print("Remove tsp's boot service, its CA from the trust store, and ~/.tsp? [y/N] ")
 		answer, _ := bufio.NewReader(os.Stdin).ReadString('\n')
 		if a := strings.ToLower(strings.TrimSpace(answer)); a != "y" && a != "yes" {
 			fmt.Println("Nothing removed.")
@@ -183,7 +183,7 @@ func uninstallTrust(dir string) bool {
 	return uninstallStep(true, false, "local CA removed from the OS trust store", "")
 }
 
-// uninstallState deletes ~/.tailscale-proxy, keeping config.json unless all.
+// uninstallState deletes ~/.tsp, keeping config.json unless all.
 func uninstallState(dir string, all bool) bool {
 	entries, err := os.ReadDir(dir)
 	if os.IsNotExist(err) {

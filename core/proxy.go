@@ -103,7 +103,8 @@ func newUpstreamTransport() *http.Transport {
 // target, and duration. When forwardHost is true, the external (funnel/serve)
 // host is forwarded to the app via X-Forwarded-Host + X-Forwarded-Proto=https;
 // otherwise the app only ever sees the local host (so it behaves like localhost).
-func newHandler(store *routeStore, logRequests, forwardHost bool) http.Handler {
+// Every response is counted in m, by project slug.
+func newHandler(store *routeStore, logRequests, forwardHost bool, m *proxyMetrics) http.Handler {
 	proxy := &httputil.ReverseProxy{
 		Transport:     newUpstreamTransport(),
 		BufferPool:    copyBuffers,
@@ -132,6 +133,9 @@ func newHandler(store *routeStore, logRequests, forwardHost bool) http.Handler {
 			}
 		},
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
+			if mw, ok := w.(*meteredWriter); ok {
+				mw.failed = true
+			}
 			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 			w.WriteHeader(http.StatusBadGateway)
 			fmt.Fprintf(w, "tailscale-proxy: upstream error: %v\n", err)
@@ -140,18 +144,20 @@ func newHandler(store *routeStore, logRequests, forwardHost bool) http.Handler {
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
-		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+		mw := newMeteredWriter(w)
 
 		svc, path, ok := resolveRoute(store, r, w)
 		if ok {
 			tgt := target{host: svc.upstreamHost(), port: svc.Port, path: path}
-			proxy.ServeHTTP(rec, r.WithContext(context.WithValue(r.Context(), targetKey{}, tgt)))
+			proxy.ServeHTTP(mw, r.WithContext(context.WithValue(r.Context(), targetKey{}, tgt)))
 		} else {
-			writeIndex(rec, store)
+			writeIndex(mw, store)
 		}
+		status, ttfb := mw.result()
+		m.record(svc.Slug, status, ttfb, mw.bytes, mw.failed)
 
 		if logRequests {
-			logRequest(r, rec.status, svc, time.Since(start))
+			logRequest(r, status, svc, time.Since(start))
 		}
 	})
 }
@@ -198,21 +204,6 @@ func resolveRoute(store *routeStore, r *http.Request, w http.ResponseWriter) (Se
 	}
 	return Service{}, "", false
 }
-
-// statusRecorder captures the response status code. Unwrap lets the reverse
-// proxy's http.ResponseController reach the real writer to flush streams and
-// hijack WebSocket upgrades.
-type statusRecorder struct {
-	http.ResponseWriter
-	status int
-}
-
-func (s *statusRecorder) WriteHeader(code int) {
-	s.status = code
-	s.ResponseWriter.WriteHeader(code)
-}
-
-func (s *statusRecorder) Unwrap() http.ResponseWriter { return s.ResponseWriter }
 
 // logRequest prints one nicely formatted request line.
 func logRequest(r *http.Request, status int, svc Service, dur time.Duration) {

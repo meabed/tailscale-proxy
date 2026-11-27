@@ -198,7 +198,9 @@ func healProxy(dir string, rt localRoute) {
 		return
 	}
 	s, supported := servicePlatform()
-	if supported && stdinIsTerminal() {
+	// A development build never installs the machine's boot service by itself (run
+	// `tsp service install` with it on purpose instead).
+	if supported && stdinIsTerminal() && Version != "dev" {
 		self, err := os.Executable()
 		if err == nil {
 			self, err = filepath.EvalSymlinks(self)

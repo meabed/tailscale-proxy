@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -16,16 +17,17 @@ import (
 
 // `tsp service install|uninstall|status` keeps `tsp proxy` running from boot.
 // The service runs a root-owned copy of tsp, the launcher (a root process never
-// runs a file its user could replace): it binds 443, drops to that user, then
-// hands the port to the user's own tsp in ~/.tailscale-proxy/bin, which every
-// newer tsp replaces. So the service is installed once; updates need no sudo.
+// runs a file its user could replace): it binds 443, drops to that user for good
+// and supervises the user's own tsp from ~/.tsp/bin, swapping to each newer one
+// live (supervisor_unix.go). So the service is installed once; updates need no sudo.
+// The launchd label and systemd unit keep the project's name, tailscale-proxy.
 
 const serviceLabel = "com.meabed.tailscale-proxy"
 
 // launcherRevision is in the unit's environment. It changes only when the
 // launcher must change (how it hands the port over): `tsp service install` then
 // replaces the service, the one update that asks for sudo.
-const launcherRevision = "1"
+const launcherRevision = "2"
 
 // checkRootOnlyPath is checkRootOnly, replaceable in tests (their temp dirs are the user's).
 var checkRootOnlyPath = checkRootOnly
@@ -216,12 +218,17 @@ func (s serviceSystem) current(sp serviceSpec) bool {
 	return err == nil
 }
 
-// selfUpdating reports whether the installed service hands the port to the user's
-// own tsp (any user's: status reads it without knowing who installed it), so a
-// newer tsp restarts it without sudo.
+// selfUpdating reports whether the installed service is this launcher design (any
+// user's: status reads it without knowing who installed it), so a newer tsp takes
+// over without sudo.
 func (s serviceSystem) selfUpdating() bool {
 	unit, err := os.ReadFile(s.unitPath)
-	return err == nil && strings.Contains(string(unit), "TSP_LAUNCHER_REVISION") && strings.Contains(string(unit), launcherRevision)
+	if err != nil {
+		return false
+	}
+	u := string(unit)
+	return strings.Contains(u, "Environment=TSP_LAUNCHER_REVISION="+launcherRevision+"\n") ||
+		strings.Contains(u, "<key>TSP_LAUNCHER_REVISION</key>\n\t\t<string>"+launcherRevision+"</string>")
 }
 
 func sameFile(a, b string) bool {
@@ -266,9 +273,11 @@ Usage:
   tsp service status      installed, running, and trusted? (exit 1 if not)
 
 install sets up a machine once (sudo asks for your password then). After that the
-proxy runs your own tsp from ~/.tailscale-proxy/bin and updates itself: a newer tsp
-you install (brew, npm, tsp update) or a new release it fetches (daily, checksummed;
-tsp configure --auto-update=false to stop) takes over within seconds, no sudo.
+proxy runs your own tsp from ~/.tsp/bin and updates itself: a newer tsp you install
+(brew, npm, tsp update) or a new release it fetches (daily, checksummed; tsp
+configure --auto-update=false to stop) takes over live once it proves it serves,
+with no dropped requests and no sudo. A release that fails is set aside and the
+previous one keeps serving. tsp stats and tsp logs show how it runs.
 Run install again any time: it checks what is in place and fixes only what is off.
 To remove everything tsp set up: tsp uninstall.
 `)
@@ -309,7 +318,7 @@ func cmdService(argv []string) int {
 		fmt.Fprintln(os.Stderr, "tsp service uninstall:", err)
 		return 1
 	}
-	fmt.Println("✓ local HTTPS proxy removed (the CA stays in ~/.tailscale-proxy/ca; tsp trust added it to the OS trust store)")
+	fmt.Println("✓ local HTTPS proxy removed (the CA stays in ~/.tsp/ca; tsp trust added it to the OS trust store)")
 	return 0
 }
 
@@ -372,7 +381,7 @@ func setupLocalHTTPS(s serviceSystem, self string) int {
 		defer release()
 	}
 	if _, err := syncProxyBin(dir, self); err != nil {
-		fmt.Fprintln(os.Stderr, "tsp service install: copying tsp to", proxyBinPath(dir)+":", err)
+		fmt.Fprintln(os.Stderr, "tsp service install: copying tsp to", proxyBinPath(dir, Version)+":", err)
 		return 1
 	}
 	home, _ := os.UserHomeDir()
@@ -380,20 +389,20 @@ func setupLocalHTTPS(s serviceSystem, self string) int {
 	st, running := runningProxy(dir)
 	current := s.current(sp)
 	if current && running && st.outdated() {
-		// The proxy restarts on the copy it sees in bin/ (watchProxyBin): no sudo.
-		fmt.Printf("→ the local HTTPS proxy moves from tsp %s to %s (no sudo)\n", st.Version, Version)
+		// The supervisor swaps to the copy it sees in bin/ once it proves it serves: no sudo.
+		fmt.Printf("→ the local HTTPS proxy swaps from tsp %s to %s once the new one serves (no sudo)\n", st.Version, Version)
 		st, running = waitProxy(dir, proxyStartWait)
 	}
 	switch {
 	case current && running && !st.outdated():
-		fmt.Printf("✓ local HTTPS proxy running (tsp %s, pid %d, port %d); it updates itself\n", st.Version, st.PID, st.Port)
+		fmt.Printf("✓ local HTTPS proxy running (tsp %s, pid %d, port %d); it updates itself\n", st.Version, st.Worker, st.Port)
 	default:
 		fmt.Println("→ " + setupReason(s, sp, st, running))
 		if code, _ := elevate([]string{"install", "--uid", strconv.Itoa(sp.uid), "--gid", strconv.Itoa(sp.gid), "--home", sp.home}, "installing the boot service (port 443)"); code != 0 {
 			return code
 		}
 		if st, ok := waitProxy(dir, proxyStartWait); ok {
-			fmt.Printf("✓ local HTTPS proxy running (tsp %s, pid %d, port %d); from now on it updates itself, no sudo\n", st.Version, st.PID, st.Port)
+			fmt.Printf("✓ local HTTPS proxy running (tsp %s, pid %d, port %d); from now on it updates itself, no sudo\n", st.Version, st.Worker, st.Port)
 		} else {
 			explainProxyDown(s)
 			return 1
@@ -408,7 +417,7 @@ func setupReason(s serviceSystem, sp serviceSpec, st proxyState, running bool) s
 	case !s.installed():
 		return "installing the local HTTPS proxy as a boot service (once per machine)"
 	case !s.current(sp):
-		return "moving the boot service to the self-updating launcher (once: later updates need no sudo)"
+		return "updating the boot service to this tsp's supervisor (sudo once: later updates need none)"
 	case running && st.outdated():
 		return fmt.Sprintf("restarting the proxy on tsp %s (it runs %s)", Version, st.Version)
 	}
@@ -442,6 +451,7 @@ func explainProxyDown(s serviceSystem) {
 			fmt.Fprintln(os.Stderr, "      "+l)
 		}
 	}
+	fmt.Fprintln(os.Stderr, "    → tsp logs shows the proxy's own events")
 	fmt.Fprintln(os.Stderr, "    → another program on port 443? lsof -nP -iTCP:443 -sTCP:LISTEN, stop it, then tsp service install")
 }
 
@@ -464,7 +474,7 @@ func serviceUser(uid, gid int, home string, getenv func(string) string) (service
 		home = getenv("HOME")
 	}
 	if home == "" || home == "/root" || home == "/var/root" {
-		return serviceSpec{}, fmt.Errorf("pass --home (the user's home, where ~/.tailscale-proxy lives)")
+		return serviceSpec{}, fmt.Errorf("pass --home (the user's home, where ~/.tsp lives)")
 	}
 	return serviceSpec{uid: uid, gid: gid, home: home}, nil
 }
@@ -509,19 +519,30 @@ func localHTTPSChecks(s serviceSystem, supported bool) ([]check, error) {
 	if supported {
 		svc := check{Name: "boot service " + s.unitPath, OK: s.installed(), Fix: "tsp service install"}
 		if svc.OK && !s.selfUpdating() {
-			svc.Note = "it predates self-updating: `tsp service install` once (sudo), and updates need no sudo after that"
+			svc.Note = "it is not this tsp's supervisor: `tsp service install` once (sudo), and updates need no sudo after that"
 		}
 		checks = append(checks, svc)
 	}
 	st, running := runningProxy(dir)
 	proxy := check{Name: "local HTTPS proxy not running", Fix: "tsp service install (or `tsp proxy` in a terminal)"}
 	if running {
-		proxy = check{Name: fmt.Sprintf("proxy running (tsp %s, pid %d, port %d)", st.Version, st.PID, st.Port), OK: true}
-		if st.outdated() {
+		proxy = check{Name: fmt.Sprintf("proxy running (tsp %s, pid %d, port %d)", st.Version, st.Worker, st.Port), OK: true}
+		switch {
+		case st.Mode == "builtin":
+			proxy.Note = "the boot service serves by itself (no runnable copy in " + binDir(dir) + "): tsp service install, then tsp logs"
+		case st.outdated() && s.selfUpdating():
+			proxy.Note = fmt.Sprintf("the proxy runs tsp %s, this is %s: it swaps within seconds once %s serves", st.Version, Version, Version)
+		case st.outdated():
 			proxy.Note = fmt.Sprintf("the proxy runs tsp %s, this is %s: tsp service install moves it", st.Version, Version)
-			if s.selfUpdating() {
-				proxy.Note = fmt.Sprintf("the proxy runs tsp %s, this is %s: it restarts on %s within seconds", st.Version, Version, proxyBinPath(dir))
+		}
+		if st.Rollbacks > 0 {
+			bad := loadBinState(dir).Bad
+			names := make([]string, 0, len(bad))
+			for v := range bad {
+				names = append(names, v)
 			}
+			sort.Strings(names)
+			proxy.Note = strings.TrimPrefix(proxy.Note+"; ", "; ") + "set aside (failed to start here): " + strings.Join(names, ", ") + " — tsp logs says why"
 		}
 	}
 	checks = append(checks, proxy)

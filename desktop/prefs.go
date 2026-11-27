@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+
+	"github.com/meabed/tailscale-proxy/core"
 )
 
 // prefs holds desktop-only settings (kept separate from the shared CLI config).
@@ -12,11 +14,11 @@ type prefs struct {
 }
 
 func prefsPath() (string, error) {
-	home, err := os.UserHomeDir()
+	dir, err := core.StateDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, ".tailscale-proxy", "desktop.json"), nil
+	return filepath.Join(dir, "desktop.json"), nil
 }
 
 func loadPrefs() prefs {

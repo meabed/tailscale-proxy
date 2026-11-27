@@ -143,7 +143,7 @@ func TestStateDir(t *testing.T) {
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
 	dir, err := stateDir()
-	if err != nil || dir != filepath.Join(home, ".tailscale-proxy") {
+	if err != nil || dir != filepath.Join(home, ".tsp") {
 		t.Errorf("stateDir() = %q, %v", dir, err)
 	}
 }
