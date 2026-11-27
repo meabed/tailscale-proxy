@@ -336,11 +336,12 @@ func TestCmdServiceStatus_proxyRunning(t *testing.T) {
 func pinSystem(t *testing.T, euid int, r Runner) *[][]string {
 	t.Helper()
 	ran := &[][]string{}
-	origE, origI, origR := geteuid, interactive, serviceRunner
+	origE, origI, origR, origL := geteuid, interactive, serviceRunner, lookPath
 	geteuid = func() int { return euid }
+	lookPath = func(name string) (string, error) { return "/usr/bin/" + name, nil } // sudo is there, even in a container
 	interactive = func(argv []string) error { *ran = append(*ran, argv); return nil }
 	serviceRunner = r
-	t.Cleanup(func() { geteuid, interactive, serviceRunner = origE, origI, origR })
+	t.Cleanup(func() { geteuid, interactive, serviceRunner, lookPath = origE, origI, origR, origL })
 	return ran
 }
 
@@ -415,8 +416,8 @@ func TestCmdServiceInstall_upToDateNeedsNoSudo(t *testing.T) {
 	_ = os.WriteFile(s.unitPath, []byte(s.unit(serviceSpec{uid: os.Getuid(), gid: os.Getgid(), home: home})), 0o644)
 	out := captureStdout(t, func() { cmdServiceInstall(s, nil) })
 	for _, c := range *ran {
-		if c[0] == "sudo" {
-			t.Errorf("sudo ran although everything is current: %v", c)
+		if c[0] == "sudo" && slices.Contains(c, "service") { // Linux trusts the CA through sudo too
+			t.Errorf("the boot service was reinstalled although everything is current: %v", c)
 		}
 	}
 	if !strings.Contains(out, "✓ local HTTPS proxy up to date and running (tsp "+Version+", pid 7, port 443)") {
@@ -465,9 +466,7 @@ func TestSetupReason(t *testing.T) {
 
 func TestElevate_withoutSudo(t *testing.T) {
 	pinSystem(t, 501, &recRunner{})
-	origL := lookPath
 	lookPath = func(string) (string, error) { return "", errString("not found") }
-	t.Cleanup(func() { lookPath = origL })
 	stderr := captureStderr(t, func() {
 		if code, done := elevate([]string{"uninstall"}, "removing the boot service"); code != 1 || !done {
 			t.Errorf("elevate = %d, %v", code, done)
