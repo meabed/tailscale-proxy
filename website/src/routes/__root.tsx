@@ -5,13 +5,15 @@ import { Address } from '@/components/address';
 import { AgentPrompt } from '@/components/agent-prompt';
 import { Callout } from '@/components/callout';
 import { CodeBlock } from '@/components/code-block';
+import { DocsPager } from '@/components/docs-pager';
+import { PageToc } from '@/components/page-toc';
 import { RequestFlow } from '@/components/request-flow';
 import { SiteFooter } from '@/components/site-footer';
 import { SiteHeader } from '@/components/site-header';
 import { SiteSidebar } from '@/components/site-sidebar';
 import { Tabs } from '@/components/tabs';
 import { themeScript } from '@/components/theme-toggle';
-import { pages, siteName } from '@/lib/pages';
+import { pageGroups, pages, siteName } from '@/lib/pages';
 
 import appCss from '../styles.css?url';
 
@@ -47,6 +49,7 @@ function RootDocument() {
   const isDocsPage = pages.some((page) => page.path === pathname);
   // The home page is a full-width overview; every other page reads beside the sidebar.
   const isHome = pathname === '/';
+  const group = pageGroups.find((candidate) => candidate.pages.some((page) => page.path === pathname))?.title;
 
   return (
     <html lang='en' dir='ltr' suppressHydrationWarning>
@@ -61,18 +64,23 @@ function RootDocument() {
             <SiteFooter />
           </main>
         ) : (
-          <div className='mx-auto flex max-w-(--shell) items-start gap-12 px-4 sm:px-7'>
-            <aside className='sticky top-(--header-h) h-[calc(100dvh-var(--header-h))] w-(--sidebar) shrink-0 self-start overflow-y-auto py-7 max-[860px]:hidden'>
+          <div className='mx-auto flex max-w-(--shell) items-start gap-10 px-4 sm:px-7 xl:gap-12'>
+            <aside className='sticky top-(--header-h) h-[calc(100dvh-var(--header-h))] w-(--sidebar) shrink-0 self-start overflow-y-auto py-9 max-[860px]:hidden'>
               <SiteSidebar />
             </aside>
-            <main className='min-w-0 flex-1 pt-12 pb-16 max-[860px]:pt-7 max-[860px]:pb-12'>
+            <main className='min-w-0 flex-1 pt-11 pb-6 max-[860px]:pt-7'>
+              {group && <p className='text-accent mb-2 text-[0.86rem] font-semibold'>{group}</p>}
               <article className='tsp-content' data-pagefind-body={isDocsPage || undefined}>
                 <MDXProvider components={mdxComponents}>
                   <Outlet />
                 </MDXProvider>
               </article>
+              <DocsPager pathname={pathname} />
               <SiteFooter />
             </main>
+            <aside className='sticky top-(--header-h) w-(--toc) shrink-0 self-start py-12 max-xl:hidden'>
+              <PageToc key={pathname} />
+            </aside>
           </div>
         )}
         <Scripts />

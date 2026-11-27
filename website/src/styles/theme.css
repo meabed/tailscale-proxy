@@ -29,8 +29,9 @@
   --space-xl: 3rem;
 
   --measure: 720px;
-  --shell: 1180px;
-  --sidebar: 232px;
+  --shell: 1320px;
+  --sidebar: 236px;
+  --toc: 200px;
   --header-h: 60px;
 
   --ease-out: cubic-bezier(0.2, 0.7, 0.3, 1);

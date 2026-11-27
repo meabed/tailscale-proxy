@@ -8,6 +8,9 @@ const reachStyle = {
   online: { tone: 'text-accent', rule: 'border-accent', soft: 'bg-accent-soft', who: 'Anyone with the link, or only your tailnet' },
 };
 
+// One column per part when the figure is wide (whole class names, so Tailwind sees them).
+const partColumns: Record<number, string> = { 2: '@3xl:grid-cols-2', 3: '@3xl:grid-cols-3', 4: '@3xl:grid-cols-4' };
+
 function ReachIcon({ reach }: { reach: Reach }) {
   return (
     <svg className='size-[1.05em] shrink-0' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round' aria-hidden='true'>
@@ -43,22 +46,22 @@ export function Address({ reach, parts, command, children }: { reach: Reach; par
           ))}
         </p>
       </div>
-      <figcaption className='mt-4'>
-        <dl className='grid gap-x-5 gap-y-2.5 text-[0.93rem] leading-snug sm:grid-cols-[max-content_1fr]'>
+      <figcaption className='mt-5'>
+        <dl className={`grid gap-x-8 gap-y-4 ${partColumns[parts.length] ?? ''}`}>
           {parts.map((part) => (
-            <div key={part.text} className='contents'>
-              <dt className={`font-address ${style.tone} text-[0.82rem] font-medium max-sm:mt-1.5`}>{part.text}</dt>
-              <dd className='text-fg'>{part.note}</dd>
+            <div key={part.text} className={`border-l-2 pl-3 ${style.rule}`}>
+              <dt className={`font-address ${style.tone} text-[0.8rem] font-medium break-all`}>{part.text}</dt>
+              <dd className='text-fg mt-1 text-[0.92rem] leading-snug'>{part.note}</dd>
             </div>
           ))}
         </dl>
-        <p className='text-muted mt-3.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[0.88rem]'>
+        <div className='text-muted mt-4 flex flex-wrap items-center gap-x-2 gap-y-1 text-[0.88rem]'>
           <span className={`${style.soft} ${style.tone} rounded-md px-2 py-0.5 font-medium`}>{style.who}</span>
           <span>
             Made by <code className='font-address text-fg-strong text-[0.82rem]'>{command}</code>
           </span>
           {children}
-        </p>
+        </div>
       </figcaption>
     </figure>
   );

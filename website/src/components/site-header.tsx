@@ -1,11 +1,19 @@
-import { Link } from '@tanstack/react-router';
+import { Link, useLocation } from '@tanstack/react-router';
 
 import { MobileNav } from '@/components/mobile-nav';
 import { SiteSearch } from '@/components/site-search';
 import { ThemeToggle } from '@/components/theme-toggle';
-import { siteName } from '@/lib/pages';
+import { pageGroups, siteName } from '@/lib/pages';
+
+// Where each top-level section starts, and the sidebar groups it covers.
+const sections = [
+  { to: '/installation', label: 'Docs', groups: ['Start', 'Workflows'] },
+  { to: '/commands', label: 'Reference', groups: ['Reference'] },
+] as const;
 
 export function SiteHeader() {
+  const pathname = useLocation({ select: (location) => location.pathname });
+  const currentGroup = pathname === '/' ? undefined : pageGroups.find((group) => group.pages.some((page) => page.path === pathname))?.title;
   return (
     <header className='border-border bg-paper/82 sticky top-0 z-50 border-b backdrop-blur-[10px] backdrop-saturate-[1.8]'>
       <div className='mx-auto flex h-(--header-h) max-w-(--shell) items-center justify-between gap-3 px-4 sm:gap-4 sm:px-7'>
@@ -13,6 +21,18 @@ export function SiteHeader() {
           <span className='bg-accent size-2.5 rounded-full shadow-[0_0_0_4px_var(--accent-soft)]' aria-hidden='true' />
           {siteName}
         </Link>
+        <nav className='mr-auto ml-4 flex items-center gap-1 max-[860px]:hidden' aria-label='Sections'>
+          {sections.map((section) => (
+            <Link
+              key={section.to}
+              to={section.to}
+              data-current={section.groups.some((group) => group === currentGroup) || undefined}
+              className='text-muted hover:text-fg-strong data-current:text-fg-strong data-current:bg-paper-3 rounded-md px-2.5 py-1 text-[0.92rem] font-medium hover:no-underline'
+            >
+              {section.label}
+            </Link>
+          ))}
+        </nav>
         <nav className='flex min-w-0 items-center justify-end gap-3 sm:gap-4' aria-label='Primary'>
           <SiteSearch />
           <a href='https://www.npmjs.com/package/tailscale-proxy' target='_blank' rel='noreferrer' className='text-muted hover:text-fg-strong text-[0.92rem] font-medium hover:no-underline max-sm:hidden'>

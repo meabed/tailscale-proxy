@@ -72,19 +72,19 @@ Requests reach the app with the original `Host` (`api.acme.localhost`) and
 
 ## Technical details
 
-- **Routes** are one JSON file per running app in `~/.tailscale-proxy/routes/<name>.json`
+- **Routes** are one JSON file per running app in `~/.tsp/routes/<name>.json`
   (`{name, port, pid, dir}`), written atomically by its `tsp run` and removed when it
   exits. A route whose `tsp run` process is gone is ignored and deleted on the next read,
   so a crash or `kill -9` never leaves a name behind. The proxy re-reads the folder only
   when it changes.
-- **Certificates**: a local CA in `~/.tailscale-proxy/ca/` (ECDSA P-256, 10 years, key
+- **Certificates**: a local CA in `~/.tsp/ca/` (ECDSA P-256, 10 years, key
   `0600`) signs one certificate per exact name on first use (90 days, renewed in memory).
   The CA carries a name constraint for `localhost`: it cannot sign a certificate for any
   other domain that a browser would accept. Names outside `.localhost` get no certificate,
   and the cache is bounded.
 - **The service** is a small launcher that runs as root for one job: opening
   `127.0.0.1:443` and `[::1]:443`, which an ordinary process cannot do. It then switches to
-  your user for good and starts your own copy of tsp, `~/.tailscale-proxy/bin/tsp`, handing
+  your user for good and starts your own copy of tsp, `~/.tsp/bin/tsp`, handing
   it the open sockets. Root never runs a file you can write, and every file the proxy writes
   stays yours. If that copy is missing or fails to start, the launcher serves the names
   itself, so they keep working. macOS: a launchd daemon
@@ -92,7 +92,7 @@ Requests reach the app with the original `Host` (`api.acme.localhost`) and
   `/var/log/tailscale-proxy.log`). Linux: a systemd unit (`tailscale-proxy.service`,
   `journalctl -u tailscale-proxy`).
 - **Updates without a password**: any newer tsp you run copies itself to
-  `~/.tailscale-proxy/bin/tsp` (never an older one), and the proxy checks for a release once a
+  `~/.tsp/bin/tsp` (never an older one), and the proxy checks for a release once a
   day and verifies it against the release's `checksums.txt`. The running proxy sees the new
   copy within seconds, finishes its requests and exits; launchd or systemd start it again on
   the new one. sudo is needed again only if the launcher itself changes, which
@@ -104,28 +104,8 @@ Requests reach the app with the original `Host` (`api.acme.localhost`) and
   `update-ca-certificates`; Fedora/RHEL: `/etc/pki/ca-trust/source/anchors` +
   `update-ca-trust`. Windows: the user's Root store (`certutil -user`).
 
-## Commands
+## Related
 
-```
-tsp run [--force] [<name> -- <cmd...>]   run an app at https://<name>.localhost
-tsp routes [--json]                      running names
-tsp service install|uninstall|status     the local HTTPS proxy, from boot (install also trusts the CA)
-tsp uninstall [--yes] [--all]            remove everything tsp set up
-tsp trust                                trust the local CA only
-tsp proxy [--port n]                     the proxy in the foreground (what the service runs)
-```
-
-## Troubleshooting
-
-| Symptom | Fix |
-| --- | --- |
-| `tsp run` warns "the local HTTPS proxy is not running" | `tsp service install` (it prints the proxy's log when it cannot start) |
-| Browser: "not private" / curl: certificate error | `tsp trust` (macOS: at the screen), restart the browser |
-| `tsp proxy`: cannot listen on 127.0.0.1:443 | another proxy holds 443: `lsof -nP -iTCP:443 -sTCP:LISTEN` |
-| `https://<name>.localhost` → 404 "nothing runs at" | start it: `bun dev` / `tsp run` in its folder; `tsp routes` lists what runs |
-| → 502 "not answering" | the app is still starting, or does not listen on `$PORT`/`$HOST` |
-| "already runs (pid …)" | stop the other terminal's run, or `tsp run --force` |
-| every `*.localhost` hangs | another proxy holds `*:443`: `lsof -nP -iTCP:443 -sTCP:LISTEN` (or move the Funnel: `tsp configure --https-port 8443`) |
-
-Remove everything: `tsp uninstall` (the boot service, the CA and its trust, the route files and the copy in
-`~/.tailscale-proxy`).
+- Every command and flag: [Commands](/commands#local-https-names)
+- A name that doesn't answer, a certificate warning, port 443 taken: [Troubleshooting](/troubleshooting#local-https-names-localhost)
+- The same app online, for webhooks and phones: [Share online](/share)

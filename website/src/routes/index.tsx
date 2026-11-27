@@ -66,9 +66,11 @@ const uses: { problem: string; detail: string; answer: string; reach: 'local' | 
 
 function Section({ title, lead, children }: { title: string; lead?: ReactNode; children: ReactNode }) {
   return (
-    <section className='border-border mt-20 border-t pt-10'>
-      <h2 className='text-fg-strong max-w-[34ch] text-[clamp(1.5rem,1.2rem+1.1vw,2rem)] leading-[1.15] font-bold tracking-[-0.02em]'>{title}</h2>
-      {lead && <p className='text-fg mt-3 max-w-[62ch] text-[1.05rem]'>{lead}</p>}
+    <section className='border-border mt-24 border-t pt-12'>
+      <div className='grid gap-x-12 gap-y-3 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:items-end'>
+        <h2 className='text-fg-strong text-[clamp(1.6rem,1.2rem+1.3vw,2.25rem)] leading-[1.1] font-bold tracking-[-0.025em]'>{title}</h2>
+        {lead && <p className='text-fg max-w-[64ch] text-[1.05rem] leading-relaxed'>{lead}</p>}
+      </div>
       {children}
     </section>
   );
@@ -78,7 +80,7 @@ function Step({ title, children }: { title: string; children: ReactNode }) {
   return (
     <li className='before:border-border-strong before:text-fg-strong relative min-w-0 pl-11 [counter-increment:step] before:absolute before:top-0 before:left-0 before:grid before:size-7 before:place-items-center before:rounded-full before:border before:text-[0.85rem] before:font-semibold before:content-[counter(step)]'>
       <h3 className='text-fg-strong text-[1.05rem] font-semibold'>{title}</h3>
-      <div className='text-fg mt-1.5 max-w-[64ch] min-w-0 [&_pre]:mt-2.5'>{children}</div>
+      <div className='text-fg mt-1.5 min-w-0 [&_pre]:mt-2.5'>{children}</div>
     </li>
   );
 }
@@ -92,26 +94,74 @@ function Command({ children }: { children: string }) {
   );
 }
 
+// What the two commands print, as tsp prints them: a name on this machine, then the online links.
+const terminal: { prompt?: string; command?: string; out?: string; tone?: 'local' | 'online' | 'muted' }[] = [
+  { prompt: '~/acme/web', command: 'bun dev' },
+  { out: 'tsp: https://web.acme.localhost → 127.0.0.1:4417', tone: 'local' },
+  { out: '  VITE ready in 412 ms', tone: 'muted' },
+  {},
+  { prompt: '~/acme', command: 'tsp' },
+  { out: 'public (Funnel) → 127.0.0.1:18443 (port 443)', tone: 'muted' },
+  {},
+  { out: 'Services:' },
+  { out: '  https://bigfoot.tail1234.ts.net/web/  →  127.0.0.1:4417', tone: 'online' },
+  { out: '  https://bigfoot.tail1234.ts.net/api/  →  127.0.0.1:4100', tone: 'online' },
+];
+
+const lineTone = { local: 'text-local', online: 'text-accent', muted: 'text-muted' };
+
+function HeroTerminal() {
+  return (
+    <figure className='border-border-strong overflow-hidden rounded-xl border bg-(--code-bg) shadow-(--shadow)' aria-label='A terminal: bun dev prints the local name, tsp prints the online links'>
+      <div className='border-border flex items-center gap-1.5 border-b px-3.5 py-2.5' aria-hidden='true'>
+        {[0, 1, 2].map((dot) => (
+          <span key={dot} className='bg-border-strong size-2.5 rounded-full' />
+        ))}
+        <span className='text-muted ml-2 text-[0.78rem]'>Terminal</span>
+      </div>
+      <pre className='overflow-x-auto px-4 py-4 font-mono text-[0.8rem] leading-[1.75] text-(--code-fg)'>
+        {terminal.map((line, index) => (
+          // oxlint-disable-next-line react/no-array-index-key -- a fixed transcript: lines never move.
+          <span key={index} className='block min-h-[1.75em]'>
+            {line.command ? (
+              <>
+                <span className='text-muted'>{line.prompt} $ </span>
+                <span className='text-fg-strong font-semibold'>{line.command}</span>
+              </>
+            ) : (
+              <span className={line.tone ? lineTone[line.tone] : ''}>{line.out}</span>
+            )}
+          </span>
+        ))}
+        <span className='terminal-cursor bg-fg-strong inline-block h-[1.1em] w-[0.55em] translate-y-[0.2em]' aria-hidden='true' />
+      </pre>
+    </figure>
+  );
+}
+
 function Home() {
   return (
     <div className='pt-14 pb-20 max-sm:pt-9'>
-      <header>
-        <h1 className='text-fg-strong max-w-[17ch] text-[clamp(2.3rem,1.4rem+3.6vw,3.9rem)] leading-[1.02] font-bold tracking-[-0.035em]'>Real HTTPS addresses for your local dev servers</h1>
-        <p className='text-fg mt-5 max-w-[58ch] text-[clamp(1.05rem,0.98rem+0.3vw,1.2rem)] leading-relaxed'>
-          tsp gives each app a name on your machine and, when you need one, a link that works from anywhere: for webhooks, OAuth callbacks, your phone and your teammates. One small open-source binary, on top of Tailscale.
-        </p>
-        <div className='mt-7 flex flex-wrap items-center gap-3'>
-          <div className='border-border-strong bg-paper flex items-center gap-3 rounded-lg border py-1.5 pr-1.5 pl-3.5 shadow-(--shadow)'>
-            <code className='font-address text-fg-strong text-[0.86rem]'>{install}</code>
-            <CopyButton text={install} />
+      <header className='grid items-center gap-x-14 gap-y-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.95fr)]'>
+        <div>
+          <h1 className='text-fg-strong max-w-[17ch] text-[clamp(2.3rem,1.4rem+3.6vw,3.9rem)] leading-[1.02] font-bold tracking-[-0.035em]'>Real HTTPS addresses for your local dev servers</h1>
+          <p className='text-fg mt-5 max-w-[58ch] text-[clamp(1.05rem,0.98rem+0.3vw,1.2rem)] leading-relaxed'>
+            tsp gives each app a name on your machine and, when you need one, a link that works from anywhere: for webhooks, OAuth callbacks, your phone and your teammates. One small open-source binary, on top of Tailscale.
+          </p>
+          <div className='mt-7 flex flex-wrap items-center gap-3'>
+            <div className='border-border-strong bg-paper flex items-center gap-3 rounded-lg border py-1.5 pr-1.5 pl-3.5 shadow-(--shadow)'>
+              <code className='font-address text-fg-strong text-[0.86rem]'>{install}</code>
+              <CopyButton text={install} />
+            </div>
+            <Link to='/installation' className='text-[0.95rem] font-semibold'>
+              Install and set up
+            </Link>
+            <Link to='/desktop' className='text-muted hover:text-fg-strong text-[0.95rem] font-medium'>
+              or get the desktop app
+            </Link>
           </div>
-          <Link to='/installation' className='text-[0.95rem] font-semibold'>
-            Install and set up
-          </Link>
-          <Link to='/desktop' className='text-muted hover:text-fg-strong text-[0.95rem] font-medium'>
-            or get the desktop app
-          </Link>
         </div>
+        <HeroTerminal />
       </header>
 
       <RequestFlow />
@@ -125,7 +175,7 @@ function Home() {
           </>
         }
       >
-        <div className='mt-6 grid max-w-[60rem] gap-y-4'>
+        <div className='mt-10 grid gap-y-10'>
           <Address
             reach='local'
             command='tsp run'
@@ -149,7 +199,7 @@ function Home() {
       </Section>
 
       <Section title='What it is for' lead='Pick the problem you have. Each one has an address that solves it.'>
-        <ul className='border-border mt-8 divide-y divide-(--border) border-y'>
+        <ul className='border-border mt-10 divide-y divide-(--border) border-y'>
           {uses.map((use) => (
             <li key={use.problem} className='grid gap-x-8 gap-y-2 py-5 md:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] md:items-center'>
               <div>
@@ -168,10 +218,11 @@ function Home() {
       </Section>
 
       <Section title='Start in two minutes'>
-        <ol className='mt-8 grid gap-8 [counter-reset:step]'>
+        <ol className='mt-10 grid gap-x-14 gap-y-12 [counter-reset:step] lg:grid-cols-2'>
           <Step title='Install tsp'>
             <p>Homebrew on macOS and Linux, or npm anywhere. Windows: see Install.</p>
-            <Command>{`${install}      # or: npm i -g tailscale-proxy`}</Command>
+            <Command>{install}</Command>
+            <Command>npm i -g tailscale-proxy</Command>
           </Step>
           <Step title='Set up local HTTPS, once per machine'>
             <p>It starts the local proxy from boot and trusts its certificate. Run it again any time: it checks what is in place and fixes only what is missing.</p>

@@ -223,6 +223,17 @@
 :root[data-theme='dark'] .shiki span {
   color: var(--shiki-dark) !important;
 
+  /* The hero terminal's cursor blinks; it stays solid under reduced motion. */
+  .terminal-cursor {
+    animation: terminal-cursor 1.1s steps(1) infinite;
+  }
+
+  @keyframes terminal-cursor {
+    50% {
+      opacity: 0;
+    }
+  }
+
   /* The request figure: the lane dashes drift toward the app; nothing moves under reduced motion. */
   .flow-dash {
     animation: flow-dash 1.4s linear infinite;
@@ -241,6 +252,10 @@
 
     .flow-packets {
       display: none;
+    }
+
+    .terminal-cursor {
+      animation: none;
     }
   }
 }

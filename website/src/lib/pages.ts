@@ -23,7 +23,7 @@ export const pageGroups = [
     title: 'Reference',
     pages: [
       { path: '/commands', title: 'Commands', summary: 'Every command and flag.' },
-      { path: '/configuration', title: 'Configuration', summary: 'Saved defaults in ~/.tailscale-proxy/config.json and the host header.' },
+      { path: '/configuration', title: 'Configuration', summary: 'Saved defaults in ~/.tsp/config.json and the host header.' },
       { path: '/how-it-works', title: 'How it works', summary: 'Discovery, routing, the local proxy, certificates and the boot service.' },
       { path: '/troubleshooting', title: 'Troubleshooting', summary: 'Symptoms and the command that fixes each.' },
     ],

@@ -9,7 +9,7 @@ version.
 | --- | --- |
 | `tsp doctor` | Check Tailscale and local HTTPS; each ✗ with the command that fixes it; exit 1 when one fails |
 | `tsp update` | Update to the latest release, the way tsp was installed (brew, npm or the binary itself, checksum-verified) |
-| `tsp uninstall [--yes] [--all]` | Remove everything tsp set up: the Tailscale entry it created, the boot service, the CA and `~/.tailscale-proxy`; `--all` also the config and a standalone binary |
+| `tsp uninstall [--yes] [--all]` | Remove everything tsp set up: the Tailscale entry it created, the boot service, the CA and `~/.tsp`; `--all` also the config and a standalone binary |
 
 ## Local HTTPS names
 
@@ -34,7 +34,7 @@ version.
 | `tsp list` | What would be shared, with each link, without sharing |
 | `tsp status` | The Funnel or Serve entry and the current map |
 | `tsp reset` | Remove the Funnel or Serve entry (`--private` for Serve) |
-| `tsp configure [flags]` | Save flags as defaults in `~/.tailscale-proxy/config.json` |
+| `tsp configure [flags]` | Save flags as defaults in `~/.tsp/config.json` |
 
 ## `start` flags
 
@@ -65,7 +65,7 @@ Defaults come from your config file (see [Configuration](/configuration)).
 On start, `tsp` prints the effective parameters and logs discoveries:
 
 ```
-Using config: /Users/me/.tailscale-proxy/config.json
+Using config: /Users/me/.tsp/config.json
   ports=3000-6000  mode=public (Funnel)  proxy=127.0.0.1:18443  https=443
   interval=20s  runtimes=default (…)  deregister-after=5 scans  log-requests=true
   host=local (apps see localhost)
