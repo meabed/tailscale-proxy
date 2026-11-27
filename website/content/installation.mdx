@@ -17,7 +17,7 @@ tsp is one binary with two halves. Set up the half you need, or both: they don't
   </Tabs.Tab>
   <Tabs.Tab>
     ```bash
-    npm i -g tailscale-proxy        # the command is still tsp
+    npm i -g tailscale-proxy        # the command is still tsp; a small Node launcher runs it
     ```
   </Tabs.Tab>
   <Tabs.Tab>
@@ -32,6 +32,7 @@ tsp is one binary with two halves. Set up the half you need, or both: they don't
   </Tabs.Tab>
 </Tabs>
 
+Homebrew is the lightest on macOS and Linux: the binary runs directly, with no Node process beside each `tsp run`.
 macOS, Linux, Windows and WSL, on amd64 and arm64. Prefer a window to a terminal? The [desktop app](/desktop) shares
 dev servers from the menu bar.
 
@@ -92,25 +93,33 @@ Two switches in the [admin console](https://login.tailscale.com/admin), once per
   Links only for your own devices and teammates on your Tailscale network don't need step 2: use `tsp --private`.
 </Callout>
 
-Check it:
+Check both halves at once:
 
 ```bash
 tsp doctor
 ```
 
 ```
-✓ tailscale installed  (1.98.2)
+Tailscale (tsp start: https://<node>.ts.net/<project>)
+✓ tailscale installed  (1.104.7)
 ✓ tailscale up
 ✓ funnel enabled
-✓ service discovery  (2 service(s) in 3000-6000)
+✓ service discovery  (6 service(s) in 3000-6000)
+
+Local HTTPS names (tsp run: https://<name>.localhost)
+✓ boot service /Library/LaunchDaemons/com.meabed.tailscale-proxy.plist
+✓ proxy running (tsp 1.12.0, pid 57001, port 443)
+✓ local CA trusted by the OS
+
+All checks passed: `tsp start` exposes your servers, `tsp run` serves an app at https://<name>.localhost.
 ```
 
-Each ✗ comes with the link or command that fixes it. Then share your dev servers: [Share online](/share).
+Each ✗ is followed by the command that fixes it, and the last line says which half is ready. Then share your dev servers: [Share online](/share).
 
 ## Update and remove
 
 ```bash
-tsp update                 # the latest release (or the brew/npm command that installs it)
+tsp update                 # the latest release: runs brew or npm itself when that is how tsp was installed
 tsp service install        # after an update: moves the boot service to the new version
 tsp service uninstall      # stop and remove the boot service
 ```

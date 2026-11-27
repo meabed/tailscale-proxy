@@ -3,6 +3,13 @@
 Every command prints what to do next when something is off. `tsp <command> --help` lists its flags; `-v` prints the
 version.
 
+## Both halves
+
+| Command | What it does |
+| --- | --- |
+| `tsp doctor` | Check Tailscale and local HTTPS; each ✗ with the command that fixes it; exit 1 when one fails |
+| `tsp update` | Update to the latest release, the way tsp was installed (brew, npm or the binary itself) |
+
 ## Local HTTPS names
 
 | Command | What it does |
@@ -26,9 +33,7 @@ version.
 | `tsp list` | What would be shared, with each link, without sharing |
 | `tsp status` | The Funnel or Serve entry and the current map |
 | `tsp reset` | Remove the Funnel or Serve entry (`--private` for Serve) |
-| `tsp doctor` | Check Tailscale, HTTPS certificates, Funnel and discovery; print each fix |
 | `tsp configure [flags]` | Save flags as defaults in `~/.tailscale-proxy/config.json` |
-| `tsp update` | Update to the latest release, or print the brew/npm command |
 
 ## `start` flags
 

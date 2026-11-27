@@ -8,8 +8,9 @@ export const agentPrompt = `You are working in a project whose dev servers run t
 
 Check the machine first, and fix what is missing:
 - \`tsp --version\` (missing: \`brew install meabed/tap/tsp\` or \`npm i -g tailscale-proxy\`)
-- \`tsp service status\` (any ✗: run \`tsp service install\`; it may ask the user for their password once, so tell them)
-- \`tsp doctor\` for the online side (Tailscale signed in, HTTPS and Funnel allowed)
+- \`tsp doctor\` checks both halves; each ✗ is followed by the command that fixes it, and it exits 1 when one fails.
+- \`tsp service install\` fixes local HTTPS; it may ask the user for their password once, so tell them.
+- Tailscale sign-in and Funnel are the user's to do in a browser; give them the link doctor prints.
 
 Run an app at a local HTTPS name:
 - In package.json: "scripts": { "dev": "tsp run", "dev:app": "<the real dev command>" } and "tsp": { "name": "<app>.<project>", "script": "dev:app" }

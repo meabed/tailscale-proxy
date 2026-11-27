@@ -30,7 +30,7 @@ Add this section to the project's `AGENTS.md` (or `CLAUDE.md`), so every session
 | `tsp routes --json` | the running `*.localhost` names: `name`, `port`, `pid`, `dir` |
 | `tsp run <name> -- <cmd...>` | an app at `https://<name>.localhost`, with `PORT` and `HOST` set for it |
 | `tsp list` | every dev server tsp can share, with its online link |
-| `tsp doctor` | what the online side is missing, with the fix for each |
+| `tsp doctor` | what either half is missing, each ✗ with the command that fixes it; exit 1 when one fails |
 
 Every command prints what to do next when something is off, so an agent can recover without guessing. Commands that
 need the user (a password for `tsp service install`, a Tailscale sign-in) say so.
