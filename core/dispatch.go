@@ -43,6 +43,8 @@ func Run(argv []string) int {
 		return cmdProxy(argv[1:])
 	case "routes":
 		return cmdRoutes(argv[1:])
+	case "stop":
+		return cmdStop(argv[1:])
 	case "service":
 		return cmdService(argv[1:])
 	case "trust":

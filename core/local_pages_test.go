@@ -9,37 +9,48 @@ import (
 	"testing"
 )
 
-func TestRedirectHandler_httpGoesToHTTPS(t *testing.T) {
-	h := redirectHandler()
-	for _, tc := range []struct{ host, target string }{
-		{"api.localhost", "/x?y=1"},
-		{"api.localhost:80", "/x?y=1"},
-		{"web.acme.localhost", "/"},
+func TestRedirectHandler_httpAnswersWhatHTTPSAnswers(t *testing.T) {
+	routes := []localRoute{{Name: "web", Port: 4100, PID: 1, Dir: "/src/web", Source: sourceRun}}
+	h := redirectHandler(func() []localRoute { return routes })
+	for _, tc := range []struct{ host, target, want string }{
+		{"api.localhost", "/x?y=1", "https://api.localhost/x?y=1"},
+		{"api.localhost:80", "/x?y=1", "https://api.localhost/x?y=1"},
+		{"web.acme.localhost", "/", "https://web.acme.localhost/"},
+		{"tsp.localhost", "/api/status", "https://tsp.localhost/api/status"}, // the reserved names too
+		{"localhost", "/", "https://tsp.localhost/"},
+		{"127.0.0.1", "/", "https://tsp.localhost/"},
+		{"[::1]:80", "/", "https://tsp.localhost/"},
 	} {
-		req := httptest.NewRequest("GET", "http://"+tc.host+tc.target, nil)
-		rec := httptest.NewRecorder()
-		h.ServeHTTP(rec, req)
-		host, _, err := net.SplitHostPort(tc.host)
-		if err != nil {
-			host = tc.host
-		}
-		if want := "https://" + host + tc.target; rec.Code != http.StatusPermanentRedirect || rec.Header().Get("Location") != want {
-			t.Errorf("%s%s: %d %q, want 308 %q", tc.host, tc.target, rec.Code, rec.Header().Get("Location"), want)
+		for _, accept := range []string{"", "text/html"} {
+			rec := get(h, tc.host, tc.target, accept)
+			if rec.Code != http.StatusPermanentRedirect || rec.Header().Get("Location") != tc.want {
+				t.Errorf("%s%s (%q): %d %q, want 308 %q", tc.host, tc.target, accept, rec.Code, rec.Header().Get("Location"), tc.want)
+			}
+			if !strings.Contains(rec.Body.String(), tc.want) {
+				t.Errorf("%s: the body does not say where it went:\n%s", tc.host, rec.Body.String())
+			}
 		}
 	}
-	// The bare localhost goes to the dashboard.
-	req := httptest.NewRequest("GET", "http://localhost/", nil)
-	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, req)
-	if rec.Code != http.StatusPermanentRedirect || rec.Header().Get("Location") != "https://tsp.localhost/" {
-		t.Errorf("localhost: %d %q", rec.Code, rec.Header().Get("Location"))
+	// A host outside .localhost gets the page an unknown name gets over https, saying why.
+	for _, accept := range []string{"", "text/html"} {
+		rec := get(h, "myapp.test", "/", accept)
+		body := rec.Body.String()
+		if rec.Code != http.StatusNotFound || rec.Header().Get("Location") != "" {
+			t.Errorf("myapp.test (%q): %d %q", accept, rec.Code, rec.Header().Get("Location"))
+		}
+		for _, want := range []string{"http://myapp.test reached tsp", "https://web.localhost", ".tsp.json"} {
+			if !strings.Contains(body, want) {
+				t.Errorf("myapp.test (%q) lacks %q:\n%s", accept, want, body)
+			}
+		}
 	}
-	// A host outside .localhost is not redirected to a name with no certificate.
-	req = httptest.NewRequest("GET", "http://127.0.0.1/", nil)
-	rec = httptest.NewRecorder()
-	h.ServeHTTP(rec, req)
-	if rec.Code != http.StatusNotFound || rec.Header().Get("Location") != "" {
-		t.Errorf("127.0.0.1: %d %q", rec.Code, rec.Header().Get("Location"))
+}
+
+func TestLocalHandler_bareLocalhostOpensTheDashboard(t *testing.T) {
+	h := newLocalHandler(t.TempDir(), testRegistry(t), nil, newProxyMetrics(), "errors")
+	rec := get(h, "localhost", "/", "text/html")
+	if rec.Code != http.StatusTemporaryRedirect || rec.Header().Get("Location") != dashboardURL+"/" {
+		t.Errorf("https://localhost: %d %q", rec.Code, rec.Header().Get("Location"))
 	}
 }
 

@@ -58,8 +58,9 @@ tsp run api -- 'uvicorn main:app --reload --port $PORT --host $HOST'   # one quo
 tsp run api -- node server.js                                          # an app that reads PORT itself
 ```
 
-`https://tsp.localhost` lists what runs, with requests and latency per name (`/api/status` as JSON), and
-`http://*.localhost` redirects to https.
+`https://tsp.localhost` lists what runs, with requests and latency per name (`/api/status` as JSON) and a Stop
+button per app; `tsp stop <name|port>` does the same from a terminal. `http://*.localhost` opens the same pages over
+https.
 
 The local HTTPS proxy updates itself: a newer tsp (from brew, npm or its own daily, checksum-verified check)
 takes over live once it proves it serves, and one that fails is set aside while the previous one keeps serving.

@@ -1,8 +1,13 @@
 package core
 
 import (
+	"fmt"
+	"net"
+	"net/http"
 	"os"
+	"os/signal"
 	"runtime"
+	"syscall"
 	"testing"
 )
 
@@ -13,6 +18,9 @@ func TestMain(m *testing.M) {
 	if os.Getenv("TSP_TEST_AS_TSP") == "1" {
 		os.Exit(Run(os.Args[1:]))
 	}
+	if mode := os.Getenv("TSP_TEST_LISTEN"); mode != "" {
+		listenForever(mode == "stubborn")
+	}
 	home, err := os.MkdirTemp("", "tsp-test-home-")
 	if err != nil {
 		panic(err)
@@ -22,6 +30,21 @@ func TestMain(m *testing.M) {
 	code := m.Run()
 	_ = os.RemoveAll(home)
 	os.Exit(code)
+}
+
+// listenForever is a dev server for the stop tests: it prints its port and
+// serves until it is stopped; a stubborn one ignores SIGTERM and SIGINT.
+func listenForever(stubborn bool) {
+	if stubborn {
+		signal.Ignore(syscall.SIGTERM, os.Interrupt)
+	}
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		os.Exit(1)
+	}
+	fmt.Println(ln.Addr().(*net.TCPAddr).Port)
+	_ = http.Serve(ln, http.NotFoundHandler())
+	os.Exit(0)
 }
 
 // shortHome is a HOME short enough for a unix socket under ~/.tsp/run.

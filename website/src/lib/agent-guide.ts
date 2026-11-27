@@ -16,6 +16,7 @@ Run an app at a local HTTPS name:
 - Start the dev server the usual way (npm run dev, uvicorn, rails s, go run .): tsp finds it and serves it at https://<project folder>.localhost. Never hard-code a port.
 - To pick the name, put it in the project: .tsp.json { "name": "<app>.<project>" }, or the "tsp" key of package.json / deno.json, [tool.tsp] in pyproject.toml, [package.metadata.tsp] in Cargo.toml, "extra"."tsp" in composer.json.
 - \`tsp routes --json\` lists the names that run (source "found" or "run"); https://tsp.localhost/api/status has them with requests and latency.
+- A port is taken by a dev server left running: \`tsp stop <port>\` or \`tsp stop <name>\`, with --yes (there is no terminal to ask in) and --force when it ignores SIGTERM. Stop only servers you started, unless the user says so.
 - To run a command through tsp instead (it picks a free port and sets $PORT and $HOST): \`tsp run <name> -- '<command using $PORT and $HOST>'\`, e.g. \`tsp run api.acme -- 'uvicorn main:app --port $PORT --host $HOST'\`.
 
 Share an app online (webhooks, OAuth callbacks, a phone, a teammate):
@@ -30,5 +31,5 @@ export const agentsMdSection = `## Local URLs (tailscale-proxy)
 
 - Start apps as usual: tsp finds every dev server and serves it at https://<name>.localhost, named by the project's .tsp.json or "tsp" config (default: its folder). Never hard-code ports. https://tsp.localhost shows what runs.
 - First run on a machine: \`tsp service install\` (local HTTPS proxy from boot + trusted CA). \`tsp service status\` checks it.
-- Running names: \`tsp routes --json\`. Online URLs for webhooks and callbacks: \`tsp list\`, then \`tsp\` (public) or \`tsp --private\` (tailnet).
+- Running names: \`tsp routes --json\`; stop one: \`tsp stop <name|port> --yes\`. Online URLs for webhooks and callbacks: \`tsp list\`, then \`tsp\` (public) or \`tsp --private\` (tailnet).
 - Docs: ${siteUrl}/llms-full.txt`;

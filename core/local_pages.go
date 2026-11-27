@@ -2,6 +2,7 @@ package core
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html/template"
 	"io"
@@ -9,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"time"
@@ -93,26 +95,50 @@ func wantsHTML(r *http.Request) bool {
 	return strings.Contains(r.Header.Get("Accept"), "text/html")
 }
 
-// redirectHandler answers http://*.localhost with 308 to the same URL over
-// https; the bare localhost goes to the dashboard. Other hosts get a short 404.
-func redirectHandler() http.Handler {
+// hostOnly is a request's host, lowercased, without its port or trailing dot.
+func hostOnly(host string) string {
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+	return strings.TrimSuffix(strings.Trim(strings.ToLower(host), "[]"), ".")
+}
+
+// httpTarget is where http://host goes over https: the same URL for a
+// .localhost name (the reserved ones too), the dashboard for the bare
+// localhost and the loopback addresses; "" for any other host.
+func httpTarget(host, uri string) string {
+	switch name, ok := strings.CutSuffix(host, "."+localTLD); {
+	case host == localTLD || host == "127.0.0.1" || host == "::1":
+		return dashboardURL + uri
+	case ok && len(name) <= 200 && nameRe.MatchString(name):
+		return "https://" + host + uri
+	}
+	return ""
+}
+
+// redirectHandler answers http:// on port 80 with what https answers: a
+// .localhost name moves to https with 308 (a browser then shows the very same
+// page), and a host outside .localhost (a name in /etc/hosts) gets the page a
+// name nothing runs at gets, saying why.
+func redirectHandler(running func() []localRoute) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		host := r.Host
-		if h, _, err := net.SplitHostPort(host); err == nil {
-			host = h
-		}
-		host = strings.TrimSuffix(strings.ToLower(host), ".")
-		switch {
-		case host == localTLD:
-			host = dashboardName + "." + localTLD
-		case strings.HasSuffix(host, "."+localTLD) && validateName(strings.TrimSuffix(host, "."+localTLD)) == nil:
-		default:
-			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-			w.WriteHeader(http.StatusNotFound)
-			fmt.Fprintf(w, "tsp: http://%s is not a .%s name; the local proxy serves https://<name>.%s (%s)\n", safeText(host), localTLD, localTLD, dashboardURL)
+		host := hostOnly(r.Host)
+		target := httpTarget(host, r.URL.RequestURI())
+		if target == "" {
+			note := fmt.Sprintf("http://%s reached tsp's http port on this machine, but tsp serves only https://<name>.%s names.", safeText(host), localTLD)
+			writeNotFound(w, r, running(), "", note)
 			return
 		}
-		http.Redirect(w, r, "https://"+host+r.URL.RequestURI(), http.StatusPermanentRedirect)
+		w.Header().Set("Location", target)
+		if wantsHTML(r) {
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.WriteHeader(http.StatusPermanentRedirect)
+			_ = pageTemplates.ExecuteTemplate(w, "moved", target)
+			return
+		}
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.WriteHeader(http.StatusPermanentRedirect)
+		fmt.Fprintf(w, "tsp: http://%s is served over https: %s\n(curl -L follows the redirect)\n", safeText(host), target)
 	})
 }
 
@@ -120,6 +146,7 @@ func redirectHandler() http.Handler {
 
 type notFoundPage struct {
 	Name     string // the requested name, "" for the bare host
+	Note     string // how the request got here, when it was not https://<name>.localhost
 	URL      string
 	Running  []localRoute
 	Examples []runExample
@@ -127,8 +154,8 @@ type notFoundPage struct {
 	Board    string
 }
 
-func newNotFoundPage(running []localRoute, name string) notFoundPage {
-	p := notFoundPage{Name: name, Running: running, Examples: examplesFor(name), Docs: docsURL, Board: dashboardURL}
+func newNotFoundPage(running []localRoute, name, note string) notFoundPage {
+	p := notFoundPage{Name: name, Note: note, Running: running, Examples: examplesFor(name), Docs: docsURL, Board: dashboardURL}
 	if name != "" {
 		p.URL = localRoute{Name: name}.URL()
 	}
@@ -137,8 +164,8 @@ func newNotFoundPage(running []localRoute, name string) notFoundPage {
 
 // writeNotFound answers a name no run registered: what runs, and how to run an
 // app under this name, for any stack.
-func writeNotFound(w http.ResponseWriter, r *http.Request, running []localRoute, name string) {
-	p := newNotFoundPage(running, name)
+func writeNotFound(w http.ResponseWriter, r *http.Request, running []localRoute, name, note string) {
+	p := newNotFoundPage(running, name, note)
 	if wantsHTML(r) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.WriteHeader(http.StatusNotFound)
@@ -157,6 +184,9 @@ func writeNotFoundText(w io.Writer, p notFoundPage) {
 	}
 	if p.URL != "" {
 		fmt.Fprintf(w, "tsp: nothing runs at %s\n\n", p.URL)
+	}
+	if p.Note != "" {
+		fmt.Fprintf(w, "tsp: %s\n\n", p.Note)
 	}
 	writeRunningText(w, p.Running)
 	fmt.Fprintf(w, "\nServe an app at https://%s.%s:\n", shown, localTLD)
@@ -326,26 +356,111 @@ func readProxyState(dir string) (proxyState, bool) {
 	return st, true
 }
 
-// serveDashboard answers https://tsp.localhost: the page at /, the JSON at /api/status.
-func serveDashboard(w http.ResponseWriter, r *http.Request, dir string, reg *localRegistry, lw *localWatcher, m *proxyMetrics) {
-	if r.Method != http.MethodGet && r.Method != http.MethodHead {
-		w.Header().Set("Allow", "GET, HEAD")
-		http.Error(w, "tsp: the dashboard is read-only", http.StatusMethodNotAllowed)
-		return
-	}
-	switch r.URL.Path {
-	case "/api/status":
-		w.Header().Set("Content-Type", "application/json")
-		w.Header().Set("Cache-Control", "no-store")
-		out, _ := json.MarshalIndent(newDashboardStatus(dir, reg, lw, m), "", "  ")
-		_, _ = w.Write(append(out, '\n'))
-	case "/":
+// dashboardHandler answers https://tsp.localhost: the page at /, the JSON at
+// /api/status, and one app's stop (GET /api/apps/{name} says what a stop would
+// end and how, POST /api/apps/{name}/stop ends it). Only the dashboard's own page
+// can stop an app from a browser: Go's cross-origin protection refuses a POST
+// another site sends (Sec-Fetch-Site, Origin), and the JSON body a form cannot.
+func dashboardHandler(dir string, reg *localRegistry, lw *localWatcher, m *proxyMetrics) http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/status", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, newDashboardStatus(dir, reg, lw, m))
+	})
+	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-store")
 		_ = pageTemplates.ExecuteTemplate(w, "dashboard", newDashboardStatus(dir, reg, lw, m))
-	default:
-		http.Error(w, "tsp: the dashboard has / and /api/status", http.StatusNotFound)
+	})
+	mux.HandleFunc("GET /api/apps/{name}", func(w http.ResponseWriter, r *http.Request) {
+		t, code, err := dashboardTarget(dir, reg, lw, r.PathValue("name"))
+		if err != nil {
+			writeJSON(w, code, stopResult{Error: err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, newStopPlan(t))
+	})
+	mux.HandleFunc("POST /api/apps/{name}/stop", func(w http.ResponseWriter, r *http.Request) {
+		if mt, _, _ := strings.Cut(r.Header.Get("Content-Type"), ";"); strings.TrimSpace(mt) != "application/json" {
+			writeJSON(w, http.StatusUnsupportedMediaType, stopResult{Error: `send Content-Type: application/json and a body like {"force": false}`})
+			return
+		}
+		var body struct {
+			Force bool `json:"force"`
+		}
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1024)).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
+			writeJSON(w, http.StatusBadRequest, stopResult{Error: "the body is not JSON: " + err.Error()})
+			return
+		}
+		t, code, err := dashboardTarget(dir, reg, lw, r.PathValue("name"))
+		if err != nil {
+			writeJSON(w, code, stopResult{Error: err.Error()})
+			return
+		}
+		res := stopProcesses(t, body.Force)
+		appLog().Info("app stopped from the dashboard", "name", t.Name, "pid", t.PID, "force", body.Force, "stopped", res.Stopped, "took", res.Took, "err", res.Error)
+		if res.Stopped && t.Source == sourceFound {
+			lw.forget(t.Name) // the list drops it now, not after the next scans
+		}
+		writeJSON(w, map[bool]int{true: http.StatusOK, false: http.StatusConflict}[res.Stopped], res)
+	})
+	return http.NewCrossOriginProtection().Handler(mux)
+}
+
+// dashboardTarget is the stop target of a name the proxy serves now, or the
+// status code and reason it has none.
+func dashboardTarget(dir string, reg *localRegistry, lw *localWatcher, name string) (stopTarget, int, error) {
+	for _, rt := range allRoutes(reg, lw) {
+		if rt.Name != name {
+			continue
+		}
+		t, err := targetOf(reg, rt)
+		if err == nil {
+			err = guardTarget(dir, t)
+		}
+		if err != nil {
+			return t, http.StatusConflict, err
+		}
+		return t, http.StatusOK, nil
 	}
+	return stopTarget{}, http.StatusNotFound, fmt.Errorf("nothing runs at %s", localRoute{Name: name}.URL())
+}
+
+// stopPlan is what the dashboard shows before a stop: what it ends, the command
+// each button runs, and the same commands for a terminal, for this OS.
+type stopPlan struct {
+	URL      string        `json:"url,omitempty"`
+	Target   stopTarget    `json:"target"`
+	Folder   string        `json:"folder,omitempty"`
+	How      string        `json:"how"`   // what Stop does, in words
+	Runs     string        `json:"runs"`  // what Stop runs
+	Force    string        `json:"force"` // what Force stop runs
+	Commands []stopCommand `json:"commands"`
+}
+
+func newStopPlan(t stopTarget) stopPlan {
+	how := fmt.Sprintf("Stop sends SIGTERM, as Ctrl-C in its terminal would, and waits up to %s for it to exit.", stopGrace)
+	if runtime.GOOS == "windows" {
+		how = fmt.Sprintf("Stop asks it and the processes it started to close (taskkill /T), and waits up to %s.", stopGrace)
+	}
+	if t.Source == sourceRun {
+		how += " It was started with tsp run, which passes the stop on to its app and ends with it."
+	}
+	p := stopPlan{Target: t, How: how, Runs: signalCommand(t, false), Force: signalCommand(t, true), Commands: stopCommands(t)}
+	if t.Name != "" {
+		p.URL = localRoute{Name: t.Name}.URL()
+	}
+	if t.Dir != "" {
+		p.Folder = homeShort(t.Dir)
+	}
+	return p
+}
+
+func writeJSON(w http.ResponseWriter, code int, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(code)
+	out, _ := json.MarshalIndent(v, "", "  ")
+	_, _ = w.Write(append(out, '\n'))
 }
 
 // shortDuration is 45s, 12m, 3h12m or 2d4h.
@@ -391,8 +506,8 @@ var pageTemplates = template.Must(template.New("pages").Funcs(template.FuncMap{
 const pageHTML = `
 {{define "style"}}<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light dark">
 <style>
-:root{--bg:#fcfcfd;--fg:#1d2430;--muted:#5f6878;--line:#e3e6eb;--soft:#f3f5f8;--accent:#2f6fdb;--ok:#1f8f63;--warn:#b26a00}
-@media (prefers-color-scheme:dark){:root{--bg:#14181f;--fg:#e6e9ee;--muted:#9aa3b2;--line:#2b313b;--soft:#1b2029;--accent:#78a6ff;--ok:#5fd0a0;--warn:#f0b45a}}
+:root{--bg:#fcfcfd;--fg:#1d2430;--muted:#5f6878;--line:#e3e6eb;--soft:#f3f5f8;--accent:#2f6fdb;--ok:#1f8f63;--warn:#b26a00;--bad:#c4372f}
+@media (prefers-color-scheme:dark){:root{--bg:#14181f;--fg:#e6e9ee;--muted:#9aa3b2;--line:#2b313b;--soft:#1b2029;--accent:#78a6ff;--ok:#5fd0a0;--warn:#f0b45a;--bad:#e5534b}}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
 main{max-width:980px;margin:0 auto;padding:40px 22px 64px}h1{font-size:28px;line-height:1.15;margin:0 0 6px;letter-spacing:-.02em}
 h2{font-size:17px;margin:34px 0 10px}p{margin:8px 0}a{color:var(--accent)}code,pre,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px}
@@ -401,6 +516,18 @@ table{width:100%;border-collapse:collapse;font-size:14px}th,td{text-align:left;p
 th{color:var(--muted);font-weight:600;font-size:13px}.n{text-align:right;font-variant-numeric:tabular-nums}h1 .mono{font-size:.8em}.muted{color:var(--muted)}
 .ok{color:var(--ok)}.warn{color:var(--warn)}dl{display:grid;grid-template-columns:max-content 1fr;gap:6px 18px;margin:0}dt{color:var(--muted)}dd{margin:0}
 .wrap{overflow-x:auto}footer{margin-top:40px;color:var(--muted);font-size:13px}
+.note{background:var(--soft);border:1px solid var(--line);border-left:3px solid var(--warn);border-radius:6px;padding:10px 14px}
+button{font:inherit;font-size:13px;border:1px solid var(--line);background:var(--bg);color:var(--fg);border-radius:6px;padding:4px 10px;cursor:pointer}
+button:hover{background:var(--soft)}button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button.danger{background:var(--bad);border-color:var(--bad);color:#fff}button.danger:hover{filter:brightness(1.08)}
+td .stop{padding:2px 9px;color:var(--muted)}td .stop:hover{color:var(--bad);border-color:var(--bad)}
+dialog{border:1px solid var(--line);border-radius:12px;background:var(--bg);color:var(--fg);padding:0;width:min(640px,calc(100vw - 32px));box-shadow:0 24px 60px rgba(0,0,0,.28)}
+dialog::backdrop{background:rgba(10,14,20,.45)}dialog form{padding:22px 24px 20px}dialog h2{margin:0 0 6px;font-size:18px;word-break:break-all}
+dialog dl{margin:14px 0}dialog dd{word-break:break-all}.cmds{display:grid;grid-template-columns:max-content 1fr max-content;gap:6px 10px;align-items:center;margin:8px 0 0}
+.cmds code{background:var(--soft);border:1px solid var(--line);border-radius:6px;padding:4px 8px;overflow-x:auto;white-space:nowrap}.cmds span{color:var(--muted);font-size:13px}
+.runs{margin:10px 0 0}.runs code{background:var(--soft);border-radius:4px;padding:1px 6px}.actions{display:flex;gap:8px;justify-content:flex-end;margin-top:18px}
+#sd-msg.bad{color:var(--bad)}#sd-msg.good{color:var(--ok)}
+dialog:not([data-state=ready]) #sd-stop,dialog:not([data-state=failed]) #sd-force,dialog:not([data-state=ready]):not([data-state=failed]) .plan{display:none}
 </style>{{end}}
 
 {{define "examples"}}<div class="wrap"><table><tbody>{{range .}}<tr><td>{{.Stack}}</td><td class="mono">{{.Command}}</td><td class="muted">{{.Note}}</td></tr>{{end}}</tbody></table></div>{{end}}
@@ -409,9 +536,12 @@ th{color:var(--muted);font-weight:600;font-size:13px}.n{text-align:right;font-va
 {{range .}}<tr><td><a href="{{.URL}}">{{.URL}}</a></td><td>{{.Source}}</td><td class="mono">{{.Port}}</td><td class="mono">{{home .Dir}}</td></tr>{{end}}
 </tbody></table></div>{{else}}<p class="muted">No apps are running.</p>{{end}}{{end}}
 
+{{define "moved"}}<!doctype html><html lang="en"><head>{{template "style"}}<title>Moved to {{.}}</title></head><body><main>
+<h1>Served over https</h1><p>This address is at <a href="{{.}}">{{.}}</a>.</p></main></body></html>{{end}}
+
 {{define "notfound"}}<!doctype html><html lang="en"><head>{{template "style"}}<title>Nothing runs at {{if .URL}}{{.URL}}{{else}}this name{{end}}</title></head><body><main>
 <h1>Nothing runs at {{if .URL}}<span class="mono">{{.URL}}</span>{{else}}this name{{end}}</h1>
-<p class="muted">The local HTTPS proxy is up; no app is registered under this name.</p>
+{{if .Note}}<p class="note">{{.Note}}</p>{{else}}<p class="muted">The local HTTPS proxy is up; no app is registered under this name.</p>{{end}}
 <h2>Running now</h2>{{template "running" .Running}}
 <h2>Serve an app here</h2>
 <p>Start it as usual: tsp finds dev servers by itself and names each after its folder. To pick the name, put <code>.tsp.json</code> in the project:</p>
@@ -435,11 +565,12 @@ th{color:var(--muted);font-weight:600;font-size:13px}.n{text-align:right;font-va
 
 {{define "dashboard"}}<!doctype html><html lang="en"><head>{{template "style"}}<title>tsp: local HTTPS names</title></head><body><main>
 <h1>Local HTTPS names</h1>
-<p class="muted">Served by tsp {{.Proxy.Version}} on this machine. Read only; refresh to update.</p>
+<p class="muted">Served by tsp {{.Proxy.Version}} on this machine. Updates by itself every few seconds.</p>
+<div id="live">
 <h2>Running</h2>
-{{if .Apps}}<div class="wrap"><table><thead><tr><th>Name</th><th>From</th><th>Port</th><th>PID</th><th>Folder</th><th>Up</th><th class="n">Requests</th><th class="n">Failed</th><th class="n">p50</th><th class="n">p95</th></tr></thead><tbody>
-{{range .Apps}}<tr><td><a href="{{.URL}}">{{.URL}}</a></td><td>{{.Source}}{{if .Runtime}} <span class="muted">{{.Runtime}}</span>{{end}}</td><td class="mono">{{.Port}}</td><td class="mono">{{.PID}}</td><td class="mono">{{home .Dir}}</td><td>{{.Uptime}}</td><td class="n">{{.Requests}}</td><td class="n">{{.Failed}}</td><td class="n">{{ms .P50ms}}</td><td class="n">{{ms .P95ms}}</td></tr>{{end}}
-</tbody></table></div><p class="muted"><b>run</b>: started with tsp run; <b>found</b>: a dev server tsp found by itself. Requests since this proxy started; p50 and p95 are times to the first byte.</p>
+{{if .Apps}}<div class="wrap"><table><thead><tr><th>Name</th><th>From</th><th>Port</th><th>PID</th><th>Folder</th><th>Up</th><th class="n">Requests</th><th class="n">Failed</th><th class="n">p50</th><th class="n">p95</th><th><span class="muted" aria-hidden="true"></span></th></tr></thead><tbody>
+{{range .Apps}}<tr><td><a href="{{.URL}}">{{.URL}}</a></td><td>{{.Source}}{{if .Runtime}} <span class="muted">{{.Runtime}}</span>{{end}}</td><td class="mono">{{.Port}}</td><td class="mono">{{.PID}}</td><td class="mono">{{home .Dir}}</td><td>{{.Uptime}}</td><td class="n">{{.Requests}}</td><td class="n">{{.Failed}}</td><td class="n">{{ms .P50ms}}</td><td class="n">{{ms .P95ms}}</td><td>{{if and .PID (ne .Runtime "docker")}}<button type="button" class="stop" data-stop="{{.Name}}" aria-label="Stop {{.URL}}">Stop</button>{{end}}</td></tr>{{end}}
+</tbody></table></div><p class="muted"><b>run</b>: started with tsp run; <b>found</b>: a dev server tsp found by itself. Requests since this proxy started; p50 and p95 are times to the first byte. <b>Stop</b> shows what it ends and the command it runs before it does.</p>
 {{else}}<p class="muted">No apps are running. Start one below.</p>{{end}}
 <h2>Proxy</h2><dl>
 <dt>Serving</dt><dd>tsp {{.Proxy.Version}} ({{.Proxy.Mode}}, pid {{.Proxy.PID}}), up {{.Proxy.Uptime}}{{if .Proxy.Supervisor}}; boot service tsp {{.Proxy.Supervisor}}{{end}}</dd>
@@ -447,13 +578,108 @@ th{color:var(--muted);font-weight:600;font-size:13px}.n{text-align:right;font-va
 {{with .Proxy.SetAside}}<dt>Set aside</dt><dd>{{range $v := keys .}}<div class="mono">{{$v}}: {{index $.Proxy.SetAside $v}}</div>{{end}}</dd>{{end}}
 <dt>Discovery</dt><dd>{{if .Proxy.Discovery.Enabled}}finds dev servers on ports {{.Proxy.Discovery.Range}}: scans every {{.Proxy.Discovery.Every}}, and at once for a name it does not know{{else}}off: only tsp run apps (tsp configure --discover turns it on){{end}}</dd>
 {{range .Proxy.Discovery.Problems}}<dt>Skipped</dt><dd class="warn">{{.}}</dd>{{end}}
-<dt>http://</dt><dd>{{if .Proxy.HTTPRedirect}}<span class="ok">redirects to https</span>{{else}}<span class="warn">not redirected</span>: {{.Proxy.HTTPNote}}{{end}}</dd>
+<dt>http://</dt><dd>{{if .Proxy.HTTPRedirect}}<span class="ok">redirects to https</span>: http://&lt;name&gt;.localhost opens the same page over https{{else}}<span class="warn">not redirected</span>: {{.Proxy.HTTPNote}}{{end}}</dd>
 <dt>Updates</dt><dd>{{if .Proxy.AutoUpdate}}automatic{{if .Proxy.UpdateChecked}}, checked {{.Proxy.UpdateChecked}}{{end}}{{if .Proxy.Latest}}, latest {{.Proxy.Latest}}{{end}}{{else}}off (tsp configure --auto-update turns them on){{end}}</dd>
 </dl>
+</div>
 <h2>Run an app</h2>
 <p>Start it as usual: tsp finds it and serves it at <code>https://&lt;folder&gt;.localhost</code>. Name it in <code>.tsp.json</code> (<code>{ "name": "api.acme" }</code>), or in the file your stack has: package.json, deno.json, pyproject.toml <code>[tool.tsp]</code>, Cargo.toml, composer.json. Or start it through tsp:</p>
 {{template "examples" .Examples}}
 <p>The server must listen on <code>$PORT</code> and <code>$HOST</code>: tsp sets both.</p>
 <footer>JSON for scripts: <a href="/api/status">/api/status</a> &nbsp; <a href="{{.Docs}}">Docs</a> &nbsp; <a href="https://tailscaleproxy.vercel.app/logs-and-stats">Logs and stats</a></footer>
-</main></body></html>{{end}}
+</main>
+<dialog id="stop-dialog" aria-labelledby="sd-title" data-state="checking"><form method="dialog">
+<h2 id="sd-title">Stop</h2>
+<p id="sd-msg" role="status" aria-live="polite"></p>
+<div class="plan"><dl id="sd-facts"></dl>
+<p class="runs">Stop runs <code id="sd-runs"></code></p>
+<p class="muted" style="margin-top:14px">Or from a terminal:</p><div class="cmds" id="sd-cmds"></div></div>
+<div class="actions"><button value="cancel" id="sd-cancel">Cancel</button><button type="button" class="danger" id="sd-stop">Stop</button><button type="button" class="danger" id="sd-force">Force stop</button></div>
+</form></dialog>
+<script>
+(() => {
+  const dlg = document.getElementById("stop-dialog");
+  const el = (id) => document.getElementById(id);
+  let plan = null;
+  const state = (s, msg, tone) => {
+    dlg.dataset.state = s;
+    el("sd-msg").textContent = msg;
+    el("sd-msg").className = tone || "";
+    el("sd-cancel").textContent = s === "ready" || s === "failed" ? "Cancel" : "Close";
+  };
+  const facts = (rows) => el("sd-facts").replaceChildren(...rows.filter((r) => r[1]).flatMap(([k, v]) => {
+    const dt = document.createElement("dt"), dd = document.createElement("dd");
+    dt.textContent = k; dd.textContent = v; dd.className = "mono";
+    return [dt, dd];
+  }));
+  const commands = (cmds) => el("sd-cmds").replaceChildren(...cmds.flatMap((c) => {
+    const label = document.createElement("span"), code = document.createElement("code"), copy = document.createElement("button");
+    label.textContent = c.label; code.textContent = c.command;
+    copy.type = "button"; copy.textContent = "Copy"; copy.dataset.copy = c.command;
+    copy.setAttribute("aria-label", "Copy " + c.command);
+    return [label, code, copy];
+  }));
+  const openStop = async (name) => {
+    plan = null;
+    el("sd-title").textContent = "Stop https://" + name + ".localhost?";
+    state("checking", "Checking what runs there…");
+    dlg.showModal();
+    const res = await fetch("/api/apps/" + encodeURIComponent(name), { cache: "no-store" }).catch(() => null);
+    const body = res ? await res.json().catch(() => ({})) : { error: "the proxy did not answer: tsp doctor" };
+    if (!res || !res.ok) return state("error", body.error || "it cannot be stopped from here", "bad");
+    plan = body;
+    const t = body.target;
+    facts([
+      ["Process", (t.command || "") + " (pid " + t.pid + ")"],
+      ["Started", t.source === "run" ? "with tsp run" : t.source === "found" ? "by you; tsp found it" : ""],
+      ["Port", t.port ? String(t.port) : ""],
+      ["Folder", body.folder],
+    ]);
+    el("sd-runs").textContent = body.runs;
+    commands(body.commands);
+    state("ready", body.how);
+    el("sd-stop").focus();
+  };
+  const stop = async (force) => {
+    if (!plan) return;
+    state("stopping", force ? "Ending it now…" : "Stopping… waiting for it to exit.");
+    const res = await fetch("/api/apps/" + encodeURIComponent(plan.target.name) + "/stop", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ force }),
+    }).catch(() => null);
+    const body = res ? await res.json().catch(() => ({})) : { error: "the proxy did not answer: tsp doctor" };
+    if (body.stopped) {
+      state("done", "Stopped in " + body.took + " (" + body.ran + ").", "good");
+      setTimeout(() => { if (dlg.dataset.state === "done") dlg.close(); refresh(); }, 1200);
+      return;
+    }
+    if (res && res.status === 409 && !force && plan) {
+      el("sd-runs").textContent = plan.force;
+      return state("failed", (body.error || "it did not stop") + ". It may still be finishing work, or it ignores SIGTERM: Force stop ends it at once.", "bad");
+    }
+    state("error", body.error || "it did not stop", "bad");
+  };
+  const refresh = async () => {
+    if (dlg.open || document.hidden) return;
+    const res = await fetch("/", { cache: "no-store" }).catch(() => null);
+    if (!res || !res.ok) return;
+    const live = new DOMParser().parseFromString(await res.text(), "text/html").getElementById("live");
+    if (live) el("live").replaceWith(live);
+  };
+  el("sd-stop").addEventListener("click", () => stop(false));
+  el("sd-force").addEventListener("click", () => stop(true));
+  dlg.addEventListener("close", refresh);
+  document.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-stop]");
+    if (b) openStop(b.dataset.stop);
+    const c = e.target.closest("[data-copy]");
+    if (c) navigator.clipboard.writeText(c.dataset.copy).then(() => {
+      c.textContent = "Copied";
+      setTimeout(() => { c.textContent = "Copy"; }, 1200);
+    });
+  });
+  setInterval(refresh, 5000);
+  document.addEventListener("visibilitychange", refresh);
+})();
+</script>
+</body></html>{{end}}
 `

@@ -19,6 +19,7 @@ Find your symptom below; the rest of the page has the details.
 | It answers 502 "not answering" | the app is still starting, stopped, or (with `tsp run`) doesn't listen on `$PORT` and `$HOST`; the page shows the port, process and folder |
 | `http://<name>.localhost` doesn't redirect | another program holds port 80 (`tsp doctor` names it), or the boot service predates the redirect: `tsp service install` once |
 | "already runs (pid …)" | stop the other terminal's run, or `tsp run --force` |
+| A port is taken by a server you forgot | `tsp stop <port>` (or the Stop button on `https://tsp.localhost`); `--force` when it ignores the stop |
 | Something was slow or failed earlier | `tsp stats` (per name, p50/p95/p99) and `tsp logs` ([Logs and stats](/logs-and-stats)) |
 | Every `*.localhost` hangs | another program holds port 443: `lsof -nP -iTCP:443 -sTCP:LISTEN` ([Funnel next to the proxy](#funnel-on-443-next-to-tsp-proxy-macos)) |
 

@@ -218,8 +218,39 @@ runs the `dev:app` script as it is, without tsp. The name `tsp` is reserved for 
 
 `https://tsp.localhost` shows what runs (how each was started, port, folder, uptime), requests, failures and p50/p95
 per name, the proxy's version, live updates and set-aside releases, discovery and update status, and any config file
-it skipped, with how to fix it. It is read-only and reachable only from this machine. The same data as JSON for
-scripts and agents: `https://tsp.localhost/api/status`.
+it skipped, with how to fix it. It updates itself every few seconds and is reachable only from this machine. The same
+data as JSON for scripts and agents: `https://tsp.localhost/api/status`.
+
+## Stop an app
+
+A dev server left running in a forgotten terminal holds its port. Stop it by name or by port:
+
+```bash
+tsp stop web.acme        # the app at https://web.acme.localhost
+tsp stop 3000            # whatever listens on port 3000
+tsp stop web.acme --force
+```
+
+`tsp stop` shows what it is about to end (process, pid, port, folder) and the command it runs, then asks. It sends
+SIGTERM, as Ctrl-C in the app's terminal would, and waits up to 5 seconds for it to exit; a `tsp run` app ends with
+its `tsp run`. An app that ignores it is still running afterwards, and `--force` ends it at once (SIGKILL). On Windows
+it runs `taskkill /PID <pid> /T`, and `/F` with `--force`. `--yes` skips the question, for scripts and agents.
+
+On the dashboard, each app has a **Stop** button. It opens the same summary, the exact command the button runs, and
+the commands that do the same in a terminal on this OS, each with a copy button:
+
+| | macOS, Linux | Windows |
+| --- | --- | --- |
+| Stop | `kill <pid>` | `taskkill /PID <pid> /T` |
+| Force | `kill -9 <pid>` | `taskkill /PID <pid> /T /F` |
+| By port | `lsof -ti tcp:<port> -sTCP:LISTEN \| xargs kill` | `Get-NetTCPConnection -LocalPort <port> -State Listen \| ForEach-Object { Stop-Process -Id $_.OwningProcess }` |
+
+The same through the API: `GET https://tsp.localhost/api/apps/<name>` returns what a stop would end and how, and
+`POST https://tsp.localhost/api/apps/<name>/stop` with `{"force": false}` stops it (200 when it exited, 409 with the
+forced command when it did not). Only the dashboard's own page can stop an app from a browser: tsp refuses a request
+another website sends (it checks `Sec-Fetch-Site` and `Origin`, and asks for a JSON body, which a form cannot send).
+tsp never stops itself, a process another user owns, or Docker: for a container's port it names the container to
+`docker stop` instead.
 
 Opening a name that nothing runs under shows the names that do run and how to start an app under that one; a name
 whose app stopped answering shows its port, process, folder and the likely cause. A browser gets a page, curl gets the
@@ -227,9 +258,11 @@ same as text.
 
 ## Plain HTTP
 
-`http://<name>.localhost` redirects to `https://<name>.localhost` (308: the method and body are kept), and
-`http://localhost/` to the dashboard, so a name typed without `https://` still works. If another program holds port 80,
-HTTPS keeps working and `tsp doctor` names the program.
+`http://` gets what `https://` gets. Every `http://<name>.localhost`, the reserved `tsp` included, redirects to the same
+URL over https (308: the method and body are kept), so a browser shows the very same page. `http://localhost/` and
+`http://127.0.0.1/` open the dashboard, like `https://localhost/`. Any other host that reaches port 80 (a name in
+`/etc/hosts`) gets the page an unknown name gets, with a note on why. If another program holds port 80, HTTPS keeps
+working and `tsp doctor` names the program.
 
 ## Subdomains
 

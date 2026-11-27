@@ -55,6 +55,15 @@ func (s *routeStore) lookup(slug string) (Service, bool) {
 	return Service{}, false
 }
 
+// forget drops key at once, without the de-register debounce: its process was
+// stopped on purpose.
+func (s *routeStore) forget(key string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.services, key)
+	delete(s.missing, key)
+}
+
 func (s *routeStore) snapshot() map[string]Service {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

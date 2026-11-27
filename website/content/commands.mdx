@@ -22,8 +22,9 @@ version.
 | `tsp run <name> -- '<command>'` | Run any command at `https://<name>.localhost`; one quoted string runs through the shell, after `PORT` and `HOST` are set |
 | `tsp run --force` | Take a name over from a run in another terminal |
 | `tsp routes [--json]` | The names running now: how each started (`run` or `found`), port, folder |
+| `tsp stop <name\|port>` | Stop the app behind a name, or what listens on a port: SIGTERM (Windows: `taskkill /T`), like Ctrl-C; asks first. `--force` ends it at once, `--pid <n>` stops one process, `--yes` skips the question ([Stop an app](/local-https#stop-an-app)) |
 | `tsp configure --discover=false` | Stop finding dev servers; only `tsp run` names remain |
-| `https://tsp.localhost` | The dashboard: what runs, requests and latency per name, the proxy's state (JSON at `/api/status`) |
+| `https://tsp.localhost` | The dashboard: what runs, requests and latency per name, a Stop button per app, the proxy's state (JSON at `/api/status`) |
 | `tsp service install` | Once per machine (your password once): the proxy from boot, its CA trusted; it updates itself afterwards. Safe to repeat |
 | `tsp service status` | Three ✓/✗ lines; exit 1 when one is off |
 | `tsp service uninstall` | Stop and remove the boot service |

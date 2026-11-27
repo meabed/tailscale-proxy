@@ -5,9 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"path/filepath"
 	"slices"
-	"sort"
 	"time"
 )
 
@@ -184,32 +182,7 @@ func cmdRoutes(argv []string) int {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	reg := newLocalRegistry(filepath.Join(dir, "routes"))
-	routes := reg.list()
-	held := map[string]bool{}
-	for i := range routes {
-		routes[i].Source = sourceRun
-		held[routes[i].Name] = true
-	}
-	var notes []string
-	if st, ok := runningProxy(dir); !ok {
-		notes = append(notes, "the local HTTPS proxy is not running, so nothing is found or served: tsp service install")
-	} else if ws, err := fetchWatchStatus(dir, st.Worker); err != nil {
-		notes = append(notes, "found names unknown: the proxy (tsp "+st.Version+") did not answer: tsp doctor")
-	} else {
-		if !ws.Enabled {
-			notes = append(notes, "finding dev servers is off: only tsp run apps are served (tsp configure --discover turns it on)")
-		}
-		for _, rt := range ws.Routes {
-			if !held[rt.Name] {
-				routes = append(routes, rt)
-			}
-		}
-		for _, p := range ws.Problems {
-			notes = append(notes, "skipped: "+p)
-		}
-	}
-	sort.Slice(routes, func(i, j int) bool { return routes[i].Name < routes[j].Name })
+	_, routes, notes := currentRoutes(dir)
 	if *asJSON {
 		if routes == nil {
 			routes = []localRoute{}

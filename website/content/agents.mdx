@@ -28,6 +28,7 @@ Add this section to the project's `AGENTS.md` (or `CLAUDE.md`), so every session
 | --- | --- |
 | `tsp service status` | three ✓/✗ lines and exit 1 when local HTTPS isn't ready |
 | `tsp routes --json` | the running `*.localhost` names: `name`, `port`, `pid`, `dir` |
+| `tsp stop <name\|port> --yes` | the app behind a name or port stopped (SIGTERM, waits 5s; `--force` at once); exit 1 when it still runs |
 | `tsp run <name> -- <cmd...>` | an app at `https://<name>.localhost`, with `PORT` and `HOST` set for it |
 | `tsp list` | every dev server tsp can share, with its online link |
 | `tsp doctor` | what either half is missing, each ✗ with the command that fixes it; exit 1 when one fails |

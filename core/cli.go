@@ -29,6 +29,7 @@ Local HTTPS names (https://<name>.localhost):
              pyproject.toml [tool.tsp], Cargo.toml, composer.json). https://tsp.localhost lists them.
   run        Run an app at https://<name>.localhost with PORT and HOST set for it
   routes     Print the names served: found, and started with tsp run (--json)
+  stop       Stop the app behind a name or a port (asks first; --force, --yes)
   service    install | uninstall | status: the local HTTPS proxy from boot (install once
              per machine: it then updates itself live, no sudo)
   trust      Add the local CA to the OS trust store (browsers, curl)
@@ -52,6 +53,7 @@ Examples:
   tsp service install        # once per machine: https://*.localhost, then it updates itself
   echo '{"name":"api.acme"}' > .tsp.json   # name this project https://api.acme.localhost
   tsp run api -- 'vite --port $PORT --host $HOST'   # or run one through tsp
+  tsp stop 3000              # stop what listens on port 3000 (or a name: tsp stop api)
   tsp                        # share every running dev server online (Funnel)
   tsp --private              # only devices on your Tailscale network (Serve)
   tsp stats --since 1h       # how the proxy has been doing

@@ -201,6 +201,14 @@ func (w *localWatcher) rescanSoon() {
 	}
 }
 
+// forget drops a found name whose process tsp just stopped, so lists show it
+// gone now, not after the de-register debounce.
+func (w *localWatcher) forget(name string) {
+	if w != nil && w.enabled {
+		w.store.forget(name)
+	}
+}
+
 // routes are the found routes, by name.
 func (w *localWatcher) routes() []localRoute {
 	if w == nil || !w.enabled {

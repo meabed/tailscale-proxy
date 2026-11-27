@@ -79,8 +79,8 @@ func TestLocalHandler_unknownNameLists(t *testing.T) {
 	h := newLocalHandler(t.TempDir(), reg, nil, newProxyMetrics(), "errors")
 
 	for host, want := range map[string]string{
-		"nope.localhost": "nothing runs at https://nope.localhost",
-		"localhost":      "https://web.localhost  →  127.0.0.1:4100  (/src/web)",
+		"nope.localhost":  "nothing runs at https://nope.localhost",
+		"other.localhost": "https://web.localhost  →  127.0.0.1:4100  (/src/web)",
 	} {
 		req := httptest.NewRequest("GET", "/", nil)
 		req.Host = host
@@ -93,7 +93,7 @@ func TestLocalHandler_unknownNameLists(t *testing.T) {
 
 	empty := newLocalHandler(t.TempDir(), testRegistry(t), nil, newProxyMetrics(), "errors")
 	req := httptest.NewRequest("GET", "/", nil)
-	req.Host = "localhost"
+	req.Host = "nope.localhost"
 	rec := httptest.NewRecorder()
 	empty.ServeHTTP(rec, req)
 	if !strings.Contains(rec.Body.String(), "No apps are running") {
