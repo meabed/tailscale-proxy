@@ -583,3 +583,16 @@ func TestLocalHTTPSChecks_outdatedProxyNotes(t *testing.T) {
 	}
 	t.Errorf("no proxy check in %+v", checks)
 }
+
+func TestAutoUpdateCheck_neverShowsAnOlderLatestThanThisTsp(t *testing.T) {
+	dir := t.TempDir()
+	defer func(v string) { Version = v }(Version)
+	Version = "1.14.0"
+	t.Setenv("TSP_NO_UPDATE", "")
+	t.Setenv("CI", "")
+	now := time.Now()
+	saveUpdateState(dir, updateState{CheckedAt: now.Add(-time.Hour), Latest: "v1.13.0"})
+	if got := autoUpdateCheck(dir, now).Name; !strings.Contains(got, "latest 1.14.0") {
+		t.Errorf("auto-update line = %q, want latest 1.14.0", got)
+	}
+}

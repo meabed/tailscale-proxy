@@ -563,8 +563,12 @@ func autoUpdateCheck(dir string, now time.Time) check {
 		return check{Name: "auto-update on (the running proxy checks once a day)", OK: true}
 	}
 	name := fmt.Sprintf("auto-update on (checked %s ago", now.Sub(st.CheckedAt).Round(time.Minute))
-	if st.Latest != "" {
-		name += ", latest " + normalizeVer(st.Latest)
+	// The newest release known: a check made before this tsp came out records an older one.
+	if latest := normalizeVer(st.Latest); latest != "" {
+		if versionLess(latest, Version) {
+			latest = normalizeVer(Version)
+		}
+		name += ", latest " + latest
 	}
 	return check{Name: name + ")", OK: true}
 }
