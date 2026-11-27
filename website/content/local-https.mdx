@@ -17,8 +17,7 @@ also discovered by `tsp start` like any other dev server.
 ## Set up a machine (once)
 
 ```bash
-tsp service install    # the local HTTPS proxy from boot (asks for your sudo password)
-tsp trust              # browsers, curl and git trust its certificates (macOS: at the Mac's screen)
+tsp service install    # the proxy from boot + the CA trusted; re-run any time, it fixes what is off
 tsp service status     # ✓ boot service · ✓ proxy running · ✓ CA trusted (exit 1 otherwise)
 ```
 
@@ -75,10 +74,14 @@ Requests reach the app with the original `Host` (`api.acme.localhost`) and
   good, so every file it writes stays yours. macOS: a launchd daemon
   (`/Library/LaunchDaemons/com.meabed.tailscale-proxy.plist`, log
   `/var/log/tailscale-proxy.log`). Linux: a systemd unit (`tailscale-proxy.service`,
-  `journalctl -u tailscale-proxy`). Run `tsp service install` again after updating tsp:
-  `tsp run` and `tsp service status` say when the proxy runs an older version.
-- **Trust**: macOS adds the CA to your login keychain (one password dialog at the
-  screen; not possible over SSH). Debian/Ubuntu: `/usr/local/share/ca-certificates` +
+  `journalctl -u tailscale-proxy`). `tsp service install` first checks what is in place and
+  changes only what is missing or old: sudo asks for your password only when the boot
+  service itself changes (first install, a new tsp version), and an up-to-date machine
+  needs none. `tsp run` in a terminal does the same when the proxy is down or older than
+  itself; in CI or a pipe it only warns.
+- **Trust**: `tsp service install` ends with it (or `tsp trust` alone). macOS adds the CA
+  to your login keychain (one password dialog at the screen; over SSH it is left as a
+  next step). Debian/Ubuntu: `/usr/local/share/ca-certificates` +
   `update-ca-certificates`; Fedora/RHEL: `/etc/pki/ca-trust/source/anchors` +
   `update-ca-trust`. Windows: the user's Root store (`certutil -user`).
 
@@ -87,8 +90,8 @@ Requests reach the app with the original `Host` (`api.acme.localhost`) and
 ```
 tsp run [--force] [<name> -- <cmd...>]   run an app at https://<name>.localhost
 tsp routes [--json]                      running names
-tsp service install|uninstall|status     the local HTTPS proxy, from boot
-tsp trust                                trust the local CA (once per machine)
+tsp service install|uninstall|status     the local HTTPS proxy, from boot (install also trusts the CA)
+tsp trust                                trust the local CA only
 tsp proxy [--port n]                     the proxy in the foreground (what the service runs)
 ```
 
@@ -96,7 +99,7 @@ tsp proxy [--port n]                     the proxy in the foreground (what the s
 
 | Symptom | Fix |
 | --- | --- |
-| `tsp run` warns "the local HTTPS proxy is not running" | `tsp service install` |
+| `tsp run` warns "the local HTTPS proxy is not running" | `tsp service install` (it prints the proxy's log when it cannot start) |
 | Browser: "not private" / curl: certificate error | `tsp trust` (macOS: at the screen), restart the browser |
 | `tsp proxy`: cannot listen on 127.0.0.1:443 | another proxy holds 443: `lsof -nP -iTCP:443 -sTCP:LISTEN` |
 | `https://<name>.localhost` → 404 "nothing runs at" | start it: `bun dev` / `tsp run` in its folder; `tsp routes` lists what runs |

@@ -47,7 +47,7 @@ Examples:
   tsp --private              # start privately (Serve) this once
   tsp configure --ports 3000-9000 --private   # save, then just run "tsp"
   tsp list                   # see discovered services + URLs
-  tsp service install && tsp trust   # once per machine: https://*.localhost
+  tsp service install                # once per machine: https://*.localhost
   tsp run                    # in an app folder: package.json "tsp" {name, script}
 
 Run "tsp start --help" for all flags. Global: -h/--help, -v/--version

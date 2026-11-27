@@ -3,7 +3,6 @@ package core
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -61,25 +60,41 @@ func cmdTrust(argv []string) int {
 		fmt.Fprintln(os.Stderr, "tsp trust:", err)
 		return 1
 	}
+	return trustCA(ca, false)
+}
+
+// trustCA adds ca to the OS trust store unless it is there already. On macOS
+// over SSH the keychain cannot ask for approval, so setup (install) leaves it
+// as a next step instead of failing.
+func trustCA(ca *localCA, setup bool) int {
 	if caTrusted(ca) {
-		fmt.Println("✓ the local CA is already trusted:", ca.certPEM)
+		fmt.Println("✓ local CA trusted by the OS:", ca.certPEM)
 		return 0
 	}
+	if runtime.GOOS == "darwin" && os.Getenv("SSH_CONNECTION") != "" {
+		fmt.Println("! the local CA is not trusted yet: macOS asks for that in a dialog at the Mac's screen")
+		fmt.Println("    → run `tsp trust` in a terminal there (until then browsers warn; Bun and Node under tsp run trust it already)")
+		if setup {
+			return 0
+		}
+		return 1
+	}
+	fmt.Println("→ trusting the local CA, so browsers, curl and git accept https://*.localhost")
 	home, _ := os.UserHomeDir()
-	_, debianErr := exec.LookPath("update-ca-certificates")
+	_, debianErr := lookPath("update-ca-certificates")
 	for _, c := range trustCommands(runtime.GOOS, ca.certPEM, home, geteuid() == 0, debianErr == nil) {
 		if err := interactive(c); err != nil {
 			fmt.Fprintf(os.Stderr, "tsp trust: %s: %v\n", strings.Join(c, " "), err)
 			if runtime.GOOS == "darwin" {
-				fmt.Fprintln(os.Stderr, "macOS asks for your password in a dialog at the Mac's screen: run `tsp trust` in a terminal there (not over SSH).")
+				fmt.Fprintln(os.Stderr, "    → macOS asks in a dialog at the Mac's screen: approve it there, then run `tsp trust` again")
 			}
 			return 1
 		}
 	}
 	if !caTrusted(ca) {
-		fmt.Fprintln(os.Stderr, "tsp trust: the OS did not record the trust (macOS: approve the dialog at the Mac's screen)")
+		fmt.Fprintln(os.Stderr, "tsp trust: the OS did not record the trust (macOS: approve the dialog at the Mac's screen), then run `tsp trust` again")
 		return 1
 	}
-	fmt.Println("✓ the local CA is trusted: https://*.localhost opens without warnings (restart open browsers)")
+	fmt.Println("✓ local CA trusted: https://*.localhost opens without warnings (restart open browsers)")
 	return 0
 }

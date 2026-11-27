@@ -185,12 +185,39 @@ func cmdRun(argv []string) int {
 		caPath = ca.certPEM
 	}
 	fmt.Fprintf(os.Stderr, "tsp: %s → 127.0.0.1:%d\n", rt.URL(), port)
-	if st, ok := runningProxy(dir); !ok {
-		fmt.Fprintf(os.Stderr, "tsp: ⚠ the local HTTPS proxy is not running, so %s will not answer: tsp service install (once)\n", rt.URL())
-	} else if st.outdated() {
-		fmt.Fprintf(os.Stderr, "tsp: the local proxy runs tsp %s (this is %s): tsp service install updates it\n", st.Version, Version)
-	}
+	healProxy(dir, rt)
 	return runChild(spec.argv, runEnv(os.Environ(), port, caPath, os.Getenv))
+}
+
+// healProxy makes sure the local HTTPS proxy runs this tsp version. In a
+// terminal it sets it up (tsp service install: sudo only when the boot service
+// must change); elsewhere (CI, a pipe) it only says what to run.
+func healProxy(dir string, rt localRoute) {
+	st, ok := runningProxy(dir)
+	if ok && !st.outdated() {
+		return
+	}
+	s, supported := servicePlatform()
+	if supported && stdinIsTerminal() {
+		self, err := os.Executable()
+		if err == nil {
+			self, err = filepath.EvalSymlinks(self)
+		}
+		if err == nil && setupLocalHTTPS(s, self) == 0 {
+			return
+		}
+	}
+	if !ok {
+		fmt.Fprintf(os.Stderr, "tsp: ⚠ the local HTTPS proxy is not running, so %s will not answer: tsp service install\n", rt.URL())
+		return
+	}
+	fmt.Fprintf(os.Stderr, "tsp: the local proxy runs tsp %s (this is %s): tsp service install updates it\n", st.Version, Version)
+}
+
+// stdinIsTerminal is replaced in tests.
+var stdinIsTerminal = func() bool {
+	fi, err := os.Stdin.Stat()
+	return err == nil && fi.Mode()&os.ModeCharDevice != 0
 }
 
 // takeOver asks the run that holds name (prev) to stop, then claims the name as

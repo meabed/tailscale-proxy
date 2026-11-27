@@ -1,14 +1,17 @@
 package core
 
 import (
+	"bytes"
 	"errors"
 	"flag"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // `tsp service install|uninstall|status` keeps `tsp proxy` running from boot.
@@ -33,12 +36,14 @@ type serviceSystem struct {
 // password dialog) instead of captured output.
 var (
 	geteuid     = os.Geteuid
+	lookPath    = exec.LookPath
 	interactive = func(argv []string) error {
 		cmd := exec.Command(argv[0], argv[1:]...)
 		cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 		return cmd.Run()
 	}
-	serviceRunner Runner = execRunner{}
+	serviceRunner   Runner = execRunner{}
+	servicePlatform        = platformService
 )
 
 // serviceSpec is the user the proxy serves.
@@ -101,26 +106,67 @@ func xmlEscape(s string) string {
 	return strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;").Replace(s)
 }
 
-// install copies self to binPath, writes the unit and (re)starts the service.
+// install brings the service in line with self and sp, changing only what
+// differs: the binary, the unit, then a restart so the new binary runs.
 func (s serviceSystem) install(r Runner, self string, sp serviceSpec) error {
 	if err := checkRootOnlyPath(s.binPath); err != nil {
 		return err
 	}
-	if err := copyExecutable(self, s.binPath); err != nil {
-		return fmt.Errorf("copying tsp to %s: %v", s.binPath, err)
+	if !sameFile(self, s.binPath) {
+		if err := copyExecutable(self, s.binPath); err != nil {
+			return fmt.Errorf("copying tsp to %s: %v", s.binPath, err)
+		}
 	}
-	if err := os.WriteFile(s.unitPath, []byte(s.unit(sp)), 0o644); err != nil {
-		return fmt.Errorf("writing %s: %v", s.unitPath, err)
+	unit := s.unit(sp)
+	old, _ := os.ReadFile(s.unitPath)
+	changed := string(old) != unit
+	if changed {
+		if err := os.WriteFile(s.unitPath, []byte(unit), 0o644); err != nil {
+			return fmt.Errorf("writing %s: %v", s.unitPath, err)
+		}
 	}
 	if s.kind == "systemd" {
-		return runAll(r, [][]string{
-			{"systemctl", "daemon-reload"},
-			{"systemctl", "enable", "tailscale-proxy.service"},
-			{"systemctl", "restart", "tailscale-proxy.service"},
-		})
+		cmds := [][]string{{"systemctl", "enable", "tailscale-proxy.service"}, {"systemctl", "restart", "tailscale-proxy.service"}}
+		if changed {
+			cmds = append([][]string{{"systemctl", "daemon-reload"}}, cmds...)
+		}
+		return runAll(r, cmds)
 	}
-	_, _, _ = r.Run("launchctl", "bootout", "system/"+serviceLabel) // not loaded yet: fine
-	return runAll(r, [][]string{{"launchctl", "bootstrap", "system", s.unitPath}})
+	return s.launchdLoad(r, changed)
+}
+
+// serviceRetry is the pause between launchd checks, shortened in tests.
+var serviceRetry = 100 * time.Millisecond
+
+// launchdLoad (re)starts the daemon. A loaded daemon with an unchanged plist is
+// restarted in place (kickstart -k runs the new binary). Otherwise the old job
+// is unloaded and the plist loaded once launchd has let the old job go: a
+// bootstrap right after bootout fails with "5: Input/output error".
+func (s serviceSystem) launchdLoad(r Runner, changed bool) error {
+	target := "system/" + serviceLabel
+	loaded := func() bool { _, _, err := r.Run("launchctl", "print", target); return err == nil }
+	kickstart := [][]string{{"launchctl", "kickstart", "-k", target}}
+	_, _, _ = r.Run("launchctl", "enable", target) // undo a `launchctl disable`, which blocks bootstrap
+	if loaded() {
+		if !changed {
+			return runAll(r, kickstart)
+		}
+		_, _, _ = r.Run("launchctl", "bootout", target)
+		for i := 0; i < 100 && loaded(); i++ {
+			time.Sleep(serviceRetry)
+		}
+	}
+	var err error
+	for i := 0; i < 5; i++ {
+		if err = runAll(r, [][]string{{"launchctl", "bootstrap", "system", s.unitPath}}); err == nil {
+			return nil
+		}
+		if loaded() { // loaded by a concurrent install: restart it on the new binary
+			return runAll(r, kickstart)
+		}
+		time.Sleep(10 * serviceRetry)
+	}
+	return err
 }
 
 // uninstall stops the service and removes its unit and binary.
@@ -142,6 +188,18 @@ func (s serviceSystem) uninstall(r Runner) error {
 		_, _, _ = r.Run("systemctl", "daemon-reload")
 	}
 	return nil
+}
+
+// current reports whether the installed service already runs self for sp.
+func (s serviceSystem) current(self string, sp serviceSpec) bool {
+	unit, err := os.ReadFile(s.unitPath)
+	return err == nil && string(unit) == s.unit(sp) && sameFile(self, s.binPath)
+}
+
+func sameFile(a, b string) bool {
+	da, errA := os.ReadFile(a)
+	db, errB := os.ReadFile(b)
+	return errA == nil && errB == nil && bytes.Equal(da, db)
 }
 
 func (s serviceSystem) installed() bool {
@@ -175,11 +233,13 @@ func serviceUsage() {
 	fmt.Print(`tsp service — run the local HTTPS proxy (https://*.localhost) from boot
 
 Usage:
-  tsp service install     install or update it (asks for your sudo password)
+  tsp service install     set it up or update it: the boot service, then the CA's trust
   tsp service uninstall   stop and remove it
   tsp service status      installed, running, and trusted? (exit 1 if not)
 
-Run "tsp trust" once as well, so browsers trust its certificates.
+install checks what is in place first and changes only what is missing or old:
+sudo asks for your password only when the boot service itself must change.
+Run it again any time (after updating tsp, after a failed start): it is safe.
 `)
 }
 
@@ -188,7 +248,7 @@ func cmdService(argv []string) int {
 		serviceUsage()
 		return 2
 	}
-	s, supported := platformService()
+	s, supported := servicePlatform()
 	switch argv[0] {
 	case "-h", "--help":
 		serviceUsage()
@@ -201,13 +261,17 @@ func cmdService(argv []string) int {
 		return 2
 	}
 	if !supported {
-		fmt.Fprintln(os.Stderr, "tsp service supports macOS (launchd) and Linux (systemd); elsewhere run `tsp proxy` yourself")
+		fmt.Fprintf(os.Stderr, "tsp service supports macOS (launchd) and Linux (systemd), not %s: run `tsp proxy --port 8443` in a terminal instead\n", runtime.GOOS)
 		return 1
 	}
 	if argv[0] == "install" {
 		return cmdServiceInstall(s, argv[1:])
 	}
-	if code, done := elevate(argv); done {
+	if geteuid() != 0 && !s.installed() {
+		fmt.Println("✓ the local HTTPS proxy is not installed: nothing to remove")
+		return 0
+	}
+	if code, done := elevate(argv, "removing the boot service"); done {
 		return code
 	}
 	if err := s.uninstall(serviceRunner); err != nil {
@@ -226,14 +290,6 @@ func cmdServiceInstall(s serviceSystem, argv []string) int {
 	if err := fs.Parse(argv); err != nil {
 		return 2
 	}
-	if code, done := elevate(append([]string{"install"}, argv...)); done {
-		return code
-	}
-	sp, err := serviceUser(*uid, *gid, *home, os.Getenv)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "tsp service install:", err)
-		return 2
-	}
 	self, err := os.Executable()
 	if err == nil {
 		self, err = filepath.EvalSymlinks(self)
@@ -242,13 +298,108 @@ func cmdServiceInstall(s serviceSystem, argv []string) int {
 		fmt.Fprintln(os.Stderr, "tsp service install: locating tsp:", err)
 		return 1
 	}
+	if geteuid() != 0 && *uid < 0 {
+		return setupLocalHTTPS(s, self)
+	}
+	if code, done := elevate(append([]string{"install"}, argv...), "installing the boot service"); done {
+		return code
+	}
+	sp, err := serviceUser(*uid, *gid, *home, os.Getenv)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "tsp service install:", err)
+		return 2
+	}
 	if err := s.install(serviceRunner, self, sp); err != nil {
 		fmt.Fprintln(os.Stderr, "tsp service install:", err)
 		return 1
 	}
-	fmt.Printf("✓ local HTTPS proxy installed: https://*.%s on 127.0.0.1:443 from boot (%s)\n", localTLD, s.unitPath)
-	fmt.Println("  Next: tsp trust (once, so browsers trust it), then `tsp run` in an app's folder.")
+	fmt.Printf("✓ boot service %s runs tsp %s for uid %d\n", s.unitPath, Version, sp.uid)
 	return 0
+}
+
+// setupLocalHTTPS makes https://*.localhost work for the calling user: the CA
+// (made as the user, so its files are theirs), the boot service when it is
+// missing, old or not running (the one step that needs sudo), then the trust.
+func setupLocalHTTPS(s serviceSystem, self string) int {
+	dir, err := stateDir()
+	if err == nil {
+		err = os.MkdirAll(dir, 0o755)
+	}
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "tsp service install:", err)
+		return 1
+	}
+	ca, err := ensureCA(dir)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "tsp service install:", err)
+		return 1
+	}
+	release, _, _ := waitLock(filepath.Join(dir, "service.lock"), 2*time.Minute) // one setup at a time (parallel `tsp run`s)
+	if release != nil {
+		defer release()
+	}
+	home, _ := os.UserHomeDir()
+	sp := serviceSpec{uid: os.Getuid(), gid: os.Getgid(), home: home}
+	st, running := runningProxy(dir)
+	switch {
+	case running && !st.outdated() && s.current(self, sp):
+		fmt.Printf("✓ local HTTPS proxy up to date and running (tsp %s, pid %d, port %d)\n", st.Version, st.PID, st.Port)
+	default:
+		fmt.Println("→ " + setupReason(s, self, sp, st, running))
+		if code, _ := elevate([]string{"install", "--uid", strconv.Itoa(sp.uid), "--gid", strconv.Itoa(sp.gid), "--home", sp.home}, "installing the boot service (port 443)"); code != 0 {
+			return code
+		}
+		if st, ok := waitProxy(dir, proxyStartWait); ok {
+			fmt.Printf("✓ local HTTPS proxy running (tsp %s, pid %d, port %d)\n", st.Version, st.PID, st.Port)
+		} else {
+			explainProxyDown(s)
+			return 1
+		}
+	}
+	return trustCA(ca, true)
+}
+
+// setupReason says what install is about to change, before sudo asks.
+func setupReason(s serviceSystem, self string, sp serviceSpec, st proxyState, running bool) string {
+	switch {
+	case !s.installed():
+		return "installing the local HTTPS proxy as a boot service"
+	case !s.current(self, sp):
+		return "updating the boot service to tsp " + Version
+	case running && st.outdated():
+		return fmt.Sprintf("restarting the proxy on tsp %s (it runs %s)", Version, st.Version)
+	}
+	return "restarting the boot service (the proxy is not running)"
+}
+
+// proxyStartWait bounds how long install waits for the restarted proxy.
+var proxyStartWait = 10 * time.Second
+
+// waitProxy waits for the proxy of this tsp version to come up.
+func waitProxy(dir string, d time.Duration) (proxyState, bool) {
+	for deadline := time.Now().Add(d); ; time.Sleep(200 * time.Millisecond) {
+		if st, ok := runningProxy(dir); ok && !st.outdated() {
+			return st, true
+		}
+		if time.Now().After(deadline) {
+			return proxyState{}, false
+		}
+	}
+}
+
+// explainProxyDown prints why a freshly installed proxy did not start, from its log.
+func explainProxyDown(s serviceSystem) {
+	fmt.Fprintln(os.Stderr, "✗ the boot service is installed, but the proxy did not start")
+	if s.kind == "systemd" {
+		fmt.Fprintln(os.Stderr, "    → its log: journalctl -u tailscale-proxy -n 30")
+	} else if data, err := os.ReadFile(s.logPath); err == nil {
+		lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+		fmt.Fprintln(os.Stderr, "    last lines of "+s.logPath+":")
+		for _, l := range lines[max(0, len(lines)-8):] {
+			fmt.Fprintln(os.Stderr, "      "+l)
+		}
+	}
+	fmt.Fprintln(os.Stderr, "    → another program on port 443? lsof -nP -iTCP:443 -sTCP:LISTEN, stop it, then tsp service install")
 }
 
 // serviceUser resolves who the service serves: explicit flags, else the sudo
@@ -275,9 +426,9 @@ func serviceUser(uid, gid int, home string, getenv func(string) string) (service
 	return serviceSpec{uid: uid, gid: gid, home: home}, nil
 }
 
-// elevate re-runs `tsp service <args>` through sudo for a non-root caller,
-// passing who that caller is. done=false: already root, carry on.
-func elevate(args []string) (code int, done bool) {
+// elevate re-runs `tsp service <args>` through sudo for a non-root caller.
+// done=false: already root, carry on.
+func elevate(args []string, why string) (code int, done bool) {
 	if geteuid() == 0 {
 		return 0, false
 	}
@@ -286,12 +437,12 @@ func elevate(args []string) (code int, done bool) {
 		fmt.Fprintln(os.Stderr, "locating tsp:", err)
 		return 1, true
 	}
-	home, _ := os.UserHomeDir()
 	full := append([]string{self, "service"}, args...)
-	if args[0] == "install" && !containsFlag(args, "--uid") {
-		full = append(full, "--uid", strconv.Itoa(os.Getuid()), "--gid", strconv.Itoa(os.Getgid()), "--home", home)
+	if _, err := lookPath("sudo"); err != nil {
+		fmt.Fprintf(os.Stderr, "tsp: %s needs root, and sudo is not installed: run as root\n    %s\n", why, strings.Join(full, " "))
+		return 1, true
 	}
-	fmt.Fprintln(os.Stderr, "tsp: this needs root (port 443 and the boot service): sudo", strings.Join(full[1:], " "))
+	fmt.Fprintf(os.Stderr, "  %s needs admin rights: sudo may ask for your password\n", why)
 	if err := interactive(append([]string{"sudo"}, full...)); err != nil {
 		var exit *exec.ExitError
 		if errors.As(err, &exit) {
@@ -301,15 +452,6 @@ func elevate(args []string) (code int, done bool) {
 		return 1, true
 	}
 	return 0, true
-}
-
-func containsFlag(args []string, name string) bool {
-	for _, a := range args {
-		if a == name || strings.HasPrefix(a, name+"=") {
-			return true
-		}
-	}
-	return false
 }
 
 // cmdServiceStatus prints the proxy's state; exit 0 only when names work in a browser.

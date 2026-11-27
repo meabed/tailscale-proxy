@@ -149,7 +149,7 @@ tsp update          Update to the latest release
 tsp run             Run an app at https://<name>.localhost (local HTTPS names)
 tsp routes          Running local names (--json)
 tsp service         install | uninstall | status — the local HTTPS proxy, from boot
-tsp trust           Trust the local CA (browsers, curl), once per machine
+tsp trust           Trust the local CA only (service install does it too)
 tsp proxy           The local HTTPS proxy in the foreground (what the service runs)
 ```
 
@@ -199,7 +199,7 @@ Request logs are colorized by status on a terminal (set `NO_COLOR` to disable).
 its own trusted certificate and the original `Host`:
 
 ```bash
-tsp service install && tsp trust          # once per machine
+tsp service install                       # once per machine (safe to re-run: fixes what is off)
 tsp run api.acme -- bun --hot src/index.ts
 # or package.json: "dev": "tsp run", "tsp": {"name": "api.acme", "script": "dev:app"}
 ```

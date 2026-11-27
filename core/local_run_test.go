@@ -114,6 +114,9 @@ func isolate(t *testing.T) (home, cwd string) {
 	t.Setenv("USERPROFILE", home)
 	cwd = t.TempDir()
 	t.Chdir(cwd)
+	orig := stdinIsTerminal // never set up the machine's real service from a test
+	stdinIsTerminal = func() bool { return false }
+	t.Cleanup(func() { stdinIsTerminal = orig })
 	return home, cwd
 }
 
