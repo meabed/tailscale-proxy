@@ -57,11 +57,11 @@ func TestResolveRun_packageJSON(t *testing.T) {
 	}
 
 	for body, want := range map[string]string{
-		"":                       "no package.json",
-		"{":                      "reading package.json",
-		`{"scripts":{}}`:         `needs "tsp"`,
-		`{"tsp":{"name":"a"}}`:   `needs "tsp"`,
-		`{"tsp":{"script":"x"}}`: `needs "tsp"`,
+		"":                       "name the app and its dev command",
+		"{":                      "package.json: unexpected end of JSON input",
+		`{"scripts":{}}`:         "name the app and its dev command",
+		`{"tsp":{"name":"a"}}`:   "name the app and its dev command",
+		`{"tsp":{"script":"x"}}`: "name the app and its dev command",
 		`{"scripts":{},"tsp":{"name":"a","script":"dev:app"}}`:                `no script "dev:app"`,
 		`{"scripts":{"dev:app":"x"},"tsp":{"name":"A_B","script":"dev:app"}}`: "invalid name",
 	} {

@@ -16,7 +16,7 @@ import (
 
 func printHelp() {
 	fmt.Print(`tailscale-proxy (tsp): real HTTPS addresses for local dev servers
-  https://<name>.localhost             on this machine          (tsp run)
+  https://<name>.localhost             on this machine: every dev server it finds, or tsp run
   https://<node>.ts.net/<project>/     online, through Tailscale (tsp)
 
 Usage:
@@ -24,8 +24,11 @@ Usage:
   tsp <command> [flags]
 
 Local HTTPS names (https://<name>.localhost):
-  run        Run an app on a free port at https://<name>.localhost
-  routes     Print the running names (--json)
+             Start a dev server as usual: the local proxy finds it and serves it, named after its
+             folder or by the project's config (.tsp.json, or "tsp" in package.json, deno.json,
+             pyproject.toml [tool.tsp], Cargo.toml, composer.json). https://tsp.localhost lists them.
+  run        Run an app at https://<name>.localhost with PORT and HOST set for it
+  routes     Print the names served: found, and started with tsp run (--json)
   service    install | uninstall | status: the local HTTPS proxy from boot (install once
              per machine: it then updates itself live, no sudo)
   trust      Add the local CA to the OS trust store (browsers, curl)
@@ -47,12 +50,14 @@ Both:
 
 Examples:
   tsp service install        # once per machine: https://*.localhost, then it updates itself
-  tsp run                    # in an app folder: package.json "tsp" {name, script}
+  echo '{"name":"api.acme"}' > .tsp.json   # name this project https://api.acme.localhost
+  tsp run api -- 'vite --port $PORT --host $HOST'   # or run one through tsp
   tsp                        # share every running dev server online (Funnel)
   tsp --private              # only devices on your Tailscale network (Serve)
   tsp stats --since 1h       # how the proxy has been doing
   tsp logs -f                # follow its events
 
+Finding dev servers is on by default (tsp configure --discover=false: tsp run apps only).
 Everything tsp keeps is in ~/.tsp. The local HTTPS proxy installs new releases itself
 (daily, checksum-verified, swapped in live and rolled back if it fails); off with
 tsp configure --auto-update=false or TSP_NO_UPDATE=1.

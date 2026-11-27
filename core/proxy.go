@@ -147,6 +147,15 @@ func newHandler(store *routeStore, logRequests, forwardHost bool, m *proxyMetric
 		mw := newMeteredWriter(w)
 
 		svc, path, ok := resolveRoute(store, r, w)
+		if ok && svc.Share == "private" && r.Header.Get("Tailscale-Funnel-Request") != "" {
+			// A project that says "share": "private" answers only the tailnet, even while
+			// tsp runs public: Tailscale marks every Funnel request (and drops the header
+			// a client sends itself).
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			w.WriteHeader(http.StatusNotFound)
+			fmt.Fprintf(w, "tailscale-proxy: /%s/ is private to this tailnet\n", svc.Slug)
+			return
+		}
 		if ok {
 			tgt := target{host: svc.upstreamHost(), port: svc.Port, path: path}
 			proxy.ServeHTTP(mw, r.WithContext(context.WithValue(r.Context(), targetKey{}, tgt)))

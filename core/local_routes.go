@@ -33,11 +33,20 @@ const (
 
 // localRoute is one registered local name.
 type localRoute struct {
-	Name string `json:"name"` // e.g. "workspace-api.help-ai" → https://workspace-api.help-ai.localhost
-	Port int    `json:"port"` // the app's port on 127.0.0.1
-	PID  int    `json:"pid"`  // the `tsp run` process that owns the route
-	Dir  string `json:"dir"`  // where it was started (shown in lists)
+	Name    string `json:"name"`              // e.g. "workspace-api.help-ai" → https://workspace-api.help-ai.localhost
+	Port    int    `json:"port"`              // the app's port
+	PID     int    `json:"pid"`               // tsp run's process (run), or the server's own (found)
+	Dir     string `json:"dir"`               // where it runs (shown in lists)
+	Source  string `json:"source,omitempty"`  // "run" (tsp run) or "found" (discovered); not in route files
+	Runtime string `json:"runtime,omitempty"` // found routes: node, python, …
+	Host    string `json:"-"`                 // found routes: the address it listens on (default 127.0.0.1)
 }
+
+// Where a route comes from.
+const (
+	sourceRun   = "run"
+	sourceFound = "found"
+)
 
 // URL is the route's HTTPS address behind `tsp proxy` on 443.
 func (r localRoute) URL() string { return "https://" + r.Name + "." + localTLD }

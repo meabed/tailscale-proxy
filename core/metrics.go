@@ -306,9 +306,9 @@ func privateRunDir(dir string) error {
 	return nil
 }
 
-// adminServer answers /health and /stats (metrics() at the time of asking) on a
-// unix socket until ctx ends.
-func adminServer(ctx context.Context, dir string, metrics func() *proxyMetrics) {
+// adminServer answers /health, /stats and /routes (the watcher) for server(), the
+// local server serving at the time of asking (nil: none), on a unix socket until ctx ends.
+func adminServer(ctx context.Context, dir string, server func() *localServer) {
 	path, err := adminSocketPath(dir, os.Getpid())
 	if err == nil {
 		err = privateRunDir(dir)
@@ -327,8 +327,20 @@ func adminServer(ctx context.Context, dir string, metrics func() *proxyMetrics) 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ok " + Version + "\n")) })
 	mux.HandleFunc("/stats", func(w http.ResponseWriter, _ *http.Request) {
+		m := newProxyMetrics()
+		if ls := server(); ls != nil {
+			m = ls.metrics
+		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(metrics().snapshot())
+		_ = json.NewEncoder(w).Encode(m.snapshot())
+	})
+	mux.HandleFunc("/routes", func(w http.ResponseWriter, _ *http.Request) {
+		var lw *localWatcher
+		if ls := server(); ls != nil {
+			lw = ls.watcher
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(lw.status())
 	})
 	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second}
 	go func() {

@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"syscall"
@@ -51,8 +52,10 @@ const healthName = "tsp-health"
 // newLocalHandler proxies <name>.localhost to the registered app port. The app
 // sees the original Host (its configured URL) and X-Forwarded-Proto: https. Every
 // response is counted in m, and logged per requestLog ("errors", "all", "off").
-// tsp.localhost is the dashboard (dir's state, reg's names, m's traffic).
-func newLocalHandler(dir string, reg *localRegistry, m *proxyMetrics, requestLog string) http.Handler {
+// Names come from tsp run (reg) first, then from what the watcher found (w, nil
+// when discovery is off). tsp.localhost is the dashboard (dir's state, the names,
+// m's traffic).
+func newLocalHandler(dir string, reg *localRegistry, w *localWatcher, m *proxyMetrics, requestLog string) http.Handler {
 	proxy := &httputil.ReverseProxy{
 		Transport:     newUpstreamTransport(),
 		BufferPool:    copyBuffers,
@@ -60,37 +63,48 @@ func newLocalHandler(dir string, reg *localRegistry, m *proxyMetrics, requestLog
 		Rewrite: func(pr *httputil.ProxyRequest) {
 			rt := pr.In.Context().Value(localRouteKey{}).(localRoute)
 			pr.Out.URL.Scheme = "http"
-			pr.Out.URL.Host = net.JoinHostPort("127.0.0.1", strconv.Itoa(rt.Port))
+			host := rt.Host
+			if host == "" {
+				host = "127.0.0.1"
+			}
+			pr.Out.URL.Host = net.JoinHostPort(host, strconv.Itoa(rt.Port))
 			pr.Out.Host = pr.In.Host
 			pr.SetXForwarded() // X-Forwarded-For, -Host (the .localhost name), -Proto https
 		},
-		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
+		ErrorHandler: func(rw http.ResponseWriter, r *http.Request, err error) {
 			rt := r.Context().Value(localRouteKey{}).(localRoute)
-			reg.forget(rt)
-			if mw, ok := w.(*meteredWriter); ok {
+			if rt.Source == sourceRun {
+				reg.forget(rt)
+			}
+			if mw, ok := rw.(*meteredWriter); ok {
 				mw.failed = true
 			}
-			writeBadGateway(w, r, rt, err)
+			writeBadGateway(rw, r, rt, err)
 		},
 	}
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
 		name := nameFromHost(r.Host)
 		switch name {
 		case healthName:
-			_, _ = io.WriteString(w, "ok "+Version+"\n")
+			_, _ = io.WriteString(rw, "ok "+Version+"\n")
 			return
 		case dashboardName:
-			serveDashboard(w, r, dir, reg, m)
+			serveDashboard(rw, r, dir, reg, w, m)
 			return
 		}
-		mw := newMeteredWriter(w)
-		rt, ok := lookupWithParents(reg, name)
+		mw := newMeteredWriter(rw)
+		w.touch()
+		rt, ok := lookupWithParents(reg, w, name)
+		if !ok && name != "" {
+			w.rescanSoon() // a server started a moment ago answers on the first try
+			rt, ok = lookupWithParents(reg, w, name)
+		}
 		key := "" // metrics key: a registered name only, never the request's Host
 		if ok {
 			proxy.ServeHTTP(mw, r.WithContext(context.WithValue(r.Context(), localRouteKey{}, rt)))
 			key = rt.Name
 		} else {
-			writeNotFound(mw, r, reg, name)
+			writeNotFound(mw, r, allRoutes(reg, w), name)
 		}
 		status, ttfb := mw.result()
 		m.record(key, status, ttfb, mw.bytes, mw.failed)
@@ -100,13 +114,35 @@ func newLocalHandler(dir string, reg *localRegistry, m *proxyMetrics, requestLog
 
 // lookupWithParents resolves name, else its nearest registered parent:
 // acme.help-chat → help-chat, so one app serves every <tenant>.<name>.localhost.
-func lookupWithParents(reg *localRegistry, name string) (localRoute, bool) {
+// A tsp run route wins over a found one of the same name.
+func lookupWithParents(reg *localRegistry, w *localWatcher, name string) (localRoute, bool) {
 	for n := name; n != ""; _, n, _ = strings.Cut(n, ".") {
 		if rt, ok := reg.lookup(n); ok {
+			rt.Source = sourceRun
+			return rt, true
+		}
+		if rt, ok := w.lookup(n); ok {
 			return rt, true
 		}
 	}
 	return localRoute{}, false
+}
+
+// allRoutes is every name served: tsp run's, then the found ones no run holds.
+func allRoutes(reg *localRegistry, w *localWatcher) []localRoute {
+	out := reg.list()
+	held := map[string]bool{}
+	for i := range out {
+		out[i].Source = sourceRun
+		held[out[i].Name] = true
+	}
+	for _, rt := range w.routes() {
+		if !held[rt.Name] {
+			out = append(out, rt)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
 }
 
 // proxyState is ~/.tsp/proxy.json: which proxy serves this user's names. The
@@ -244,7 +280,9 @@ type localServer struct {
 	srv      *http.Server
 	redirect *http.Server // http://*.localhost → https
 	metrics  *proxyMetrics
-	lns      []net.Listener // what serve accepts on: shutdown closes them first
+	watcher  *localWatcher
+	stop     context.CancelFunc // ends the watcher
+	lns      []net.Listener     // what serve accepts on: shutdown closes them first
 }
 
 func newLocalServer(dir string) (*localServer, error) {
@@ -262,17 +300,24 @@ func newLocalServer(dir string) (*localServer, error) {
 	m := newProxyMetrics()
 	iss.onIssue = func() { m.certs.Add(1) }
 	cfg, _, _, _ := LoadConfig()
-	srv := newServer("", newLocalHandler(dir, newLocalRegistry(filepath.Join(dir, "routes")), m, cfg.LocalRequestLog))
+	reg := newLocalRegistry(filepath.Join(dir, "routes"))
+	w := newLocalWatcher(reg, execRunner{})
+	srv := newServer("", newLocalHandler(dir, reg, w, m, cfg.LocalRequestLog))
 	srv.TLSConfig = &tls.Config{GetCertificate: iss.GetCertificate, MinVersion: tls.VersionTLS12}
 	srv.ErrorLog = log.New(io.Discard, "", 0) // per-connection TLS noise: an untrusted CA, a port scan
 	srv.ConnState = m.connState
 	rd := newServer("", redirectHandler())
 	rd.ErrorLog = srv.ErrorLog
-	return &localServer{dir: dir, ca: ca, srv: srv, redirect: rd, metrics: m}, nil
+	return &localServer{dir: dir, ca: ca, srv: srv, redirect: rd, metrics: m, watcher: w}, nil
 }
 
 // serve accepts on lns; the channel gets each listener's end.
 func (ls *localServer) serve(lns []net.Listener) <-chan error {
+	if ls.stop == nil { // the first serve starts the watcher
+		var ctx context.Context
+		ctx, ls.stop = context.WithCancel(context.Background())
+		go ls.watcher.loop(ctx)
+	}
 	ls.lns = append(ls.lns, lns...)
 	errc := make(chan error, len(lns))
 	for _, ln := range lns {
@@ -342,6 +387,9 @@ func (ls *localServer) shutdown(d time.Duration) {
 			quiet = 0
 		}
 	}
+	if ls.stop != nil {
+		ls.stop()
+	}
 	ctx, cancel := context.WithDeadline(context.Background(), deadline)
 	defer cancel()
 	_ = ls.redirect.Shutdown(ctx)
@@ -383,7 +431,7 @@ func runStandalone(ctx context.Context, lns []net.Listener, port int) int {
 	}
 	defer os.Remove(proxyStatePath(dir))
 	errc := ls.serve(lns)
-	go adminServer(ctx, dir, func() *proxyMetrics { return ls.metrics })
+	go adminServer(ctx, dir, func() *localServer { return ls })
 	go historyLoop(ctx, dir, "local", ls.metrics)
 	appLog().Info("proxy started", "port", port, "mode", "standalone")
 	log.Printf("tsp proxy %s: https://*.%s on port %d (CA %s)", Version, localTLD, port, ls.ca.certPEM)

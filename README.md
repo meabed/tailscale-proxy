@@ -9,7 +9,7 @@ Real HTTPS addresses for your local dev servers. On your machine, each app gets 
 webhooks, OAuth callbacks, your phone and your teammates.
 
 ```
-https://api.acme.localhost                          → your app, only from this machine   (tsp run)
+https://api.acme.localhost                          → your app, only from this machine   (found by itself)
 https://bigfoot.tail1234.ts.net/api/webhooks/stripe → the same app, from anywhere        (tsp)
 ```
 
@@ -36,7 +36,17 @@ tsp stats               # how the proxies run: health, requests per name, p50/p9
 tsp uninstall           # remove everything tsp set up
 ```
 
-`tsp run` reads the app's name and real dev script from `package.json`, or takes any command, on any stack:
+Start your dev servers the way you always do: the local proxy finds each one and serves it at
+`https://<folder>.localhost`, with no script changes and nothing for teammates to install. Name a project in
+the file its stack already has (first found wins): `.tsp.json`, `"tsp"` in `package.json` / `deno.json`,
+`[tool.tsp]` in `pyproject.toml`, `[package.metadata.tsp]` in `Cargo.toml`, `"extra": {"tsp"}` in `composer.json`:
+
+```json
+{ "name": "api.acme" }
+```
+
+`tsp run` is the other way, for an app that should get its port from tsp. It reads the name and dev script from
+the same config, or takes any command:
 
 ```jsonc
 "scripts": { "dev": "tsp run", "dev:app": "vite --port $PORT --host $HOST" },

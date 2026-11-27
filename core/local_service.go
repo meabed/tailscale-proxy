@@ -553,11 +553,29 @@ func localHTTPSChecks(s serviceSystem, supported bool) ([]check, error) {
 			redirect = check{Name: "http://*.localhost not redirected (https works)", OK: true, Note: note}
 		}
 		checks = append(checks, redirect)
+		checks = append(checks, discoveryCheck(dir, st))
 	}
 	ca, err := loadCA(caFiles(dir))
 	checks = append(checks, check{Name: "local CA trusted by the OS", OK: err == nil && caTrusted(ca), Fix: "tsp trust (macOS: in a terminal at the Mac's screen)"})
 	checks = append(checks, autoUpdateCheck(dir, time.Now()))
 	return checks, nil
+}
+
+// discoveryCheck is advisory: whether the proxy finds dev servers by itself, how
+// many it serves, and the project config files it had to skip.
+func discoveryCheck(dir string, st proxyState) check {
+	ws, err := fetchWatchStatus(dir, st.Worker)
+	switch {
+	case err != nil:
+		return check{Name: "finding dev servers: the proxy did not answer", OK: true, Note: "it may predate it: a newer tsp takes over within seconds (tsp logs)"}
+	case !ws.Enabled:
+		return check{Name: "finding dev servers off: only tsp run apps are served", OK: true, Note: "tsp configure --discover turns it on"}
+	}
+	c := check{Name: fmt.Sprintf("finds dev servers on ports %s (%d found now; scans every %s)", ws.Range, len(ws.Routes), ws.Every), OK: true}
+	if len(ws.Problems) > 0 {
+		c.Note = "skipped (fix the file): " + strings.Join(ws.Problems, "; ")
+	}
+	return c
 }
 
 // autoUpdateCheck is advisory: whether new releases install themselves, and what

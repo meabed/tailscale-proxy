@@ -9,11 +9,14 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 )
 
 // Service is one discovered listening dev server.
 type Service struct {
-	Slug    string // URL path segment
+	Slug    string // URL path segment (tsp start), from the project's path or folder
+	Name    string // its local name: https://<name>.localhost (the project's name, else the folder slug)
+	Share   string // the project's share setting: "", "off", "private", "public"
 	Port    int    // upstream port
 	Host    string // upstream host/IP; empty means 127.0.0.1
 	Runtime string // node|bun|deno or "" (unknown)
@@ -32,6 +35,7 @@ type discoverConfig struct {
 	all      bool
 	runtimes map[string]bool // nil = all known web runtimes
 	docker   bool            // also query Docker API for containers
+	local    bool            // for local names: projects with "share": false stay in
 }
 
 // listener is a raw OS-level listening socket (pre-classification). Comm is the
@@ -79,8 +83,8 @@ var runtimeByExe = map[string]string{
 
 // projectMarkers identify a project root when walking up from a process's cwd.
 var projectMarkers = []string{
-	".git",
-	"package.json", "deno.json", "bun.lockb",
+	".tsp.json", ".git",
+	"package.json", "deno.json", "deno.jsonc", "bun.lockb",
 	"go.mod",
 	"pyproject.toml", "requirements.txt", "Pipfile", "setup.py",
 	"Gemfile",
@@ -175,13 +179,31 @@ type duplicate struct {
 	Members []Service // all services for this project, main (clean slug) first
 }
 
-// serviceOf builds a Service from a raw listener under a given slug.
-func serviceOf(l listener, slug string) Service {
+// serviceOf builds a Service from a raw listener under a given slug and name.
+func serviceOf(l listener, slug, name, share string) Service {
 	host := l.Host
 	if host == "" {
 		host = "127.0.0.1"
 	}
-	return Service{Slug: slug, Port: l.Port, Host: host, Runtime: runtimeOf(l), Dir: l.Cwd, PID: l.PID}
+	return Service{Slug: slug, Name: name, Share: share, Port: l.Port, Host: host, Runtime: runtimeOf(l), Dir: l.Cwd, PID: l.PID}
+}
+
+// configProblems are the project config files the last scan could not use
+// (file → what is wrong): their projects are left out until they are fixed.
+var configProblems atomic.Pointer[map[string]string]
+
+// projectConfigProblems returns the last scan's problems, sorted by file.
+func projectConfigProblems() []string {
+	m := configProblems.Load()
+	if m == nil {
+		return nil
+	}
+	out := make([]string, 0, len(*m))
+	for _, msg := range *m {
+		out = append(out, msg)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // projectBaseSlug derives the clean project slug from the project root, or
@@ -232,13 +254,17 @@ func buildServices(listeners []listener, includeAll bool, runtimes map[string]bo
 		groups[key] = append(groups[key], l)
 	}
 
-	// Per project: one entry per process (its lowest port), sorted by port.
+	// Per project: one entry per process (its lowest port), sorted by port; the
+	// project's config (loadProjectConfig) names it, picks its main port, or leaves it out.
 	type project struct {
-		procs []listener // distinct processes, lowest-port first; procs[0] is "main"
-		slug  string     // base (clean) slug
+		procs []listener // distinct processes; procs[0] is "main"
+		slug  string     // base (clean) path slug
+		name  string     // base local name
+		share string
 	}
 	projects := make([]project, 0, len(order))
-	slugCounts := map[string]int{}
+	slugCounts, nameCounts := map[string]int{}, map[string]int{}
+	problems := map[string]string{}
 	for _, key := range order {
 		byPID := map[int]listener{}
 		pidOrder := []int{}
@@ -255,25 +281,52 @@ func buildServices(listeners []listener, includeAll bool, runtimes map[string]bo
 			procs = append(procs, byPID[pid])
 		}
 		sort.Slice(procs, func(i, j int) bool { return procs[i].Port < procs[j].Port })
-		slug := projectBaseSlug(procs[0])
-		projects = append(projects, project{procs: procs, slug: slug})
-		slugCounts[slug]++
+		cfg, err := loadProjectConfig(procs[0].Root)
+		if err != nil {
+			problems[procs[0].Root] = err.Error()
+			continue
+		}
+		if !cfg.Enabled {
+			continue
+		}
+		if cfg.Port > 0 { // the configured port is the app: it goes first
+			for i, proc := range procs {
+				if proc.Port == cfg.Port {
+					procs[0], procs[i] = procs[i], procs[0]
+					break
+				}
+			}
+		}
+		folder := projectBaseSlug(procs[0])
+		name := cfg.Name
+		if name == "" {
+			name = folder
+		}
+		p := project{procs: procs, slug: cfg.pathSlug(folder), name: name, share: cfg.Share}
+		projects = append(projects, p)
+		slugCounts[p.slug]++
+		nameCounts[p.name]++
 	}
+	configProblems.Store(&problems)
 
 	var services []Service
 	var dups []duplicate
 	for _, p := range projects {
-		mainSlug := p.slug
+		mainSlug, mainName := p.slug, p.name
 		if slugCounts[mainSlug] > 1 { // distinct projects share a folder name
 			mainSlug = mainSlug + "-" + strconv.Itoa(p.procs[0].Port)
 		}
+		if nameCounts[mainName] > 1 {
+			mainName = mainName + "-" + strconv.Itoa(p.procs[0].Port)
+		}
 		members := make([]Service, 0, len(p.procs))
 		for i, proc := range p.procs {
-			slug := mainSlug
+			slug, name := mainSlug, mainName
 			if i > 0 { // not the main process → suffix to stay reachable
 				slug = mainSlug + "-" + strconv.Itoa(proc.Port)
+				name = mainName + "-" + strconv.Itoa(proc.Port)
 			}
-			svc := serviceOf(proc, slug)
+			svc := serviceOf(proc, slug, name, p.share)
 			members = append(members, svc)
 			services = append(services, svc)
 		}
@@ -351,6 +404,15 @@ func (d *discoverer) discover(cfg discoverConfig) ([]Service, []duplicate, error
 		ls = mergeListeners(ls, dockerListeners(cfg.rng))
 	}
 	svcs, dups := buildServices(ls, cfg.all, cfg.runtimes)
+	if !cfg.local { // `tsp start` leaves out the projects that say "share": false
+		kept := svcs[:0]
+		for _, svc := range svcs {
+			if svc.Share != "off" {
+				kept = append(kept, svc)
+			}
+		}
+		svcs = kept
+	}
 	return svcs, dups, nil
 }
 

@@ -114,3 +114,15 @@ with the running names and a way to run an app there per stack; a registered nam
 502 with its port, pid and folder. Browsers (`Accept: text/html`) get HTML via `html/template`, other clients plain
 text. Port 80 answers every `http://*.localhost` with a 308 to the same URL over https. `tsp run <name> -- '<one
 command>'` runs it with `/bin/sh -c` (`exec` for a simple command, so signals and exit codes pass straight through).
+
+### Finding dev servers for local names
+
+`local_watch.go`: the worker runs the same discovery as `tsp start` (`discover.go`, per-PID cache, ports from the
+config plus 4000-4999) into a `routeStore` keyed by local name, every 10s while names get requests and every 60s
+when idle, and once (at most once a second, shared by every waiting request) when a request asks for a name it does
+not know. Ports held by `tsp run` apps are left out; a `tsp run` route wins on a name clash. `project_config.go`
+resolves each project root's config (first of `.tsp.json`, package.json `tsp`, deno.json(c) `tsp`, pyproject.toml
+`[tool.tsp]`, Cargo.toml `[package.metadata.tsp]`, composer.json `extra.tsp`), cached by path, mtime and size:
+`name`, `path` (Tailscale slug), `port` (the main listener), `share` (`false` leaves `tsp start` out; `"private"`
+refuses requests Tailscale marks `Tailscale-Funnel-Request`), `enabled`, `script` (`tsp run`). The CLI reads found
+names from the worker's admin socket (`/routes`).

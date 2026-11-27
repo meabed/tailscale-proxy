@@ -72,14 +72,14 @@ func get(h http.Handler, host, path, accept string) *httptest.ResponseRecorder {
 func TestNotFound_textForClientsHTMLForBrowsers(t *testing.T) {
 	reg := testRegistry(t)
 	running(t, reg, localRoute{Name: "web", Port: 4100, PID: 1, Dir: "/src/<web>"})
-	h := newLocalHandler(t.TempDir(), reg, newProxyMetrics(), "errors")
+	h := newLocalHandler(t.TempDir(), reg, nil, newProxyMetrics(), "errors")
 
 	text := get(h, "nope.localhost", "/", "")
 	body := text.Body.String()
 	for _, want := range []string{
 		"tsp: nothing runs at https://nope.localhost",
 		"https://web.localhost  →  127.0.0.1:4100",
-		`"tsp": { "name": "nope", "script": "dev:app" }`,
+		`put .tsp.json in the project: { "name": "nope" }`,
 		"tsp run nope -- 'vite --port $PORT --host $HOST'",
 		"tsp run nope -- 'uvicorn main:app --reload --port $PORT --host $HOST'",
 		"listen on $PORT and $HOST",
@@ -112,7 +112,7 @@ func TestBadGateway_namesTheExpectedPort(t *testing.T) {
 	_ = ln.Close()
 	reg := testRegistry(t)
 	running(t, reg, localRoute{Name: "gone", Port: port, PID: 7, Dir: "/src/gone"})
-	h := newLocalHandler(t.TempDir(), reg, newProxyMetrics(), "errors")
+	h := newLocalHandler(t.TempDir(), reg, nil, newProxyMetrics(), "errors")
 
 	text := get(h, "gone.localhost", "/", "")
 	if text.Code != 502 || !strings.Contains(text.Body.String(), "PORT=") || !strings.Contains(text.Body.String(), "tsp logs") {
@@ -129,7 +129,7 @@ func TestDashboard_pageAndStatus(t *testing.T) {
 	running(t, reg, localRoute{Name: "api", Port: 4200, PID: 42, Dir: `/src/"><script>alert(1)</script>`})
 	m := newProxyMetrics()
 	m.record("api", 200, 0, 10, false)
-	h := newLocalHandler(t.TempDir(), reg, m, "errors")
+	h := newLocalHandler(t.TempDir(), reg, nil, m, "errors")
 
 	page := get(h, "tsp.localhost", "/", "text/html")
 	html := page.Body.String()

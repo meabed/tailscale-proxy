@@ -127,8 +127,8 @@ type notFoundPage struct {
 	Board    string
 }
 
-func newNotFoundPage(reg *localRegistry, name string) notFoundPage {
-	p := notFoundPage{Name: name, Running: reg.list(), Examples: examplesFor(name), Docs: docsURL, Board: dashboardURL}
+func newNotFoundPage(running []localRoute, name string) notFoundPage {
+	p := notFoundPage{Name: name, Running: running, Examples: examplesFor(name), Docs: docsURL, Board: dashboardURL}
 	if name != "" {
 		p.URL = localRoute{Name: name}.URL()
 	}
@@ -137,8 +137,8 @@ func newNotFoundPage(reg *localRegistry, name string) notFoundPage {
 
 // writeNotFound answers a name no run registered: what runs, and how to run an
 // app under this name, for any stack.
-func writeNotFound(w http.ResponseWriter, r *http.Request, reg *localRegistry, name string) {
-	p := newNotFoundPage(reg, name)
+func writeNotFound(w http.ResponseWriter, r *http.Request, running []localRoute, name string) {
+	p := newNotFoundPage(running, name)
 	if wantsHTML(r) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.WriteHeader(http.StatusNotFound)
@@ -159,11 +159,12 @@ func writeNotFoundText(w io.Writer, p notFoundPage) {
 		fmt.Fprintf(w, "tsp: nothing runs at %s\n\n", p.URL)
 	}
 	writeRunningText(w, p.Running)
-	fmt.Fprintf(w, "\nRun an app at https://%s.%s, in its folder:\n", shown, localTLD)
-	fmt.Fprintf(w, "  package.json   \"scripts\": { \"dev\": \"tsp run\", \"dev:app\": \"<your dev command>\" },\n")
-	fmt.Fprintf(w, "                 \"tsp\": { \"name\": \"%s\", \"script\": \"dev:app\" }\n", shown)
-	fmt.Fprintf(w, "                 then your usual dev command: npm run dev (pnpm, yarn, bun dev)\n")
-	fmt.Fprintf(w, "  any command    tsp run %s -- '<command>'\n\n", shown)
+	fmt.Fprintf(w, "\nServe an app at https://%s.%s:\n", shown, localTLD)
+	fmt.Fprintf(w, "  just start it  tsp finds dev servers by itself and names each after its folder;\n")
+	fmt.Fprintf(w, "                 to pick the name, put .tsp.json in the project: { \"name\": \"%s\" }\n", shown)
+	fmt.Fprintf(w, "                 (or \"tsp\" in package.json / deno.json, [tool.tsp] in pyproject.toml,\n")
+	fmt.Fprintf(w, "                 [package.metadata.tsp] in Cargo.toml, \"extra\".\"tsp\" in composer.json)\n")
+	fmt.Fprintf(w, "  or through tsp tsp run %s -- '<command>' sets PORT and HOST for it:\n\n", shown)
 	fmt.Fprint(w, examplesText(shown))
 	fmt.Fprintf(w, "\nThe server must listen on $PORT and $HOST: tsp sets both. Quote a command that uses them,\nso they expand when it runs.\n")
 	fmt.Fprintf(w, "Dashboard: %s   Docs: %s\n", p.Board, p.Docs)
@@ -217,6 +218,8 @@ func writeBadGateway(w http.ResponseWriter, r *http.Request, rt localRoute, err 
 type appStatus struct {
 	Name     string    `json:"name"`
 	URL      string    `json:"url"`
+	Source   string    `json:"source"` // "run" (tsp run) or "found" (discovered)
+	Runtime  string    `json:"runtime,omitempty"`
 	Port     int       `json:"port"`
 	PID      int       `json:"pid"`
 	Dir      string    `json:"dir"`
@@ -243,6 +246,7 @@ type proxyStatus struct {
 	Rollbacks       int               `json:"rollbacks"`
 	Crashes         int               `json:"crashes"`
 	SetAside        map[string]string `json:"setAside,omitempty"` // release → why
+	Discovery       watchStatus       `json:"discovery"`          // the watcher: on/off, interval, range, problems (routes are in apps)
 	HTTPRedirect    bool              `json:"httpRedirect"`
 	HTTPNote        string            `json:"httpNote,omitempty"`
 	AutoUpdate      bool              `json:"autoUpdate"`
@@ -259,7 +263,7 @@ type dashboardStatus struct {
 	Docs     string       `json:"docs"`
 }
 
-func newDashboardStatus(dir string, reg *localRegistry, m *proxyMetrics) dashboardStatus {
+func newDashboardStatus(dir string, reg *localRegistry, w *localWatcher, m *proxyMetrics) dashboardStatus {
 	snap := m.snapshot()
 	now := time.Now()
 	st, _ := readProxyState(dir)
@@ -268,7 +272,9 @@ func newDashboardStatus(dir string, reg *localRegistry, m *proxyMetrics) dashboa
 		UptimeSeconds: snap.Process.Uptime, Uptime: shortDuration(time.Duration(snap.Process.Uptime * float64(time.Second))),
 		Swaps: st.Swaps, Rollbacks: st.Rollbacks, Crashes: st.Crashes, SetAside: loadBinState(dir).Bad,
 		HTTPRedirect: st.HTTPPort > 0, HTTPNote: httpRedirectNote(st), AutoUpdate: autoUpdateEnabled(),
+		Discovery: w.status(),
 	}
+	ps.Discovery.Routes = nil
 	if ps.Mode == "" {
 		ps.Mode = "standalone"
 	}
@@ -282,9 +288,9 @@ func newDashboardStatus(dir string, reg *localRegistry, m *proxyMetrics) dashboa
 		}
 	}
 	ds := dashboardStatus{Proxy: ps, Apps: []appStatus{}, Examples: examplesFor(""), Docs: docsURL}
-	for _, rt := range reg.list() {
-		a := appStatus{Name: rt.Name, URL: rt.URL(), Port: rt.Port, PID: rt.PID, Dir: rt.Dir}
-		if fi, err := os.Stat(reg.file(rt.Name)); err == nil {
+	for _, rt := range allRoutes(reg, w) {
+		a := appStatus{Name: rt.Name, URL: rt.URL(), Source: rt.Source, Runtime: rt.Runtime, Port: rt.Port, PID: rt.PID, Dir: rt.Dir}
+		if fi, err := os.Stat(reg.file(rt.Name)); rt.Source == sourceRun && err == nil {
 			a.Started, a.Uptime = fi.ModTime(), shortDuration(now.Sub(fi.ModTime()))
 		}
 		if rs, ok := snap.Routes[rt.Name]; ok {
@@ -321,7 +327,7 @@ func readProxyState(dir string) (proxyState, bool) {
 }
 
 // serveDashboard answers https://tsp.localhost: the page at /, the JSON at /api/status.
-func serveDashboard(w http.ResponseWriter, r *http.Request, dir string, reg *localRegistry, m *proxyMetrics) {
+func serveDashboard(w http.ResponseWriter, r *http.Request, dir string, reg *localRegistry, lw *localWatcher, m *proxyMetrics) {
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		w.Header().Set("Allow", "GET, HEAD")
 		http.Error(w, "tsp: the dashboard is read-only", http.StatusMethodNotAllowed)
@@ -331,12 +337,12 @@ func serveDashboard(w http.ResponseWriter, r *http.Request, dir string, reg *loc
 	case "/api/status":
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Cache-Control", "no-store")
-		out, _ := json.MarshalIndent(newDashboardStatus(dir, reg, m), "", "  ")
+		out, _ := json.MarshalIndent(newDashboardStatus(dir, reg, lw, m), "", "  ")
 		_, _ = w.Write(append(out, '\n'))
 	case "/":
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-store")
-		_ = pageTemplates.ExecuteTemplate(w, "dashboard", newDashboardStatus(dir, reg, m))
+		_ = pageTemplates.ExecuteTemplate(w, "dashboard", newDashboardStatus(dir, reg, lw, m))
 	default:
 		http.Error(w, "tsp: the dashboard has / and /api/status", http.StatusNotFound)
 	}
@@ -399,19 +405,18 @@ th{color:var(--muted);font-weight:600;font-size:13px}.n{text-align:right;font-va
 
 {{define "examples"}}<div class="wrap"><table><tbody>{{range .}}<tr><td>{{.Stack}}</td><td class="mono">{{.Command}}</td><td class="muted">{{.Note}}</td></tr>{{end}}</tbody></table></div>{{end}}
 
-{{define "running"}}{{if .}}<div class="wrap"><table><thead><tr><th>Name</th><th>Port</th><th>Folder</th></tr></thead><tbody>
-{{range .}}<tr><td><a href="{{.URL}}">{{.URL}}</a></td><td class="mono">127.0.0.1:{{.Port}}</td><td class="mono">{{home .Dir}}</td></tr>{{end}}
+{{define "running"}}{{if .}}<div class="wrap"><table><thead><tr><th>Name</th><th>From</th><th>Port</th><th>Folder</th></tr></thead><tbody>
+{{range .}}<tr><td><a href="{{.URL}}">{{.URL}}</a></td><td>{{.Source}}</td><td class="mono">{{.Port}}</td><td class="mono">{{home .Dir}}</td></tr>{{end}}
 </tbody></table></div>{{else}}<p class="muted">No apps are running.</p>{{end}}{{end}}
 
 {{define "notfound"}}<!doctype html><html lang="en"><head>{{template "style"}}<title>Nothing runs at {{if .URL}}{{.URL}}{{else}}this name{{end}}</title></head><body><main>
 <h1>Nothing runs at {{if .URL}}<span class="mono">{{.URL}}</span>{{else}}this name{{end}}</h1>
 <p class="muted">The local HTTPS proxy is up; no app is registered under this name.</p>
 <h2>Running now</h2>{{template "running" .Running}}
-<h2>Run an app here</h2>
-<p>In the app's folder, name it in <code>package.json</code> and keep your real dev command as another script:</p>
-<pre>"scripts": { "dev": "tsp run", "dev:app": "&lt;your dev command&gt;" },
-"tsp": { "name": "{{if .Name}}{{.Name}}{{else}}&lt;name&gt;{{end}}", "script": "dev:app" }</pre>
-<p>then start it as usual: <code>npm run dev</code> (or pnpm, yarn, <code>bun dev</code>). Any other server, from its folder:</p>
+<h2>Serve an app here</h2>
+<p>Start it as usual: tsp finds dev servers by itself and names each after its folder. To pick the name, put <code>.tsp.json</code> in the project:</p>
+<pre>{ "name": "{{if .Name}}{{.Name}}{{else}}&lt;name&gt;{{end}}" }</pre>
+<p>or a <code>"tsp"</code> section in the file your stack already has: package.json, deno.json, pyproject.toml (<code>[tool.tsp]</code>), Cargo.toml (<code>[package.metadata.tsp]</code>), composer.json (<code>"extra"</code>). Or start it through tsp, which sets <code>$PORT</code> and <code>$HOST</code>:</p>
 {{template "examples" .Examples}}
 <p>The server must listen on <code>$PORT</code> and <code>$HOST</code>: tsp sets both. Quote a command that uses them, so they expand when it runs.</p>
 <footer><a href="{{.Board}}">All names: {{.Board}}</a> &nbsp; <a href="{{.Docs}}">Docs</a></footer>
@@ -432,19 +437,21 @@ th{color:var(--muted);font-weight:600;font-size:13px}.n{text-align:right;font-va
 <h1>Local HTTPS names</h1>
 <p class="muted">Served by tsp {{.Proxy.Version}} on this machine. Read only; refresh to update.</p>
 <h2>Running</h2>
-{{if .Apps}}<div class="wrap"><table><thead><tr><th>Name</th><th>Port</th><th>PID</th><th>Folder</th><th>Up</th><th class="n">Requests</th><th class="n">Failed</th><th class="n">p50</th><th class="n">p95</th></tr></thead><tbody>
-{{range .Apps}}<tr><td><a href="{{.URL}}">{{.URL}}</a></td><td class="mono">{{.Port}}</td><td class="mono">{{.PID}}</td><td class="mono">{{home .Dir}}</td><td>{{.Uptime}}</td><td class="n">{{.Requests}}</td><td class="n">{{.Failed}}</td><td class="n">{{ms .P50ms}}</td><td class="n">{{ms .P95ms}}</td></tr>{{end}}
-</tbody></table></div><p class="muted">Requests since this proxy started; p50 and p95 are times to the first byte.</p>
+{{if .Apps}}<div class="wrap"><table><thead><tr><th>Name</th><th>From</th><th>Port</th><th>PID</th><th>Folder</th><th>Up</th><th class="n">Requests</th><th class="n">Failed</th><th class="n">p50</th><th class="n">p95</th></tr></thead><tbody>
+{{range .Apps}}<tr><td><a href="{{.URL}}">{{.URL}}</a></td><td>{{.Source}}{{if .Runtime}} <span class="muted">{{.Runtime}}</span>{{end}}</td><td class="mono">{{.Port}}</td><td class="mono">{{.PID}}</td><td class="mono">{{home .Dir}}</td><td>{{.Uptime}}</td><td class="n">{{.Requests}}</td><td class="n">{{.Failed}}</td><td class="n">{{ms .P50ms}}</td><td class="n">{{ms .P95ms}}</td></tr>{{end}}
+</tbody></table></div><p class="muted"><b>run</b>: started with tsp run; <b>found</b>: a dev server tsp found by itself. Requests since this proxy started; p50 and p95 are times to the first byte.</p>
 {{else}}<p class="muted">No apps are running. Start one below.</p>{{end}}
 <h2>Proxy</h2><dl>
 <dt>Serving</dt><dd>tsp {{.Proxy.Version}} ({{.Proxy.Mode}}, pid {{.Proxy.PID}}), up {{.Proxy.Uptime}}{{if .Proxy.Supervisor}}; boot service tsp {{.Proxy.Supervisor}}{{end}}</dd>
 <dt>Changes</dt><dd>{{.Proxy.Swaps}} live updates, {{.Proxy.Rollbacks}} set aside, {{.Proxy.Crashes}} crashes</dd>
 {{with .Proxy.SetAside}}<dt>Set aside</dt><dd>{{range $v := keys .}}<div class="mono">{{$v}}: {{index $.Proxy.SetAside $v}}</div>{{end}}</dd>{{end}}
+<dt>Discovery</dt><dd>{{if .Proxy.Discovery.Enabled}}finds dev servers on ports {{.Proxy.Discovery.Range}}: scans every {{.Proxy.Discovery.Every}}, and at once for a name it does not know{{else}}off: only tsp run apps (tsp configure --discover turns it on){{end}}</dd>
+{{range .Proxy.Discovery.Problems}}<dt>Skipped</dt><dd class="warn">{{.}}</dd>{{end}}
 <dt>http://</dt><dd>{{if .Proxy.HTTPRedirect}}<span class="ok">redirects to https</span>{{else}}<span class="warn">not redirected</span>: {{.Proxy.HTTPNote}}{{end}}</dd>
 <dt>Updates</dt><dd>{{if .Proxy.AutoUpdate}}automatic{{if .Proxy.UpdateChecked}}, checked {{.Proxy.UpdateChecked}}{{end}}{{if .Proxy.Latest}}, latest {{.Proxy.Latest}}{{end}}{{else}}off (tsp configure --auto-update turns them on){{end}}</dd>
 </dl>
 <h2>Run an app</h2>
-<p>In its folder: <code>"tsp": { "name": "&lt;name&gt;", "script": "dev:app" }</code> in package.json with <code>"dev": "tsp run"</code>, then your usual dev command. Or any server:</p>
+<p>Start it as usual: tsp finds it and serves it at <code>https://&lt;folder&gt;.localhost</code>. Name it in <code>.tsp.json</code> (<code>{ "name": "api.acme" }</code>), or in the file your stack has: package.json, deno.json, pyproject.toml <code>[tool.tsp]</code>, Cargo.toml, composer.json. Or start it through tsp:</p>
 {{template "examples" .Examples}}
 <p>The server must listen on <code>$PORT</code> and <code>$HOST</code>: tsp sets both.</p>
 <footer>JSON for scripts: <a href="/api/status">/api/status</a> &nbsp; <a href="{{.Docs}}">Docs</a> &nbsp; <a href="https://tailscaleproxy.vercel.app/logs-and-stats">Logs and stats</a></footer>

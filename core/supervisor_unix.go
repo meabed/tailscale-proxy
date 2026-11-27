@@ -149,7 +149,7 @@ func runWorker(ctx context.Context, in inherited) int {
 	ls.serveRedirect(in.httpLns)
 	say("ready")
 	appLog().Info("worker serving", "port", in.port, "launcher", in.launcher)
-	go adminServer(ctx, dir, func() *proxyMetrics { return ls.metrics })
+	go adminServer(ctx, dir, func() *localServer { return ls })
 	go historyLoop(ctx, dir, "local", ls.metrics)
 	go autoUpdateLoop(ctx, dir)
 	code := 0
@@ -446,7 +446,7 @@ func (s *supervisor) loop(ctx context.Context) {
 	live := time.NewTicker(livenessEvery)
 	defer live.Stop()
 	misses := 0
-	go adminServer(ctx, s.dir, s.builtinMetrics) // answers for the built-in server, when it serves
+	go adminServer(ctx, s.dir, func() *localServer { return s.builtin }) // the built-in server, when it serves
 
 	for {
 		var exited <-chan struct{}
@@ -479,14 +479,6 @@ func (s *supervisor) loop(ctx context.Context) {
 			}
 		}
 	}
-}
-
-// builtinMetrics is the built-in server's metrics (empty while a worker serves).
-func (s *supervisor) builtinMetrics() *proxyMetrics {
-	if b := s.builtin; b != nil {
-		return b.metrics
-	}
-	return newProxyMetrics()
 }
 
 // maybeSwap moves to a newer release in bin/ once it proves it serves.

@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"sort"
 	"time"
 )
 
@@ -28,6 +29,7 @@ func cmdConfigure(argv []string) int {
 	fs.BoolVar(&cfg.Docker, "docker", cfg.Docker, "also query Docker API for containers")
 	fs.StringVar(&cfg.AcceptDNS, "accept-dns", cfg.AcceptDNS, "set Tailscale MagicDNS (true|false) on start; empty = leave it alone")
 	fs.BoolVar(&cfg.AutoUpdate, "auto-update", cfg.AutoUpdate, "the local HTTPS proxy installs new releases itself (--auto-update=false to stop)")
+	fs.BoolVar(&cfg.Discover, "discover", cfg.Discover, "the local HTTPS proxy serves every dev server it finds at https://<name>.localhost (--discover=false: only tsp run apps)")
 	fs.StringVar(&cfg.LocalRequestLog, "local-request-log", cfg.LocalRequestLog, "the local HTTPS proxy's request log: errors (failed, 5xx, slow), all, off")
 	if err := fs.Parse(argv); err != nil {
 		if err == flag.ErrHelp {
@@ -166,7 +168,8 @@ func queryConfig(argv []string) (mode Mode, dcfg discoverConfig, httpsPort, exit
 	return modeOf(*private), discoverConfig{rng: rng, all: *all, runtimes: parseRuntimes(*runtimesRaw), docker: *docker}, *port, -1
 }
 
-// cmdRoutes lists the running local names (`tsp run`), as text or --json.
+// cmdRoutes lists the names served at https://<name>.localhost: tsp run's (from
+// the route files) and the ones the proxy found (from its admin socket).
 func cmdRoutes(argv []string) int {
 	fs := flag.NewFlagSet("routes", flag.ContinueOnError)
 	asJSON := fs.Bool("json", false, "print JSON")
@@ -181,7 +184,32 @@ func cmdRoutes(argv []string) int {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	routes := newLocalRegistry(filepath.Join(dir, "routes")).list()
+	reg := newLocalRegistry(filepath.Join(dir, "routes"))
+	routes := reg.list()
+	held := map[string]bool{}
+	for i := range routes {
+		routes[i].Source = sourceRun
+		held[routes[i].Name] = true
+	}
+	var notes []string
+	if st, ok := runningProxy(dir); !ok {
+		notes = append(notes, "the local HTTPS proxy is not running, so nothing is found or served: tsp service install")
+	} else if ws, err := fetchWatchStatus(dir, st.Worker); err != nil {
+		notes = append(notes, "found names unknown: the proxy (tsp "+st.Version+") did not answer: tsp doctor")
+	} else {
+		if !ws.Enabled {
+			notes = append(notes, "finding dev servers is off: only tsp run apps are served (tsp configure --discover turns it on)")
+		}
+		for _, rt := range ws.Routes {
+			if !held[rt.Name] {
+				routes = append(routes, rt)
+			}
+		}
+		for _, p := range ws.Problems {
+			notes = append(notes, "skipped: "+p)
+		}
+	}
+	sort.Slice(routes, func(i, j int) bool { return routes[i].Name < routes[j].Name })
 	if *asJSON {
 		if routes == nil {
 			routes = []localRoute{}
@@ -191,13 +219,21 @@ func cmdRoutes(argv []string) int {
 		return 0
 	}
 	if len(routes) == 0 {
-		fmt.Println("No apps are running. Start one in its folder: your usual dev command with package.json \"tsp\": {\"name\", \"script\"},")
-		fmt.Println("or tsp run <name> -- '<command using $PORT and $HOST>' (tsp run --help has one per stack).")
-		fmt.Println("All names, live: " + dashboardURL)
-		return 0
+		fmt.Println("No apps are running. Start a dev server as usual: tsp finds it and serves it at https://<folder>.localhost")
+		fmt.Println("(name it with .tsp.json { \"name\": \"api.acme\" }), or run one through tsp: tsp run <name> -- '<command>'.")
+	} else {
+		fmt.Printf("%-44s %-6s %-6s %s\n", "NAME", "FROM", "PORT", "FOLDER")
+		for _, rt := range routes {
+			folder := homeShort(rt.Dir)
+			if rt.Runtime != "" {
+				folder += " (" + rt.Runtime + ")"
+			}
+			fmt.Printf("%-44s %-6s %-6d %s\n", rt.URL(), rt.Source, rt.Port, folder)
+		}
 	}
-	for _, rt := range routes {
-		fmt.Printf("%-48s → 127.0.0.1:%-5d  %s\n", rt.URL(), rt.Port, rt.Dir)
+	for _, n := range notes {
+		fmt.Println("note: " + n)
 	}
+	fmt.Println("Live, with requests per name: " + dashboardURL)
 	return 0
 }

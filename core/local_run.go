@@ -26,10 +26,15 @@ import (
 // The app gets PORT, HOST=127.0.0.1 and (unless set) NODE_EXTRA_CA_CERTS.
 
 func runUsage() {
-	fmt.Print(`tsp run — run an app at https://<name>.localhost, on any stack
+	fmt.Print(`tsp run — run an app at https://<name>.localhost, on any stack, with PORT and HOST set
+
+A dev server needs no tsp run: the local proxy finds it and serves it by itself (tsp routes).
+tsp run is for an app that should get its port from tsp.
 
 Usage:
-  tsp run [--force]                       name and script from package.json "tsp"
+  tsp run [--force]                       name and script from the project's config:
+                                          package.json "tsp" {name, script: a package.json script},
+                                          or .tsp.json (and the others) {name, script: a shell command}
   tsp run [--force] <name> -- <cmd...>    a command that reads $PORT itself
   tsp run [--force] <name> -- '<command>' one quoted command, run by the shell:
                                           $PORT and $HOST expand when it runs
@@ -41,6 +46,10 @@ package.json (npm, pnpm, yarn, bun):
   "scripts": { "dev": "tsp run", "dev:app": "vite --port $PORT --host $HOST" },
   "tsp": { "name": "web.acme", "script": "dev:app" }
   then: npm run dev        TSP=0 npm run dev runs dev:app unchanged (its own port)
+
+.tsp.json (any language):
+  { "name": "api.acme", "script": "uvicorn main:app --reload --port $PORT --host $HOST" }
+  then: tsp run
 
 Examples:
 ` + examplesText("api") + `
@@ -57,17 +66,15 @@ type runSpec struct {
 	argv []string
 }
 
-// packageJSON is the part of package.json `tsp run` reads.
+// packageJSON is the part of package.json `tsp run` reads besides "tsp".
 type packageJSON struct {
-	TSP *struct {
-		Name   string `json:"name"`
-		Script string `json:"script"`
-	} `json:"tsp"`
 	Scripts map[string]string `json:"scripts"`
 }
 
-// resolveRun turns the arguments (or ./package.json) into a name and command.
-// The script runs with the package manager that invoked `tsp run` (npm_execpath).
+// resolveRun turns the arguments, or the project's tsp config (loadProjectConfig:
+// .tsp.json, package.json, …), into a name and command. A package.json script runs
+// with the package manager that invoked `tsp run` (npm_execpath); a script in any
+// other file is a shell command.
 func resolveRun(args []string, dir string, getenv func(string) string) (runSpec, error) {
 	if len(args) > 0 {
 		if len(args) > 1 && args[1] == "--" {
@@ -78,25 +85,33 @@ func resolveRun(args []string, dir string, getenv func(string) string) (runSpec,
 		}
 		return runSpec{name: args[0], argv: commandArgv(args[1:])}, validateName(args[0])
 	}
-	data, err := os.ReadFile(filepath.Join(dir, "package.json"))
+	root := projectRootDir(dir)
+	cfg, err := loadProjectConfig(root)
 	if err != nil {
-		return runSpec{}, fmt.Errorf("no package.json here (%v): run `tsp run <name> -- <cmd...>`, or add \"tsp\": {\"name\", \"script\"} to package.json", err)
+		return runSpec{}, err
+	}
+	if cfg.File == "" || cfg.Name == "" || cfg.Script == "" {
+		return runSpec{}, errors.New(`name the app and its dev command in .tsp.json ({"name": "api", "script": "<command using $PORT>"}) or package.json ("tsp": {"name", "script"}), or run: tsp run <name> -- '<command>'`)
+	}
+	if filepath.Base(cfg.File) != "package.json" {
+		return runSpec{name: cfg.Name, argv: shellArgv(cfg.Script)}, nil // a shell command, run where the project is
+	}
+	data, err := os.ReadFile(cfg.File)
+	if err != nil {
+		return runSpec{}, err
 	}
 	var pkg packageJSON
 	if err := json.Unmarshal(data, &pkg); err != nil {
 		return runSpec{}, fmt.Errorf("reading package.json: %v", err)
 	}
-	if pkg.TSP == nil || pkg.TSP.Name == "" || pkg.TSP.Script == "" {
-		return runSpec{}, errors.New(`package.json needs "tsp": {"name": "<name>", "script": "<script to run>"}`)
-	}
-	if _, ok := pkg.Scripts[pkg.TSP.Script]; !ok {
-		return runSpec{}, fmt.Errorf("package.json has no script %q (named in \"tsp\".script)", pkg.TSP.Script)
+	if _, ok := pkg.Scripts[cfg.Script]; !ok {
+		return runSpec{}, fmt.Errorf("package.json has no script %q (named in \"tsp\".script)", cfg.Script)
 	}
 	pm := getenv("npm_execpath")
 	if pm == "" {
 		pm = "npm"
 	}
-	return runSpec{name: pkg.TSP.Name, argv: []string{pm, "run", pkg.TSP.Script}}, validateName(pkg.TSP.Name)
+	return runSpec{name: cfg.Name, argv: []string{pm, "run", cfg.Script}}, nil
 }
 
 // commandArgv is the process to start for the words after the name. One word

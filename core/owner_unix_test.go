@@ -39,7 +39,7 @@ func TestAdminSocket_privateAndShortOnly(t *testing.T) {
 	dir := filepath.Join(shortHome(t), ".tsp")
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go adminServer(ctx, dir, newProxyMetrics)
+	go adminServer(ctx, dir, func() *localServer { return nil })
 	path, err := adminSocketPath(dir, os.Getpid())
 	if err != nil {
 		t.Fatal(err)

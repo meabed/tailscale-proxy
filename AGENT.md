@@ -15,8 +15,10 @@ Serve/Funnel entry, routed by URL path:
 https://<node>.ts.net/<project>/foo   →   strip segment → 127.0.0.1:<port>/foo
 ```
 
-It also serves apps locally at stable HTTPS names (`tsp run` → `https://<name>.localhost`,
-behind `tsp proxy` on 443 with its own CA), from a boot service that updates itself live.
+It also serves apps locally at stable HTTPS names (`https://<name>.localhost` behind
+`tsp proxy` on 443 with its own CA): every dev server the proxy finds by itself (the same
+discovery, named by the project's config or its folder), and apps started with `tsp run`;
+from a boot service that updates itself live.
 
 Self-hosted ngrok alternative. Go **stdlib only**, zero runtime dependencies,
 cross-platform (macOS, Linux, Windows, WSL). Module `github.com/meabed/tailscale-proxy`.
@@ -66,7 +68,10 @@ module** under `desktop/` that imports `core` and drives it in-process.
 | `core/metrics.go` | Per-name atomic counters + latency histogram, `meteredWriter`, connection states, the admin socket (`run/<pid>.sock`), per-minute history (`logs/stats.jsonl`) |
 | `core/applog.go` | slog JSON event log (`logs/proxy.jsonl`) with a multi-process rotating writer |
 | `core/stats_cmd.go` | `tsp stats` and `tsp logs` |
-| `core/local_run.go` | `tsp run`: package.json `"tsp"` or explicit command, env, registration, signal pass-through |
+| `core/local_run.go` | `tsp run`: the project config or an explicit command (one quoted command runs in the shell), env, registration, signal pass-through |
+| `core/project_config.go` | The project config resolver (`.tsp.json`, package.json, deno.json(c), pyproject.toml, Cargo.toml, composer.json), cached per file; minimal TOML table reader |
+| `core/local_watch.go` | The local proxy's watcher: discovery into an in-memory store keyed by name, adaptive interval, on-demand rescan for unknown names |
+| `core/local_pages.go` | What the local proxy answers itself: the `tsp.localhost` dashboard and `/api/status`, 404/502 pages (HTML or text), the http→https redirect |
 | `core/local_service.go` | `tsp service install/uninstall/status` (launchd/systemd), sudo re-run, test seams |
 | `core/proxy_bin.go` | The proxy's copies in `bin/` (`tsp-<release>`, `state.json`: current, previous, bad), `syncProxyBin` (newer CLIs copy themselves in), `markBad`, `versionLess` |
 | `core/autoupdate.go` | Daily release check (ETag) + checksummed install into `bin/` (skips bad releases); `update.json`; the CLI's once-a-day notice |
@@ -118,8 +123,11 @@ See [docs/TESTING.md](docs/TESTING.md).
 
 ## Conventions (behavior rules established across sessions)
 
-- **Local HTTPS names:** a route is one file per running `tsp run`, removed on exit and
-  ignored once its pid is gone; never a shared mutable file. The CA only ever signs
+- **Local HTTPS names:** a `tsp run` route is one file per running run, removed on exit and
+  ignored once its pid is gone; never a shared mutable file. Found routes live only in the
+  worker's memory; a `tsp run` route wins over a found one of the same name. One project
+  config resolver serves both sides; an invalid file leaves its project out and is reported
+  (`tsp routes`, doctor, dashboard), never guessed around. The CA only ever signs
   `localhost` names (name constraint + issuer check). The service binary is a root-owned
   launcher: it binds 443, drops to the user for good and supervises workers from
   `~/.tsp/bin` (root never runs a user-writable file). A new release serves only after its
