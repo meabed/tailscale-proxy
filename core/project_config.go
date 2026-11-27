@@ -62,20 +62,23 @@ type configCacheEntry struct {
 var configCache sync.Map // path → configCacheEntry
 
 // loadProjectConfig returns root's tsp settings (defaults when it has none). An
-// error names the file and what is wrong with it; the caller skips the project.
-// skipped are config files it would not read (owned by someone else, writable by
-// others, a link out of the project), each with why: the caller reports them.
-func loadProjectConfig(root string) (cfg projectConfig, skipped []string, err error) {
+// error names the file, what is wrong with it and the fix; every caller then
+// leaves the project alone. It fails closed: a config file tsp may not trust
+// (owned by someone else, writable by others, a link out of the project) is an
+// error, never skipped for a later file or the defaults, which could expose a
+// project its own config keeps private. Only a file that is not there lets the
+// next one, or the defaults, apply.
+func loadProjectConfig(root string) (projectConfig, error) {
 	if root == "" {
-		return projectConfig{Enabled: true}, nil, nil
+		return projectConfig{Enabled: true}, nil
 	}
 	for _, name := range projectConfigFiles {
 		path := filepath.Join(root, name)
 		fi, why := trustedConfigFile(root, path)
+		if why != "" {
+			return projectConfig{}, fmt.Errorf("%s: not read, %s; tsp leaves this project alone until it is fixed", path, why)
+		}
 		if fi == nil {
-			if why != "" {
-				skipped = append(skipped, path+": not read: "+why)
-			}
 			continue
 		}
 		var e configCacheEntry
@@ -87,13 +90,13 @@ func loadProjectConfig(root string) (cfg projectConfig, skipped []string, err er
 			configCache.Store(path, e)
 		}
 		if e.err != nil {
-			return projectConfig{}, skipped, e.err
+			return projectConfig{}, e.err
 		}
 		if e.ok {
-			return e.cfg, skipped, nil
+			return e.cfg, nil
 		}
 	}
-	return projectConfig{Enabled: true}, skipped, nil
+	return projectConfig{Enabled: true}, nil
 }
 
 // trustedConfigFile returns path's info when tsp may read it: a regular file this
@@ -122,12 +125,12 @@ func trustedConfigFile(root, path string) (os.FileInfo, string) {
 	case fi.IsDir():
 		return nil, ""
 	case !ownedByMe(fi):
-		return nil, "owned by another user"
+		return nil, "it belongs to another user: chown $(id -un) " + path
 	case othersCanWrite(fi):
 		return nil, fmt.Sprintf("others can change it (mode %v): chmod go-w %s", fi.Mode().Perm(), path)
 	}
 	if di, err := os.Stat(root); err != nil || worldWritable(di) {
-		return nil, "its folder is writable by anyone"
+		return nil, "its folder is writable by anyone: chmod o-w " + root
 	}
 	return fi, ""
 }

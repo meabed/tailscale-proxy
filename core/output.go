@@ -55,6 +55,7 @@ func printDiscovered(dcfg discoverConfig, mode Mode, httpsPort int) int {
 		fmt.Println("discovery failed:", err)
 		return 1
 	}
+	defer printConfigProblems()
 	if len(svcs) == 0 {
 		fmt.Printf("No services found in %d-%d. Start a dev server, widen --ports, or use --all.\n", dcfg.rng.Lo, dcfg.rng.Hi)
 		return 0
@@ -70,9 +71,19 @@ func printDiscovered(dcfg discoverConfig, mode Mode, httpsPort int) int {
 		if nerr == nil {
 			fmt.Printf("    %s/%s/\n", publicBase(node, httpsPort), s.Slug)
 		}
+		if s.Share == "private" && mode != ModeServe {
+			fmt.Println("    only your tailnet: its config says \"share\": \"private\"")
+		}
 	}
 	printDuplicateNotes(dups)
 	return 0
+}
+
+// printConfigProblems lists the projects left out because of their config file.
+func printConfigProblems() {
+	for _, p := range projectConfigProblems() {
+		fmt.Println("note: skipped " + p)
+	}
 }
 
 // printDuplicateNotes explains projects that expose more than one service (the

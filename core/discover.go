@@ -287,10 +287,7 @@ func buildServices(listeners []listener, includeAll bool, runtimes map[string]bo
 			procs = append(procs, byPID[pid])
 		}
 		sort.Slice(procs, func(i, j int) bool { return procs[i].Port < procs[j].Port })
-		cfg, skipped, err := loadProjectConfig(procs[0].Root)
-		for _, why := range skipped {
-			problems[why] = why
-		}
+		cfg, err := loadProjectConfig(procs[0].Root)
 		if err != nil {
 			problems[procs[0].Root] = err.Error()
 			continue
