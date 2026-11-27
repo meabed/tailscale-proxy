@@ -156,9 +156,12 @@ func TestRegistry_deadRunsAreDropped(t *testing.T) {
 	if _, ok := liveRoute(reg, "dead"); ok {
 		t.Error("get(dead) = true")
 	}
-	if _, ok, _ := reg.claim("dead"); !ok {
-		t.Error("a dead run's name cannot be claimed")
+	release, ok, _ := reg.claim("dead")
+	if !ok {
+		t.Fatal("a dead run's name cannot be claimed")
 	}
+	// Released before the temp dir goes: Windows cannot delete a lock file that is still open.
+	release()
 }
 
 func TestRegistry_liveRunsFilesAreNeverDeleted(t *testing.T) {
