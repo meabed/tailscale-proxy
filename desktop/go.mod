@@ -3,7 +3,7 @@ module github.com/meabed/tailscale-proxy/desktop
 go 1.27
 
 require (
-	github.com/meabed/tailscale-proxy v1.6.2
+	github.com/meabed/tailscale-proxy v1.19.0
 	github.com/wailsapp/wails/v3 v3.1.0
 )
 
